@@ -13,6 +13,7 @@
 //   wh.js required                          list human gates required for the active change
 //   wh.js status [--json] [--metrics]       human-readable status
 //   wh.js scaffold <template> [--out path]  render a template with state placeholders
+//   wh.js digest [--json] [--all]           emit the tracker sync payload (one change, or every change)
 //   wh.js plugin-root                       print the plugin root path
 'use strict';
 const fs = require('fs');
@@ -22,6 +23,15 @@ const L = require(path.join(__dirname, '..', 'hooks', 'scripts', 'lib.js'));
 const PLUGIN_ROOT = path.resolve(__dirname, '..');
 const TEMPLATES = path.join(PLUGIN_ROOT, 'templates');
 const PHASES = ['intent', 'spec', 'plan', 'build', 'verify', 'review', 'deploy', 'done'];
+
+// The gate that closes each phase, and the artifact that must exist for that gate to be live.
+// A phase whose gate is required, still pending, and whose packet exists is waiting on a human.
+const PHASE_GATE = { intent: 'G1', spec: 'G2', plan: 'G3', review: 'G4', deploy: 'G5' };
+const PHASE_ARTIFACT = {
+  intent: 'intent.md', spec: 'spec.md', plan: 'plan.md',
+  review: 'review-packet.md', deploy: 'release.md',
+};
+
 
 const args = process.argv.slice(2);
 const cmd = args.shift();
@@ -330,6 +340,23 @@ switch (cmd) {
     break;
   }
 
+  case 'digest': {
+    const root = requireRoot();
+    const all = hasFlag('--all');
+    hasFlag('--json'); // accepted and ignored: the digest is always JSON
+    if (all) {
+      const base = path.join(root, 'docs', 'sdlc');
+      const ids = fs.existsSync(base)
+        ? fs.readdirSync(base).filter((d) => fs.existsSync(path.join(base, d, 'state.json')))
+        : [];
+      out(ids.map((cid) => buildDigest(root, cid, L.loadState(root, cid))));
+      break;
+    }
+    const { id, state } = requireActive(root);
+    out(buildDigest(root, id, state));
+    break;
+  }
+
   default:
     die(`unknown command "${cmd || ''}". See the header of scripts/wh.js for usage.`);
 }
@@ -359,5 +386,130 @@ function computeMetrics(root) {
     mean_fix_iterations: rows.length ? Number((rows.reduce((a, r) => a + r.fix_iterations, 0) / rows.length).toFixed(2)) : null,
     by_tier: [0, 1, 2, 3].map((t) => ({ tier: t, count: rows.filter((r) => r.tier === t).length })),
     changes_detail: rows,
+  };
+}
+
+// ---------- tracker digest ----------
+
+function readArtifact(root, id, name) {
+  const p = path.join(L.changeDir(root, id), name);
+  return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+}
+
+// First prose paragraph under the heading matching `re`, collapsed to one line.
+function sectionText(md, re, maxLen) {
+  if (!md) return '';
+  const lines = md.split(/\r?\n/);
+  let i = lines.findIndex((l) => re.test(l));
+  if (i < 0) return '';
+  const buf = [];
+  for (i += 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^#{1,6}\s/.test(l)) break;
+    if (!l.trim()) { if (buf.length) break; continue; }
+    if (/^(\||-{3,}|<!--)/.test(l.trim())) break;
+    buf.push(l.trim());
+  }
+  const t = buf.join(' ').replace(/\s+/g, ' ').trim();
+  return maxLen && t.length > maxLen ? t.slice(0, maxLen - 1) + '\u2026' : t;
+}
+
+// Rows of the "Decisions requested" table in a gate packet, as short strings.
+function decisionRows(md, max) {
+  if (!md) return [];
+  const lines = md.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^#{1,6}.*decisions requested/i.test(l));
+  if (start < 0) return [];
+  const rows = [];
+  for (let i = start + 1; i < lines.length && rows.length < (max || 5); i++) {
+    const l = lines[i].trim();
+    if (/^#{1,6}\s/.test(l)) break;
+    if (!l.startsWith('|')) continue;
+    const cells = l.split('|').slice(1, -1).map((c) => c.trim());
+    if (cells.length < 2) continue;
+    if (/^:?-{2,}/.test(cells[0])) continue;
+    if (/^#$/.test(cells[0]) && /^decision$/i.test(cells[1] || '')) continue;
+    const text = cells.slice(0, 3).filter(Boolean).join(' \u2014 ');
+    if (text) rows.push(text.length > 300 ? text.slice(0, 299) + '\u2026' : text);
+  }
+  return rows;
+}
+
+function lastApproval(root, id) {
+  const md = readArtifact(root, id, 'approvals.md');
+  if (!md) return null;
+  // Split rather than match: a lazy regex with an `m`-flag `$` stops at the first line break.
+  const blocks = md.split(/^## /m).slice(1);
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    const head = b.match(/^(G\d): (approved|rejected)/);
+    if (!head) continue;
+    const field = (n) => ((b.match(new RegExp('^- ' + n + ': (.*)$', 'm')) || [])[1] || '').trim();
+    return { gate: head[1], status: head[2], who: field('Who'), at: field('When'), notes: field('Notes') };
+  }
+  return null;
+}
+
+function buildDigest(root, id, state) {
+  const profile = (() => { try { return L.loadProfile(root); } catch (e) { return {}; } })();
+  const tier = L.effectiveTier(state);
+  const required = L.requiredGates(state, profile);
+  const gates = state.gates || {};
+  const phase = state.phase;
+
+  const gateHere = PHASE_GATE[phase];
+  const artifactHere = PHASE_ARTIFACT[phase];
+  const packetExists = artifactHere
+    ? fs.existsSync(path.join(L.changeDir(root, id), artifactHere))
+    : false;
+  const humanGate =
+    gateHere && required.includes(gateHere) && gates[gateHere] !== 'approved' && packetExists
+      ? gateHere
+      : null;
+
+  const packetMd = artifactHere ? readArtifact(root, id, artifactHere) : '';
+  const intentMd = readArtifact(root, id, 'intent.md');
+  const verification = state.verification || {};
+
+  // owner/repo only when origin is a real git host; a local or odd remote falls back to the folder.
+  const remote = L.git(root, ['config', '--get', 'remote.origin.url']);
+  const hosted = /^(https?:\/\/|git@|ssh:\/\/)/.test(remote || '');
+  const repoName = hosted
+    ? remote.replace(/\.git$/, '').split(/[/:]/).slice(-2).join('/')
+    : path.basename(root);
+
+  return {
+    change_id: id,
+    title: state.title || id,
+    client: (profile.client && profile.client.name) || '',
+    repo: repoName,
+    tier,
+    tier_reason: state.tier_reason || '',
+    phase,
+    mode: state.mode || 'normal',
+    status_label: phase === 'done' ? 'Done' : phase.charAt(0).toUpperCase() + phase.slice(1),
+    waiting_on: humanGate ? 'You (' + humanGate + ')' : (phase === 'done' ? 'Nobody' : 'Agents'),
+    blocking_gate: humanGate,
+    gates,
+    required_human_gates: required,
+    verification: verification.status || 'none',
+    branch: state.branch || '',
+    pr_url: state.pr_url || '',
+    commit: L.git(root, ['rev-parse', '--short', 'HEAD']) || '',
+    problem: sectionText(intentMd, /^#{1,6}\s*problem\b/i, 600),
+    outcome: sectionText(intentMd, /^#{1,6}\s*outcome\b/i, 600),
+    tldr: sectionText(packetMd, /^#{1,6}.*(tl;dr|tldr)/i, 900),
+    decisions: decisionRows(packetMd, 5),
+    last_approval: lastApproval(root, id),
+    artifacts: fs.existsSync(L.changeDir(root, id))
+      ? fs.readdirSync(L.changeDir(root, id)).filter((f) => f.endsWith('.md')).sort()
+      : [],
+    artifact_dir: 'docs/sdlc/' + id + '/',
+    tracker: {
+      provider: (profile.tracker && profile.tracker.provider) || '',
+      database: (profile.tracker && profile.tracker.database) || '',
+      page_id: (state.tracker && state.tracker.page_id) || null,
+    },
+    updated_at: state.updated_at || L.nowIso(),
   };
 }

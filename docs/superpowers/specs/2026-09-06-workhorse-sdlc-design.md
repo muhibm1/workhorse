@@ -239,6 +239,7 @@ No em-dashes in anything client-facing.
 | `wh-handover-writer` | 8 | opus | Read, Glob, Grep, Write | docs/handover complete; client CLAUDE.md under one page |
 | `wh-incident-triager` | 9 | sonnet | Read, Glob, Grep, Bash, Write | intent.md from an incident with evidence |
 | `wh-retro-learner` | 9 | sonnet | Read, Glob, Grep, Edit, Write | Proposed CLAUDE.md and profile diffs |
+| `wh-tracker-sync` | any | sonnet | Read, Bash, Skill (no Edit/Write) | Mirrors `wh.js digest` into the Notion tracker; one direction, never blocking |
 
 ## 8. Commands
 
@@ -307,7 +308,23 @@ one pass.
 
 `/workhorse:status --metrics` computes these from the `approvals.md` and `state.json` files in the repo.
 
+## 12a. Tracker mirror
+
+`wh.js digest` computes a deterministic JSON payload per change: identity, tier, phase, gate
+statuses, verification, the gate packet TL;DR, the decisions requested, and the last approval.
+`wh-tracker-sync` maps that onto one Notion database row per change. The mapping is in the
+agent definition.
+
+Two rules make the mirror safe. It is one-directional, so nothing written in Notion can change
+what a change is or approve a gate. And it is non-blocking, so an unauthorized or failing
+tracker produces a report, never a stalled pipeline.
+
+The column that earns the integration is `Waiting On`. Filtering the database to values
+starting with "You" answers the question this workflow creates and git cannot: across every
+client and repo, what is blocked on me right now.
+
 ## 13. Out of scope for v1
 
-Tracker sync adapters (Jira, Notion, Linear) beyond a documented MCP hook point. Screenshot
-diffing for UI work beyond calling the profile's own command. Multi-repo changes.
+Jira and Linear tracker adapters (the digest payload and the sync agent generalise, but only
+the Notion mapping is written). Two-way tracker sync, deliberately. Screenshot diffing for UI
+work beyond calling the profile's own command. Multi-repo changes.

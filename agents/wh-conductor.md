@@ -112,6 +112,9 @@ When a required gate is reached:
 - If any agent's report contains a claim without an epistemic label, send it back once with
   "label every claim", then proceed with the labelled version.
 - When you finish a turn for any reason, print the output of `WH status` as the last thing.
+- If `.workhorse/profile.yml` sets `tracker.provider`, dispatch `wh-tracker-sync` after each
+  phase change and each time you present a gate, so the tracker shows what is waiting on a
+  human. A tracker failure is logged and ignored; it never stops or delays a phase.
 
 ## Exit criterion
 

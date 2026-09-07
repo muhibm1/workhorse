@@ -70,6 +70,7 @@ users, no compliance", then `/workhorse:run "there is no way to check the servic
 | `/workhorse:intent`, `spec`, `plan`, `build`, `verify`, `review`, `ship` | One phase at a time. |
 | `/workhorse:handover [--export-workflow]` | Client docs pack; optionally vendor the plugin into the repo. |
 | `/workhorse:retro [--incident "..."]` | Learn from a change, or triage an incident into a new intent. |
+| `/workhorse:sync [--all\|--setup]` | Mirror changes into a Notion tracker so others can see what needs you. |
 
 ## What enforces what
 
@@ -107,6 +108,7 @@ can approve.
 | Deploy | release-engineer |
 | Handover | handover-writer |
 | Maintain | incident-triager, retro-learner |
+| Any | tracker-sync (Notion mirror) |
 | All | conductor |
 
 ## Policy skills
@@ -146,6 +148,17 @@ claude -p '/workhorse:run' --permission-mode acceptEdits --allowedTools "Agent,R
 
 Match the `Bash(...)` entries to the commands in `.workhorse/profile.yml`. The CI example in
 `ci/claude-review.yml` does this for the reviewers.
+
+## Notion tracker (optional)
+
+`/workhorse:sync --setup` creates a Notion database for the client, then set `tracker.provider:
+notion` and `tracker.database: <id>` in the profile. From then on the conductor mirrors each
+change: one row with status, tier, verification, branch, PR, and a `Waiting On` column.
+
+Filter that database to `Waiting On` starting with "You" and you get the cross-client view of
+every gate blocked on your approval, readable from a phone. The mirror is one-way and
+non-blocking: nothing in Notion can approve a gate or change a change, and a tracker outage
+never stalls the pipeline.
 
 ## Design
 

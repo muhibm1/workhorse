@@ -66,6 +66,7 @@ console.log('cli init/new');
   check('init creates profile', r.code === 0 && fs.existsSync(path.join(repo, '.workhorse', 'profile.yml')), r.err);
   // Give the fixture real commands so hooks have something to read.
   let prof = fs.readFileSync(path.join(repo, '.workhorse', 'profile.yml'), 'utf8');
+  prof = prof.replace('  name: ""', '  name: "Fixture Co"');
   prof = prof.replace('  test: ""', '  test: "node -e \\"process.exit(0)\\""').replace('prod: { deploy: "", auto: false }', 'prod: { deploy: "deploy-prod.sh", auto: false }');
   fs.writeFileSync(path.join(repo, '.workhorse', 'profile.yml'), prof);
   r = wh(repo, 'new', 'Add health endpoint', '--tier', '0');
@@ -187,12 +188,72 @@ console.log('session-context');
   check('mentions required gates', /Required human gates/.test(ctx));
 }
 
+console.log('digest');
+{
+  // A second change, so the digest cases are not entangled with the gate-guard fixture above.
+  const r = wh(repo, 'new', 'Digest fixture change', '--tier', '1');
+  const did = JSON.parse(r.out).change_id;
+  const ddir = path.join(repo, 'docs', 'sdlc', did);
+  const d = () => JSON.parse(wh(repo, 'digest').out);
+
+  check('digest identifies the change', d().change_id === did && d().title === 'Digest fixture change');
+  check('digest reads tier and required gates', d().tier === 1 && d().required_human_gates.join() === 'G2,G4');
+  check('digest reads the client name', d().client === 'Fixture Co', d().client);
+  check('repo falls back to folder name for a non-hosted remote', d().repo === 'repo');
+
+  fs.writeFileSync(path.join(ddir, 'intent.md'),
+    '# Intent\n\n## Problem\n\nOrders vanish with no trace.\n\n## Outcome\n\nEvery order is logged.\n');
+  check('digest extracts problem', d().problem === 'Orders vanish with no trace.');
+  check('digest extracts outcome', d().outcome === 'Every order is logged.');
+
+  // Intent phase, G2 not yet live: the pipeline is still on the agents, not on the human.
+  check('waiting_on is Agents before a gate packet exists', d().waiting_on === 'Agents');
+  check('blocking_gate is null before a gate packet exists', d().blocking_gate === null);
+
+  wh(repo, 'phase', 'review');
+  check('waiting_on stays Agents while review-packet.md is missing', d().waiting_on === 'Agents');
+  fs.writeFileSync(path.join(ddir, 'review-packet.md'), [
+    '# Review packet', '', '## 1. TL;DR', '',
+    'Adds an order audit log. Twelve tests. You are asked to approve the merge.', '',
+    '## 2. Decisions requested', '',
+    '| # | Decision | Recommendation |', '|---|---|---|',
+    '| D1 | Retain logs for 7 years | Accept |', '| D2 | Log to Postgres not files | Accept |', '',
+  ].join('\n'));
+  check('waiting_on names the gate once its packet exists', d().waiting_on === 'You (G4)');
+  check('blocking_gate is G4', d().blocking_gate === 'G4');
+  check('digest extracts the packet TL;DR', /order audit log/i.test(d().tldr));
+  check('digest extracts decision rows, skipping the header', d().decisions.length === 2, JSON.stringify(d().decisions));
+  check('decision row keeps id and text', /^D1 /.test(d().decisions[0]));
+
+  // Approval flips waiting_on and is parsed back out of approvals.md.
+  fs.writeFileSync(path.join(ddir, 'verification.md'), '# Verification\n\nStatus: green\n');
+  wh(repo, 'state', 'set', 'verification.status', 'green');
+  const ap = wh(repo, 'approve', 'G4', 'ship it');
+  check('approve succeeds for the digest fixture', ap.code === 0, ap.err);
+  const la = d().last_approval;
+  check('digest parses the full approval block', la && la.gate === 'G4' && la.status === 'approved'
+    && la.who === 'tester@example.com' && la.at.length > 0 && la.notes === 'ship it', JSON.stringify(la));
+  check('waiting_on clears once the gate is approved', d().waiting_on === 'Agents');
+
+  // page_id round-trips so a resync updates rather than duplicates.
+  check('tracker page_id starts null', d().tracker.page_id === null);
+  wh(repo, 'state', 'set', 'tracker.page_id', 'notion-abc-123');
+  check('tracker page_id round-trips', d().tracker.page_id === 'notion-abc-123');
+  check('tracker provider is empty until configured', d().tracker.provider === '');
+
+  const all = JSON.parse(wh(repo, 'digest', '--all').out);
+  check('digest --all covers every change', Array.isArray(all) && all.length === 2, `got ${all.length}`);
+  check('digest --all includes both ids', all.map((x) => x.change_id).sort().join() === [id, did].sort().join());
+
+  wh(repo, 'active', id); // restore the original fixture for later blocks
+}
+
 console.log('status/metrics');
 {
   const s = wh(repo, 'status', '--json');
   check('status json', s.code === 0 && JSON.parse(s.out).change_id === id, s.err);
   const m = wh(repo, 'status', '--metrics');
-  check('metrics computed', m.code === 0 && JSON.parse(m.out).changes === 1, m.err);
+  check('metrics computed', m.code === 0 && JSON.parse(m.out).changes === 2, m.err || m.out);
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

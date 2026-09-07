@@ -97,11 +97,14 @@ tier_floor_paths:
   3: ["**/migrations/**", "**/payments/**"]
   2: ["**/auth/**", "**/*.sql", "infra/**"]
 
-# Optional tracker sync. Leave provider empty for repo-only.
+# Optional tracker sync. Leave provider empty for repo-only. The repo stays authoritative; the
+# tracker is a one-way mirror so non-engineers can see phase, tier, and what needs a human.
+# Create the database once with /workhorse:sync --setup, then paste its id here.
 tracker:
-  provider: ""                 # jira | notion | linear | ""
-  project: ""
-  sync_artifacts: false
+  provider: ""                 # notion | ""   (jira and linear are not implemented in v1)
+  database: ""                 # Notion database id, or its exact name
+  sync_artifacts: false        # true only if the client agreed spec text may live in the tracker
+  sync_on: [gate, phase]       # when the conductor syncs: gate changes, phase changes, or both
 
 # Free text the discovery analyst could not fit elsewhere. Kept short.
 notes: ""
