@@ -49,6 +49,14 @@ console.log('yaml parser');
   check('parses numeric-key map with inline list', Array.isArray(p.tier_floor_paths['3']) && p.tier_floor_paths['3'][0] === '**/migrations/**');
   check('parses build.max_parallel', p.build && p.build.max_parallel === 10);
   check('empty string stays empty', p.commands.test === '');
+  const q = L.parseYaml([
+    'a: "pytest -m \\"not integration\\""',
+    "b: 'it''s fine'",
+    'c: "C:\\\\tmp"',
+  ].join('\n'));
+  check('double-quoted escapes are unescaped', q.a === 'pytest -m "not integration"', JSON.stringify(q.a));
+  check('single-quoted doubles collapse', q.b === "it's fine", JSON.stringify(q.b));
+  check('escaped backslash collapses to one', q.c === 'C:\\tmp', JSON.stringify(q.c));
 }
 
 console.log('glob');

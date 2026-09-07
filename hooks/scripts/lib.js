@@ -201,7 +201,12 @@ function parseScalar(s) {
   if (s === 'true') return true;
   if (s === 'false') return false;
   if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s);
-  if ((s[0] === '"' && s[s.length - 1] === '"') || (s[0] === "'" && s[s.length - 1] === "'")) return s.slice(1, -1);
+  // Double quotes process escapes; single quotes only unescape a doubled quote. Getting this
+  // wrong hands the verifier a command with literal backslashes in it.
+  if (s.length > 1 && s[0] === '"' && s[s.length - 1] === '"') {
+    return s.slice(1, -1).replace(/\\(["\\/nrtb])/g, (m, c) => ({ n: '\n', r: '\r', t: '\t', b: '\b' }[c] || c));
+  }
+  if (s.length > 1 && s[0] === "'" && s[s.length - 1] === "'") return s.slice(1, -1).replace(/''/g, "'");
   if (s[0] === '[' && s[s.length - 1] === ']') {
     const inner = s.slice(1, -1).trim();
     return inner ? splitTop(inner).map(parseScalar) : [];
