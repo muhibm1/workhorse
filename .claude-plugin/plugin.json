@@ -1,0 +1,9 @@
+{
+  "name": "workhorse",
+  "displayName": "WorkHorse",
+  "description": "Agentic SDLC for forward-deployed engineering: agents run Discover, Intent, Spec, Plan, Build, Verify, Review, Deploy, Handover and Maintain; humans approve at risk-tiered gates.",
+  "version": "0.1.0",
+  "author": { "name": "Mohammed devm", "email": "90530587+muhibm1@users.noreply.github.com" },
+  "license": "MIT",
+  "keywords": ["sdlc", "agents", "fde", "workflow", "review", "governance"]
+}

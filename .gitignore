@@ -1,0 +1,5 @@
+node_modules/
+.worktrees/
+*.log
+.DS_Store
+examples/hello-service/.workhorse/active

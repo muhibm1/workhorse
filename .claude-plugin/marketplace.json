@@ -1,0 +1,13 @@
+{
+  "name": "workhorse",
+  "owner": { "name": "Mohammed devm", "email": "90530587+muhibm1@users.noreply.github.com" },
+  "metadata": { "description": "Local marketplace for the WorkHorse SDLC plugin" },
+  "plugins": [
+    {
+      "name": "workhorse",
+      "source": "./",
+      "description": "Agentic SDLC for forward-deployed engineering with risk-tiered human gates.",
+      "version": "0.1.0"
+    }
+  ]
+}
