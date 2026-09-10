@@ -92,6 +92,21 @@ console.log('cli init/new');
   check('can auto a non-required gate', g.code === 0, g.err);
   const v = wh(repo, 'state', 'set', 'verification.status', 'green');
   check('cannot mark green without verification.md', v.code !== 0, v.out);
+
+  // A greenfield repo with no commands must not report a green that proves nothing.
+  const bare = path.join(tmp, 'bare');
+  fs.mkdirSync(bare, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: bare });
+  execFileSync('git', ['config', 'user.email', 'tester@example.com'], { cwd: bare });
+  execFileSync('git', ['config', 'user.name', 'Tester'], { cwd: bare });
+  wh(bare, 'init');
+  wh(bare, 'new', 'Bootstrap');
+  const bid = wh(bare, 'active').out;
+  fs.writeFileSync(path.join(bare, 'docs', 'sdlc', bid, 'verification.md'),
+    '# Verification\n\nStatus: green\n');
+  const vac = wh(bare, 'state', 'set', 'verification.status', 'green');
+  check('refuses a vacuous green when the profile defines no checks',
+    vac.code !== 0 && /prove nothing/.test(vac.err), vac.err || vac.out);
 }
 const id = wh(repo, 'active').out;
 const cwd = repo;

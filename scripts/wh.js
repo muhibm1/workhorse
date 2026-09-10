@@ -196,6 +196,14 @@ switch (cmd) {
         if (!fs.existsSync(vf)) die('cannot mark verification green: verification.md does not exist');
         const txt = fs.readFileSync(vf, 'utf8');
         if (!/^Status:\s*green/m.test(txt)) die('cannot mark verification green: verification.md does not say "Status: green"');
+        // A profile with no checks would make "every defined check passed" vacuously true, so a
+        // greenfield repo could report green having run nothing. Refuse that outright.
+        const prof = L.loadProfile(root);
+        const CHECKS = ['typecheck', 'lint', 'test', 'build', 'e2e', 'security_audit', 'screenshot'];
+        const defined = CHECKS.filter((c) => (prof.commands || {})[c]);
+        if (defined.length === 0) {
+          die('cannot mark verification green: .workhorse/profile.yml defines no checks, so green would prove nothing. Set at least commands.test, then re-verify.');
+        }
         setPath(state, 'verification.at', L.nowIso());
       }
       setPath(state, k, v);
