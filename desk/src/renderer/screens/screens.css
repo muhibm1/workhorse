@@ -1,0 +1,141 @@
+/* Styling for the Settings and Setup screens (Task 14). Every colour is a CSS token from
+   theme.css (spec 4.1); nothing here is a literal colour. Imported by Settings.tsx / Setup.tsx. */
+
+.screen {
+  padding: 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100%;
+  overflow-y: auto;
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-hint {
+  color: var(--ink-faint);
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.settings-error {
+  color: var(--coral);
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.settings-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.settings-radio input[type='radio'] {
+  accent-color: var(--cyan);
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-input,
+.settings-select,
+.settings-textarea {
+  background: var(--panel-2);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--ink);
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 0.88rem;
+}
+
+.settings-input:focus,
+.settings-select:focus,
+.settings-textarea:focus {
+  outline: 1px solid var(--cyan);
+  outline-offset: 1px;
+  border-color: var(--cyan);
+}
+
+.settings-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-textarea {
+  resize: vertical;
+  min-height: 120px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.settings-prereq-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---------------------------------------------------------------------- Setup */
+
+.setup-screen {
+  align-items: center;
+  justify-content: center;
+}
+
+.setup-panel {
+  max-width: 480px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.setup-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.setup-status {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.setup-status-ok {
+  color: var(--mint);
+}
+
+.setup-status-missing {
+  color: var(--coral);
+}
+
+.setup-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
