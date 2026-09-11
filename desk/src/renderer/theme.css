@@ -1,0 +1,140 @@
+/* Paddock theme. Dark only. The :root tokens are exactly spec section 4.1; nothing else in the
+   renderer names a colour. Fonts are bundled woff2 files served from /fonts (no network). */
+
+@font-face {
+  font-family: 'Manrope';
+  src: url('/fonts/Manrope-Variable.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Variable.woff2') format('woff2');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  color-scheme: dark;
+  --ground: #0B0F14;
+  --panel: #111820;
+  --panel-2: #16202A;
+  --hairline: #1E2A35;
+  --ink: #E6EDF3;
+  --ink-soft: #9FB0BF;
+  --ink-faint: #5E6F7E;
+  --cyan: #7DE3F0;
+  --amber: #F2B45C;
+  --mint: #6EE7B7;
+  --coral: #F87171;
+  --violet: #A78BFA;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 1px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+/* Type utilities (spec 4.2). */
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Corner brackets (spec 4.2): four 8px L-shapes. ::before draws the two top corners, ::after the
+   two bottom ones; each L is a 8x1 and a 1x8 gradient strip. Wrap a panel in .bracket; add
+   .active (or focus anything inside) to brighten them to --cyan. */
+.bracket {
+  position: relative;
+  --bracket-ink: var(--hairline);
+}
+
+.bracket.active,
+.bracket:focus-within {
+  --bracket-ink: var(--cyan);
+}
+
+.bracket::before,
+.bracket::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 8px;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(var(--bracket-ink), var(--bracket-ink)),
+    linear-gradient(var(--bracket-ink), var(--bracket-ink)),
+    linear-gradient(var(--bracket-ink), var(--bracket-ink)),
+    linear-gradient(var(--bracket-ink), var(--bracket-ink));
+  background-size:
+    8px 1px,
+    1px 8px,
+    8px 1px,
+    1px 8px;
+}
+
+.bracket::before {
+  top: 0;
+  background-position:
+    left top,
+    left top,
+    right top,
+    right top;
+}
+
+.bracket::after {
+  bottom: 0;
+  background-position:
+    left bottom,
+    left bottom,
+    right bottom,
+    right bottom;
+}
+
+/* 24px hairline grid at 6% opacity (spec 4.2), used on the Run screen stage. */
+.grid-bg {
+  background-color: var(--ground);
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--hairline) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--hairline) 6%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
