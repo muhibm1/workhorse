@@ -1,0 +1,52 @@
+/* The app shell (plan Task 15): left nav (Fleet, Settings) plus the routed screen. Every colour
+   is a CSS token from theme.css (spec 4.1); nothing here is a literal colour. Setup (spec 2.5)
+   renders full-bleed with no nav -- see App.tsx's early return. */
+
+.app-shell {
+  display: flex;
+  height: 100%;
+  background: var(--ground);
+}
+
+.app-shell-setup {
+  display: block;
+}
+
+.app-nav {
+  flex: 0 0 auto;
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 0;
+  background: var(--panel);
+  border-right: 1px solid var(--hairline);
+}
+
+.app-nav-item {
+  width: 100%;
+  padding: 10px 4px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  text-align: center;
+}
+
+.app-nav-item:hover {
+  color: var(--ink-soft);
+}
+
+.app-nav-item-active {
+  color: var(--cyan);
+  border-left-color: var(--cyan);
+}
+
+.app-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+}
