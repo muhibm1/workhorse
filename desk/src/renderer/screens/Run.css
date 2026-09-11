@@ -1,0 +1,268 @@
+/* Run screen layout (spec 2.2). Colours are tokens from theme.css only (Global Constraints).
+   Imported directly from Run.tsx -- primitives.css (T8) stays scoped to Panel/Badge/Button/
+   Station/RadialMenu/LogRail, which it already styles; .satellite has no rules there (Satellite.tsx
+   shipped in T8 without them), so its look lives here, next to the one screen that uses it. */
+
+.run-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.run-grid {
+  display: grid;
+  grid-template-columns: 1fr 640px 360px;
+  gap: 24px;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+}
+
+/* ---------------------------------------------------------------------- Left: change summary */
+
+.run-left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.run-change-title {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+
+.run-change-sub {
+  margin-bottom: 12px;
+}
+
+.run-change-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.run-change-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 0;
+}
+
+.run-change-fields dt {
+  color: var(--ink-faint);
+}
+
+.run-change-fields dd {
+  margin: 0;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.run-change-empty {
+  color: var(--ink-faint);
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------- Centre: stage + action */
+
+.run-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+
+.run-stage {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.run-orb-hit {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: block;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 50%;
+  z-index: 10;
+}
+
+.run-orb-hit:focus-visible {
+  outline: 1px solid var(--cyan);
+  outline-offset: 4px;
+}
+
+.run-primary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.run-gate-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.run-start-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.run-start-input {
+  width: 320px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--hairline);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+
+.run-start-input:focus-visible {
+  outline: none;
+  border-color: var(--cyan);
+}
+
+.run-start-input::placeholder {
+  color: var(--ink-faint);
+}
+
+/* ---------------------------------------------------------------------- Satellite chips */
+
+.satellite {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid color-mix(in srgb, var(--cyan) 40%, var(--hairline));
+  white-space: nowrap;
+  opacity: 1;
+  transition: opacity 1.5s ease-out, border-color 150ms ease-out;
+}
+
+.satellite-label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.satellite-time {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+}
+
+.satellite-retiring {
+  opacity: 0;
+  border-color: var(--hairline);
+}
+
+.satellite-overflow {
+  border-color: var(--hairline);
+  background: var(--panel);
+}
+
+.satellite-overflow .satellite-label {
+  color: var(--ink-soft);
+}
+
+/* ---------------------------------------------------------------------- Status sheet */
+
+.run-status-sheet {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  width: 320px;
+}
+
+.run-status-panel {
+  position: relative;
+  background: var(--panel);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--ground) 70%, transparent);
+}
+
+.run-status-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: var(--ink-faint);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.run-status-close:hover {
+  color: var(--ink);
+}
+
+.run-status-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.run-status-fields dt {
+  color: var(--ink-faint);
+}
+
+.run-status-fields dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------- Right: log rail */
+
+.run-right {
+  min-height: 0;
+  min-width: 0;
+}
+
+.run-right:focus-visible,
+.run-right:focus {
+  outline: none;
+}
+
+.run-right:focus-within,
+.run-right:focus {
+  box-shadow: inset 0 0 0 1px var(--cyan);
+}
+
+/* ---------------------------------------------------------------------- Bottom status strip */
+
+.run-status-strip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 24px;
+  border-top: 1px solid var(--hairline);
+  background: var(--panel);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}

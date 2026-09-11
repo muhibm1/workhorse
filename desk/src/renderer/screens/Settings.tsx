@@ -1,0 +1,241 @@
+/**
+ * Settings screen (spec 2.4, plan Task 14).
+ *
+ * Initial values (`sys`, `settings`, `hasApiKey`, `repos`) come from the store, which is where
+ * `boot()` puts them. There is no store action for mutating settings, so — matching how the Gate
+ * screen (T13) is specified to call `window.paddock.artifact.read` directly — every mutation here
+ * goes straight through `window.paddock.settings`, then writes the result back onto the store with
+ * `usePaddockStore.setState` so the rest of the app (and a re-visit of this screen) sees it too.
+ */
+import { useEffect, useState } from 'react';
+import type { Backend, SysCheck } from '@shared/types';
+import { usePaddockStore } from '@/store';
+import { Panel } from '@/components/Panel';
+import { Badge } from '@/components/Badge';
+import { Button } from '@/components/Button';
+import './screens.css';
+
+type PrereqInfo = SysCheck['node'];
+
+function toolsToText(tools: string[] | undefined): string {
+  return (tools ?? []).join('\n');
+}
+
+function textToTools(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+export function Settings() {
+  const settings = usePaddockStore((s) => s.settings);
+  const hasApiKey = usePaddockStore((s) => s.hasApiKey);
+  const sys = usePaddockStore((s) => s.sys);
+  const repos = usePaddockStore((s) => s.repos);
+
+  const [backend, setBackend] = useState<Backend>(settings?.backend ?? 'cli');
+  useEffect(() => {
+    if (settings) setBackend(settings.backend);
+  }, [settings?.backend]);
+
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiKeyBusy, setApiKeyBusy] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+
+  const [selectedRepoId, setSelectedRepoId] = useState<string>(repos[0]?.id ?? '');
+  useEffect(() => {
+    if (!selectedRepoId && repos[0]) setSelectedRepoId(repos[0].id);
+  }, [repos, selectedRepoId]);
+
+  const [toolsText, setToolsText] = useState<string>(toolsToText(settings?.allowedTools[selectedRepoId]));
+  const [toolsSaved, setToolsSaved] = useState(false);
+  useEffect(() => {
+    setToolsText(toolsToText(settings?.allowedTools[selectedRepoId]));
+    setToolsSaved(false);
+  }, [selectedRepoId, settings]);
+
+  async function onBackendChange(next: Backend) {
+    setBackend(next);
+    const updated = await window.paddock.settings.set({ backend: next });
+    usePaddockStore.setState({ settings: updated });
+  }
+
+  async function onSaveApiKey() {
+    if (!apiKeyInput) return;
+    setApiKeyBusy(true);
+    setApiKeyError(null);
+    try {
+      await window.paddock.settings.setApiKey(apiKeyInput);
+      setApiKeyInput('');
+      const has = await window.paddock.settings.hasApiKey();
+      usePaddockStore.setState({ hasApiKey: has });
+    } catch (err) {
+      setApiKeyError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApiKeyBusy(false);
+    }
+  }
+
+  async function onClearApiKey() {
+    setApiKeyBusy(true);
+    setApiKeyError(null);
+    try {
+      await window.paddock.settings.clearApiKey();
+      const has = await window.paddock.settings.hasApiKey();
+      usePaddockStore.setState({ hasApiKey: has });
+    } finally {
+      setApiKeyBusy(false);
+    }
+  }
+
+  async function onSaveTools() {
+    if (!selectedRepoId || !settings) return;
+    const updated = await window.paddock.settings.set({
+      allowedTools: { ...settings.allowedTools, [selectedRepoId]: textToTools(toolsText) },
+    });
+    usePaddockStore.setState({ settings: updated });
+    setToolsSaved(true);
+  }
+
+  return (
+    <main className="screen settings-screen grid-bg">
+      <h1 className="label">Settings</h1>
+
+      <Panel title="Backend" className="settings-panel">
+        <div className="settings-radio-group" role="radiogroup" aria-label="Backend">
+          <label className="settings-radio">
+            <input
+              type="radio"
+              name="backend"
+              value="cli"
+              checked={backend === 'cli'}
+              onChange={() => onBackendChange('cli')}
+            />
+            <span>
+              CLI <span className="settings-hint">(uses your claude login)</span>
+            </span>
+          </label>
+          <label className="settings-radio">
+            <input
+              type="radio"
+              name="backend"
+              value="sdk"
+              checked={backend === 'sdk'}
+              onChange={() => onBackendChange('sdk')}
+            />
+            <span>
+              Agent SDK <span className="settings-hint">(API key)</span>
+            </span>
+          </label>
+        </div>
+
+        {backend === 'sdk' && (
+          <div className="settings-field">
+            <label className="label" htmlFor="api-key">
+              API key
+            </label>
+            {hasApiKey ? (
+              <div className="settings-key-row">
+                <Badge tone="mint">Stored</Badge>
+                <Button tone="ghost" size="sm" onClick={onClearApiKey} disabled={apiKeyBusy}>
+                  Clear
+                </Button>
+              </div>
+            ) : (
+              <div className="settings-key-row">
+                <input
+                  id="api-key"
+                  type="password"
+                  className="settings-input"
+                  placeholder="sk-ant-..."
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  autoComplete="off"
+                />
+                <Button tone="primary" size="sm" onClick={onSaveApiKey} disabled={apiKeyBusy || !apiKeyInput}>
+                  Save
+                </Button>
+              </div>
+            )}
+            {apiKeyError && <p className="settings-error">{apiKeyError}</p>}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Plugin" className="settings-panel">
+        <p className="mono">
+          {sys?.plugin.bundled
+            ? `Bundled (v${sys.plugin.version ?? '?'})`
+            : (settings?.pluginPath ?? sys?.plugin.path ?? 'unknown')}
+        </p>
+        {sys?.plugin.path && <p className="settings-hint mono">{sys.plugin.path}</p>}
+      </Panel>
+
+      <Panel title="Per-repo allowed tools" className="settings-panel">
+        {repos.length === 0 ? (
+          <p className="settings-hint">No repositories added yet.</p>
+        ) : (
+          <>
+            <label className="label" htmlFor="tools-repo">
+              Repository
+            </label>
+            <select
+              id="tools-repo"
+              className="settings-select"
+              value={selectedRepoId}
+              onChange={(e) => setSelectedRepoId(e.target.value)}
+            >
+              {repos.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+            <textarea
+              className="settings-textarea"
+              rows={8}
+              value={toolsText}
+              onChange={(e) => {
+                setToolsText(e.target.value);
+                setToolsSaved(false);
+              }}
+              placeholder={'Agent\nRead\nGlob\nBash(git *)'}
+            />
+            <div className="settings-key-row">
+              <Button tone="primary" size="sm" onClick={onSaveTools}>
+                Save
+              </Button>
+              {toolsSaved && <Badge tone="mint">Saved</Badge>}
+            </div>
+          </>
+        )}
+      </Panel>
+
+      <Panel title="Prerequisites" className="settings-panel">
+        <PrereqRow label="node" info={sys?.node} />
+        <PrereqRow label="claude" info={sys?.claude} />
+      </Panel>
+
+      <Panel title="Theme" className="settings-panel">
+        <label className="settings-radio">
+          <input type="radio" checked readOnly disabled />
+          <span>
+            Dark <span className="settings-hint">(only option in v1)</span>
+          </span>
+        </label>
+      </Panel>
+    </main>
+  );
+}
+
+function PrereqRow({ label, info }: { label: string; info?: PrereqInfo }) {
+  if (!info) return null;
+  return (
+    <div className="settings-prereq-row">
+      <Badge tone={info.ok ? 'mint' : 'coral'}>{label}</Badge>
+      <span className="mono tnum">{info.version ?? 'not found'}</span>
+      {!info.ok && <span className="settings-hint">install {label} and check again</span>}
+    </div>
+  );
+}
