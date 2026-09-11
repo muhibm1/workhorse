@@ -1,0 +1,11 @@
+appId: dev.workhorse.paddock
+productName: Paddock
+directories: { output: dist, buildResources: build }
+files: [out/**, package.json]
+extraResources:
+  - { from: resources/plugin, to: plugin }
+  - { from: resources/fonts, to: fonts }
+win: { target: [portable] }
+portable: { artifactName: "Paddock-${version}-portable.exe" }
+mac: { target: [dmg], category: public.app-category.developer-tools }
+linux: { target: [AppImage] }

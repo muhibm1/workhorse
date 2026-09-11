@@ -1,0 +1,6 @@
+node_modules/
+out/
+dist/
+resources/plugin/
+playwright-report/
+test-results/
