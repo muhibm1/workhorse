@@ -6,7 +6,8 @@
 //   wh.js active [id|--clear]               show or set the active change
 //   wh.js state get [key.path]              print state (or one key) as JSON
 //   wh.js state set <key.path> <value>      set a key (numbers/booleans/null/JSON parsed)
-//   wh.js phase <name>                      set phase (intent|spec|plan|build|verify|review|deploy|done)
+//   wh.js phase <name>                      set phase (intent|spec|plan|build|verify|review|deploy|done);
+//                                           "done" also commits the change's artifacts
 //   wh.js mode <normal|fix>                 set fix mode (locks tests)
 //   wh.js gate <G1..G5> <status>            set a gate status: pending|auto|approved|rejected|n/a
 //   wh.js approve <gate> [--reject] [notes] record a human decision in approvals.md (main session only)
@@ -228,7 +229,17 @@ switch (cmd) {
     state.phase = p;
     if (p !== 'verify' && p !== 'build') state.mode = 'normal';
     L.saveState(root, id, state);
-    out({ phase: p });
+    let committed = null;
+    if (p === 'done') {
+      // Close the change in git history. A live run reached done with release.md, retro.md and
+      // the last conductor-log lines never committed, so the record of the change was incomplete.
+      const dirRel = path.relative(root, L.changeDir(root, id)).split(path.sep).join('/');
+      L.git(root, ['add', '--', dirRel]);
+      // Exits non-zero when nothing is staged; then there is nothing left to record.
+      L.git(root, ['commit', '-q', '-m', `chore(sdlc): close ${id}`, '--', dirRel]);
+      committed = L.git(root, ['log', '-1', '--format=%h', '--', dirRel]) || null;
+    }
+    out(committed ? { phase: p, committed } : { phase: p });
     break;
   }
 

@@ -75,7 +75,7 @@ packet, then STOP your turn. Do not continue until the human has run `/workhorse
 | verify | see Verify below | `verification.md` green | none |
 | review | in parallel: `wh-bug-reviewer`, `wh-conformance-reviewer`, `wh-security-reviewer` (mandatory at tier 2+, optional at tier 0-1 unless any sensitive path was touched), `wh-adoption-reviewer`; then `wh-packet-compiler`; then push the branch and open a PR | `review-packet.md`, PR | G4 |
 | deploy | `wh-release-engineer` | `release.md` | G5 for prod |
-| done | `wh-retro-learner`, then `WH phase done` and `WH active --clear` | `retro.md` | end |
+| done | `wh-retro-learner`, then `WH phase done` (it commits the change's final artifacts) and `WH active --clear` | `retro.md` | end |
 
 Set the phase before dispatching with `WH phase <name>`.
 

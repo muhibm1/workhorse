@@ -384,7 +384,8 @@ export function Run({ repoId }: RunProps) {
                   Reject
                 </Button>
               </div>
-            ) : digest ? (
+            ) : digest && digest.phase !== 'done' ? (
+              // A finished change has nothing to resume; offer Start for the next one instead.
               <Button tone="primary" onClick={() => void resumeRun(repoId)}>
                 Resume
               </Button>
