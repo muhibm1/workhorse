@@ -74,13 +74,15 @@ interface FleetCardProps {
   digest: ChangeDigest | null;
   run: RunState | undefined;
   onboarded: boolean;
-  onStartOnboard: () => void;
+  onStartOnboard: (context: string) => void;
   /** Opens this repo's Run screen — the only route to it, so the card itself is the affordance. */
   onOpen: () => void;
 }
 
 function FleetCard({ repo, digest, run, onboarded, onStartOnboard, onOpen }: FleetCardProps) {
   const [hovered, setHovered] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [context, setContext] = useState('');
 
   const running = run?.running ?? false;
   // Rasterising a glyph touches the DOM (asciiMask.ts's `glyph`), so this is memoised per
@@ -124,16 +126,48 @@ function FleetCard({ repo, digest, run, onboarded, onStartOnboard, onOpen }: Fle
         {!onboarded ? (
           <div className="fleet-card-onboard">
             <p className="fleet-card-title fleet-card-title-muted">Not onboarded</p>
-            <Button
-              tone="amber"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onStartOnboard();
-              }}
-            >
-              Onboard
-            </Button>
+            {asking ? (
+              // Collected here rather than left to the skill: runs are headless, so a bare
+              // /workhorse:onboard stops at its "what industry?" question with nobody to answer.
+              <form
+                className="fleet-card-onboard-form"
+                onClick={(e) => e.stopPropagation()}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const trimmed = context.trim();
+                  if (!trimmed) return;
+                  setAsking(false);
+                  onStartOnboard(trimmed);
+                }}
+              >
+                <input
+                  className="fleet-card-onboard-input mono"
+                  autoFocus
+                  value={context}
+                  placeholder="industry, users, hosting"
+                  aria-label="Client context"
+                  onChange={(e) => setContext(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') setAsking(false);
+                  }}
+                />
+                <Button type="submit" tone="amber" size="sm" disabled={!context.trim()}>
+                  Go
+                </Button>
+              </form>
+            ) : (
+              <Button
+                tone="amber"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAsking(true);
+                }}
+              >
+                Onboard
+              </Button>
+            )}
           </div>
         ) : digest ? (
           <>
@@ -228,8 +262,8 @@ export function Fleet() {
               digest={digest}
               run={runs[repo.id]}
               onboarded={onboarded}
-              onStartOnboard={() => {
-                void startRun(repo.id, '__onboard__');
+              onStartOnboard={(context) => {
+                void startRun(repo.id, `__onboard__:${context}`);
                 go({ name: 'run', repoId: repo.id });
               }}
               onOpen={() => go({ name: 'run', repoId: repo.id })}

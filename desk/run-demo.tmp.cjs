@@ -14,24 +14,28 @@ const REPO = process.env.TEMP + '/paddock-demo';
 
   const card = win.getByRole('button', { name: 'Open paddock-demo' });
   await card.getByRole('button', { name: 'Onboard' }).click();
-  console.log('clicked Onboard at', new Date().toISOString());
+  await card.getByLabel('Client context').fill('internal tooling, single operator, no compliance, local only');
+  await win.screenshot({ path: `${SHOTS}/onboard-prompt.png` });
+  await card.getByRole('button', { name: 'Go' }).click();
+  console.log('started onboarding at', new Date().toISOString());
 
-  const samples = [10000, 40000, 60000, 60000, 90000, 90000, 90000];
-  for (let i = 0; i < samples.length; i++) {
-    await win.waitForTimeout(samples[i]);
+  const waits = [12000, 35000, 45000, 60000, 60000, 75000, 75000, 75000, 75000];
+  for (let i = 0; i < waits.length; i++) {
+    await win.waitForTimeout(waits[i]);
     await win.screenshot({ path: `${SHOTS}/run-${i}.png` });
     const s = await win.evaluate(() => {
       const q = (sel) => document.querySelectorAll(sel).length;
+      const logs = [...document.querySelectorAll('[class*="log"]')]
+        .map((e) => e.textContent || '').join(' ').slice(-260);
       return {
-        text: document.body.innerText.replace(/\n+/g, ' | ').slice(0, 300),
-        canvases: q('canvas'),
         sats: q('[class*="satellite"]'),
-        lit: q('[class*="lit"]'),
-        logLines: q('[class*="log"] li, [class*="log-line"], [class*="rail"] li'),
+        lit: q('[class*="is-lit"], [class*="lit"]'),
+        action: (document.querySelector('.run-primary button, [class*="primary"] button') || {}).textContent || '?',
+        logs,
       };
     });
-    console.log(`\n[t+${i}] canvases=${s.canvases} satellites=${s.sats} lit=${s.lit} logLines=${s.logLines}`);
-    console.log('   ', s.text);
+    console.log(`\n[t+${i}] satellites=${s.sats} lit=${s.lit} action="${s.action}"`);
+    console.log('   log tail:', s.logs.replace(/\s+/g, ' '));
   }
   await app.close();
   console.log('\nDONE');
