@@ -200,6 +200,38 @@ describe('registerIpc', () => {
     });
   });
 
+  describe('onboard prompt', () => {
+    it('passes the client context through as an argument so the skill never has to ask', async () => {
+      const started: string[] = [];
+      const { invoke } = makeDeps({
+        driverFor: () => ({
+          name: 'cli' as const,
+          start: (a: { prompt: string }) => {
+            started.push(a.prompt);
+            return { id: 'r1', events: (async function* () {})(), stop: async () => {} };
+          },
+        }),
+      });
+      await invoke(IPC.runStart, 'repo-1', '__onboard__:fintech, UK users, AWS eu-west-2');
+      expect(started[0]).toBe('/workhorse:onboard fintech, UK users, AWS eu-west-2');
+    });
+
+    it('falls back to the bare command when no context is given', async () => {
+      const started: string[] = [];
+      const { invoke } = makeDeps({
+        driverFor: () => ({
+          name: 'cli' as const,
+          start: (a: { prompt: string }) => {
+            started.push(a.prompt);
+            return { id: 'r1', events: (async function* () {})(), stop: async () => {} };
+          },
+        }),
+      });
+      await invoke(IPC.runStart, 'repo-1', '__onboard__:   ');
+      expect(started[0]).toBe('/workhorse:onboard');
+    });
+  });
+
   describe('run:start', () => {
     it('rejects a second start on a repo with a run already active', async () => {
       const { invoke } = makeDeps();

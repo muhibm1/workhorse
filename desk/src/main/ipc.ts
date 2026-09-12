@@ -74,6 +74,14 @@ const SENTINEL_PROMPTS: Record<string, string> = {
   __sync__: '/workhorse:sync',
 };
 
+/**
+ * `__onboard__:<context>` carries the client description the onboard skill would otherwise stop
+ * and ask for. That matters because runs are headless: a bare `/workhorse:onboard` reaches the
+ * skill's "ask the user one question" step, finds nobody to answer, and ends the run with the
+ * question sitting in the log. Passing the context up front means the run completes.
+ */
+const ONBOARD_PREFIX = '__onboard__:';
+
 /** Only `\` and `"` can break out of the `"<prompt>"` quoted argument `/workhorse:run` parses;
  *  escape them so the user's text always round-trips as one argument. */
 function escapeForQuotedArg(text: string): string {
@@ -81,6 +89,10 @@ function escapeForQuotedArg(text: string): string {
 }
 
 function buildStartPrompt(prompt: string): string {
+  if (prompt.startsWith(ONBOARD_PREFIX)) {
+    const context = prompt.slice(ONBOARD_PREFIX.length).trim();
+    return context ? `/workhorse:onboard ${context}` : SENTINEL_PROMPTS.__onboard__;
+  }
   const sentinel = SENTINEL_PROMPTS[prompt];
   if (sentinel) return sentinel;
   return `/workhorse:run "${escapeForQuotedArg(prompt)}"`;
