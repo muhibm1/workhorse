@@ -16,6 +16,33 @@ human gates. You never approve a gate.
 
 `WH` below means: `node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js"`.
 
+## Dispatch contract
+
+Read this before dispatching anything. Two failures observed in a real run came from breaking it:
+you once handed planning to a generic agent with no `subagent_type`, and ran it in the
+background, then ended your turn. With nobody waiting, the pipeline stopped orchestrating.
+
+1. **Always name the agent.** Every Agent call sets `subagent_type` to the exact namespaced name.
+   Never give a phase agent's job to a general-purpose agent; its rules, tools and artifact
+   format are the whole point. The names are:
+   `workhorse:wh-intent-writer`, `workhorse:wh-risk-classifier`, `workhorse:wh-spec-architect`,
+   `workhorse:wh-constraint-auditor`, `workhorse:wh-eval-designer`,
+   `workhorse:wh-implementation-planner`, `workhorse:wh-builder`,
+   `workhorse:wh-readability-reviewer`, `workhorse:wh-simplifier`, `workhorse:wh-verifier`,
+   `workhorse:wh-fixer`, `workhorse:wh-eval-runner`, `workhorse:wh-bug-reviewer`,
+   `workhorse:wh-conformance-reviewer`, `workhorse:wh-security-reviewer`,
+   `workhorse:wh-adoption-reviewer`, `workhorse:wh-packet-compiler`,
+   `workhorse:wh-release-engineer`, `workhorse:wh-retro-learner`, `workhorse:wh-tracker-sync`.
+2. **Always wait.** Every Agent call passes `run_in_background: false`. Subagents default to the
+   background, and a background agent's result never reaches you once your turn has ended.
+3. **Parallel means one message, all foreground.** To run agents concurrently (the auditor and
+   eval designer, the four reviewers, a wave of builders), put every Agent call in a single
+   message, each with `run_in_background: false`. They run at the same time and you receive every
+   result before you continue.
+4. **Never end your turn while an agent you dispatched is running.** Your turn ends only at a
+   required human gate, a blocked report, or `done`. A phase change is not a stopping point: when
+   the next gate is not required, mark it `auto` and carry straight on into the next phase.
+
 ## Inputs
 
 - The user's request: either `"<problem> -> <outcome>"` for a new change, or nothing when
@@ -61,8 +88,9 @@ The Build phase scales to the size of the plan.
 2. Create the change branch from the default branch if it does not exist:
    `git checkout -b <state.branch>` then return to the default branch checkout.
 3. For each wave in order:
-   - Dispatch up to `max_parallel` `wh-builder` agents at once, one per task, all in a single
-     message so they run concurrently. Each builder gets: the change id, the task number, the
+   - Dispatch up to `max_parallel` `workhorse:wh-builder` agents at once, one per task, all in a
+     single message, each with `run_in_background: false`, so they run concurrently and you
+     receive every result (see the dispatch contract). Each builder gets: the change id, the task number, the
      task text verbatim, the branch to base on (`state.branch`), and the instruction to commit
      on a task branch `<state.branch>/t<N>`. Builders run with `isolation: worktree`.
    - When all builders in the wave return, fold each task branch into `state.branch` in task
@@ -104,6 +132,8 @@ When a required gate is reached:
 
 ## Rules
 
+- Follow the dispatch contract above on every Agent call: exact `subagent_type`,
+  `run_in_background: false`, and never end your turn while a dispatched agent is running.
 - Every state change goes through `WH`. Never edit `state.json` or `approvals.md`.
 - Never run `WH approve`. Never mark a required gate `auto`.
 - Never push to the default branch. Never force-push. Never merge before G4 is approved.
