@@ -153,14 +153,18 @@ Dark only. Every colour is a token; nothing is literal in components.
 ### 4.3 ASCII field
 
 A canvas component `AsciiField` with props `width`, `height`, `cell` (px, default 10),
-`ramp` (default `" .:-=+*#%@"`), `color`, `density` (0 to 1), `mask` (optional
+`ramp` (default `" .:-=+*#%@"`), `color`, `density` (0 and up; the ramp clamps at 1), `mask` (optional
 `(u, v) => number` in 0 to 1 giving the shape to reveal), `seed`, `speed`.
 
 Each cell samples value noise (the orb engine's `vnoise` re-exported) at `(x / cell + t,
 y / cell)`, multiplies by `density` and by `mask(u, v)` when present, and picks the ramp
 character by that value. Cells are drawn with `fillText` in JetBrains Mono at `cell - 2` px.
 The whole field redraws at 24 fps while visible and stops when offscreen
-(`IntersectionObserver`). Hover on a Fleet card raises `density` by 0.3 over 250 ms.
+(`IntersectionObserver`). Hover on a Fleet card raises `density` by 0.25. Fleet composes its mask as
+`max(0.45, glyph(u, v))`: a bare glyph mask confined the texture to one letter, and to a single
+dot when a repo has no phase (measured: 25 of 59,840 pixels painted). Idle density is 0.7 and
+running 1.0. Revised 2026-09-11 from measured pixel counts; the original 0.25 idle drew almost
+nothing because noise times density rarely cleared the ramp's first step.
 
 Masks provided: `glyph(char)` (rasterises a character into a mask via an offscreen canvas),
 `disc(r)`, `none`.

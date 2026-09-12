@@ -411,15 +411,59 @@ describe('registerIpc', () => {
     it('add watches the new repo and remove unwatches it', async () => {
       const { invoke, deps } = makeDeps();
       const ref = (await invoke(IPC.reposAdd, '/some/path')) as RepoRef;
-      expect(deps.watcher.watch).toHaveBeenCalledWith(ref);
+      expect(ref.onboarded).toBe(false); // no .workhorse/profile.yml at that path
+      const watched = (deps.watcher.watch as ReturnType<typeof vi.fn>).mock.calls[0][0] as RepoRef;
+      expect(watched).toMatchObject({ id: ref.id, path: ref.path });
+      // onboarded is computed for the renderer only; the persisted ref must never carry it
+      expect(watched).not.toHaveProperty('onboarded');
 
       await invoke(IPC.reposRemove, ref.id);
       expect(deps.watcher.unwatch).toHaveBeenCalledWith(ref.id);
     });
 
-    it('list returns the registry contents', async () => {
+    it('list returns the registry contents, each marked with whether it is onboarded', async () => {
       const { invoke, repos } = makeDeps();
-      await expect(invoke(IPC.reposList)).resolves.toEqual(repos);
+      await expect(invoke(IPC.reposList)).resolves.toEqual(repos.map((r) => ({ ...r, onboarded: false })));
+    });
+
+    it('marks a repo onboarded once .workhorse/profile.yml exists, on add, list and watcher events', async () => {
+      const repoDir = mkdtempSync(join(tmpdir(), 'paddock-onboarded-'));
+      try {
+        mkdirSync(join(repoDir, '.workhorse'), { recursive: true });
+        writeFileSync(join(repoDir, '.workhorse', 'profile.yml'), 'client:\n  name: "x"\n');
+        const { invoke, sent, watcherOn } = makeDeps();
+
+        const ref = (await invoke(IPC.reposAdd, repoDir)) as RepoRef;
+        expect(ref.onboarded).toBe(true);
+
+        const listed = (await invoke(IPC.reposList)) as RepoRef[];
+        expect(listed.find((r) => r.id === ref.id)?.onboarded).toBe(true);
+
+        watcherOn[0]({ repoId: ref.id, digests: [] });
+        expect(sent).toContainEqual({
+          channel: IPC.watchDigest,
+          payload: { repoId: ref.id, digests: [], onboarded: true },
+        });
+      } finally {
+        rmSync(repoDir, { recursive: true, force: true });
+      }
+    });
+
+    it('reports a freshly onboarded repo as onboarded even though it has no changes yet', async () => {
+      // The bug this guards: Fleet used to infer onboarding from "has digests", so a repo with a
+      // profile but no changes kept offering to be onboarded again.
+      const repoDir = mkdtempSync(join(tmpdir(), 'paddock-nochanges-'));
+      try {
+        mkdirSync(join(repoDir, '.workhorse'), { recursive: true });
+        writeFileSync(join(repoDir, '.workhorse', 'profile.yml'), 'client: {}\n');
+        const digest = vi.fn(async () => [] as ChangeDigest[]);
+        const { invoke } = makeDeps({ digest });
+        const ref = (await invoke(IPC.reposAdd, repoDir)) as RepoRef;
+        await expect(invoke(IPC.fleetDigest, ref.id)).resolves.toEqual([]);
+        expect(ref.onboarded).toBe(true);
+      } finally {
+        rmSync(repoDir, { recursive: true, force: true });
+      }
     });
 
     it('pickFolder returns null when the dialog is cancelled, else the chosen path', async () => {
@@ -444,7 +488,7 @@ describe('registerIpc', () => {
       watcherOn[0]({ repoId: 'repo-1', digests: [{ change_id: 'c1' } as unknown as ChangeDigest] });
       expect(sent).toContainEqual({
         channel: IPC.watchDigest,
-        payload: { repoId: 'repo-1', digests: [{ change_id: 'c1' }] },
+        payload: { repoId: 'repo-1', digests: [{ change_id: 'c1' }], onboarded: false },
       });
     });
   });

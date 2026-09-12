@@ -1,17 +1,21 @@
 /**
  * Fleet screen (spec 2.1): every registered repository as a card in a responsive grid, sorted
- * with human-blocked changes first, then repos with a run in progress, then idle ones. Each card
- * carries an `AsciiField` background spelling the active change's phase glyph (or a centre dot
- * once there is no active change), rising in density while a run is active and on hover.
+ * with human-blocked changes first, then repos with a run in progress, then idle ones. Clicking a
+ * card, or pressing Enter or Space on it, opens that repo's Run screen.
+ *
+ * Each card carries an `AsciiField` background. Its mask is `max(AMBIENT_FLOOR, glyph)`, so the
+ * whole card holds a faint field and the active phase's letter emerges from it. Density rises
+ * while a run is active and on hover.
  *
  * Registering a repo: the native folder dialog (`store.addRepo`) or dropping a folder onto the
- * screen — `onDrop` reads `e.dataTransfer.files[0].path`, which only Electron's renderer
- * populates on a dropped `File` (not part of the DOM `File` type, hence the local cast) and calls
- * `store.addRepoPath`. A repo with no digests yet (equivalently: `wh.js digest` has never
- * succeeded for it, chiefly because it has no `.workhorse/profile.yml` — the renderer has no
- * other way to distinguish "not onboarded" from any other digest failure, see `watcher.ts`'s
- * `digest()`) renders as "Not onboarded" with a button that calls `startRun(repoId,
- * '__onboard__')`; `ipc.ts` (T10) maps that sentinel prompt to `/workhorse:onboard`.
+ * screen. `onDrop` reads `e.dataTransfer.files[0].path`, which only Electron's renderer populates
+ * on a dropped `File` (not part of the DOM `File` type, hence the local cast).
+ *
+ * "Not onboarded" comes from `repo.onboarded`, which main computes from whether
+ * `.workhorse/profile.yml` exists and refreshes on every watcher event. It is not inferred from
+ * digests: a freshly onboarded repo has a profile but no changes, and must not offer onboarding
+ * again. The Onboard button collects the client context first and sends `__onboard__:<context>`,
+ * which `ipc.ts` turns into `/workhorse:onboard <context>` so the headless run never stops to ask.
  */
 import { useMemo, useState, type DragEvent } from 'react';
 import type { ChangeDigest, Phase, RepoRef } from '@shared/types';
@@ -30,9 +34,13 @@ const CARD_WIDTH = 340;
 const CARD_HEIGHT = 176;
 
 const GLYPH_FONT = "'JetBrains Mono', ui-monospace, monospace";
-const IDLE_DENSITY = 0.25;
-const RUNNING_DENSITY = 0.55;
-const HOVER_DENSITY_BOOST = 0.3;
+// Tuned from measurement, not guessed: at 0.25 idle, noise x density rarely cleared the
+// ramp's first step, so the field drew almost nothing even with its colour resolved.
+const IDLE_DENSITY = 0.7;
+const RUNNING_DENSITY = 1.0;
+const HOVER_DENSITY_BOOST = 0.25;
+/** Mask floor outside the phase glyph, so the whole card carries an ambient field. */
+const AMBIENT_FLOOR = 0.45;
 
 /** Tier 0-1 read as neutral, 2 as amber (plan T11). Tier 3 is also `neutral` here — Badge.tsx /
  * theme.css style it violet off a `data-tier="3"` attribute instead of a badge tone. */
@@ -87,7 +95,13 @@ function FleetCard({ repo, digest, run, onboarded, onStartOnboard, onOpen }: Fle
   const running = run?.running ?? false;
   // Rasterising a glyph touches the DOM (asciiMask.ts's `glyph`), so this is memoised per
   // character rather than redone on every hover/density re-render.
-  const mask = useMemo(() => glyph(phaseGlyphChar(digest?.phase), GLYPH_FONT), [digest?.phase]);
+  const mask = useMemo(() => {
+    const shape = glyph(phaseGlyphChar(digest?.phase), GLYPH_FONT);
+    // A glyph alone confines the texture to one letter, and a card with no phase gets a dot's
+    // worth of area: measured at 25 of 59,840 pixels painted. The floor gives the whole card an
+    // ambient field and lets the phase letter emerge from it.
+    return (u: number, v: number) => Math.max(AMBIENT_FLOOR, shape(u, v));
+  }, [digest?.phase]);
   const density = (running ? RUNNING_DENSITY : IDLE_DENSITY) + (hovered ? HOVER_DENSITY_BOOST : 0);
   const waitingOnYou = Boolean(digest && digest.waiting_on.startsWith('You'));
 
@@ -254,7 +268,7 @@ export function Fleet() {
       <div className="fleet-cards">
         {sorted.map((repo) => {
           const digest = activeDigest(repo.id);
-          const onboarded = (digests[repo.id]?.length ?? 0) > 0;
+          const onboarded = repo.onboarded ?? (digests[repo.id]?.length ?? 0) > 0;
           return (
             <FleetCard
               key={repo.id}

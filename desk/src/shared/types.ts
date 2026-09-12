@@ -3,7 +3,19 @@ export type Gate = 'G1' | 'G2' | 'G3' | 'G4' | 'G5';
 export type GateStatus = 'pending' | 'auto' | 'approved' | 'rejected' | 'n/a';
 export type Backend = 'cli' | 'sdk';
 
-export interface RepoRef { id: string; path: string; name: string; addedAt: string; }
+export interface RepoRef {
+  id: string;
+  path: string;
+  name: string;
+  addedAt: string;
+  /**
+   * Whether `.workhorse/profile.yml` exists. Computed by main on list, add, and every watcher
+   * event, never persisted: it changes mid-session when an onboarding run writes the profile.
+   * Inferring it from "has any change digests" was wrong, since a freshly onboarded repo has a
+   * profile but no changes yet and so kept offering to be onboarded again.
+   */
+  onboarded?: boolean;
+}
 
 /** Exactly what `wh.js digest` prints. */
 export interface ChangeDigest {
@@ -77,7 +89,7 @@ export interface PaddockApi {
     hasApiKey(): Promise<boolean>;
     clearApiKey(): Promise<void>;
   };
-  watch: { onDigest(cb: (e: { repoId: string; digests: ChangeDigest[] }) => void): () => void };
+  watch: { onDigest(cb: (e: { repoId: string; digests: ChangeDigest[]; onboarded: boolean }) => void): () => void };
 }
 
 declare global { interface Window { paddock: PaddockApi } }

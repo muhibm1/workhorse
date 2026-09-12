@@ -53,7 +53,7 @@ const api: PaddockApi = {
     onDigest: (cb) => {
       const listener = (
         _event: IpcRendererEvent,
-        payload: { repoId: string; digests: ChangeDigest[] },
+        payload: { repoId: string; digests: ChangeDigest[]; onboarded: boolean },
       ): void => cb(payload);
       ipcRenderer.on(IPC.watchDigest, listener);
       return () => ipcRenderer.removeListener(IPC.watchDigest, listener);
