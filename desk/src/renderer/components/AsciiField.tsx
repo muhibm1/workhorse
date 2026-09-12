@@ -44,6 +44,17 @@ function prefersReducedMotion(): boolean {
   return typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
+/**
+ * Turns `var(--name)` (optionally `var(--name, fallback)`) into the computed colour a canvas can
+ * use. Plain colours pass through unchanged.
+ */
+export function resolveCssColor(el: Element, value: string): string {
+  const m = /^var\(\s*(--[\w-]+)\s*(?:,\s*([^)]+))?\)$/.exec(value.trim());
+  if (!m) return value;
+  const resolved = getComputedStyle(el).getPropertyValue(m[1]).trim();
+  return resolved || (m[2] ? m[2].trim() : value);
+}
+
 export function AsciiField({
   width,
   height,
@@ -72,10 +83,15 @@ export function AsciiField({
     const rows = Math.ceil(height / cell);
     const seedOffset = seed * SEED_SPREAD;
 
+    // A canvas cannot parse `var(--token)`: assigning one to fillStyle is silently ignored and
+    // the field paints in the default black, which on a dark panel reads as nothing at all.
+    // Resolve the token against this canvas so scoped overrides still apply.
+    const ink = resolveCssColor(canvas, color);
+
     const draw = (elapsedSeconds: number) => {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
-      ctx.fillStyle = color;
+      ctx.fillStyle = ink;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = `${Math.max(1, cell - 2)}px 'JetBrains Mono', ui-monospace, monospace`;
