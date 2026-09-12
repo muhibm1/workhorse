@@ -172,17 +172,31 @@ console.log('gate-guard');
   check('allows push with green verification', decision(hook('gate-guard.js', bash('git push -u origin wh/x'))) === 'none');
   check('denies merge before G4', decision(hook('gate-guard.js', bash('gh pr merge 12'))) === 'deny');
   check('denies release.md before G4', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/release.md`))) === 'deny');
+  // An approval must pin the packet it approves: committed, and hashed.
+  const packetRel = `docs/sdlc/${id}/review-packet.md`;
+  const packetBody = '# Review packet\n\n## 1. TL;DR\n\nPinned by the approval test.\n';
+  fs.writeFileSync(path.join(repo, packetRel), packetBody);
   const a = wh(repo, 'approve', 'G4', 'looks good');
   check('approve records', a.code === 0 && /approved/.test(a.out), a.err);
   const af = fs.readFileSync(path.join(repo, 'docs', 'sdlc', id, 'approvals.md'), 'utf8');
   check('approvals.md has who/when/commit', /Who: tester@example.com/.test(af) && /Artifact commit:/.test(af));
   check('approval committed', /G4 approved/.test(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: repo, encoding: 'utf8' })));
+  const recorded = (af.match(/Artifact commit: `([0-9a-f]{7,40})`/) || [])[1];
+  const shaLine = af.match(/Packet: `([^`]+)` sha256 `([0-9a-f]{64})`/) || [];
+  const expectSha = require('crypto').createHash('sha256').update(packetBody).digest('hex');
+  check('approval records the packet sha256 matching its content', shaLine[1] === packetRel && shaLine[2] === expectSha, JSON.stringify(shaLine.slice(1)));
+  let inCommit = '';
+  try { inCommit = execFileSync('git', ['show', `${recorded}:${packetRel}`], { cwd: repo, encoding: 'utf8' }); } catch (e) { inCommit = ''; }
+  check('the recorded commit actually contains the approved packet', inCommit === packetBody, `recorded=${recorded}`);
+  check('the approved packet is tracked, not left untracked', execFileSync('git', ['ls-files', packetRel], { cwd: repo, encoding: 'utf8' }).trim() === packetRel);
   check('allows merge after G4', decision(hook('gate-guard.js', bash('gh pr merge 12'))) === 'none');
   check('allows release.md after G4', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/release.md`))) === 'none');
   const rj = wh(repo, 'approve', 'G5', '--reject');
   check('reject needs notes', rj.code !== 0);
   const rj2 = wh(repo, 'approve', 'G5', '--reject', 'not yet');
   check('reject records', rj2.code === 0 && wh(repo, 'state', 'get', 'gates.G5').out === 'rejected');
+  const af2 = fs.readFileSync(path.join(repo, 'docs', 'sdlc', id, 'approvals.md'), 'utf8');
+  check('a decision with no packet file says so rather than inventing a hash', /## G5: rejected[\s\S]*sha256 `missing/.test(af2));
 }
 
 console.log('verify-before-stop');
