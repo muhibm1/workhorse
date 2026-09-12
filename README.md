@@ -91,7 +91,7 @@ Run the hook tests: `node hooks/tests/run.js`.
 
 ## Agents
 
-Twenty-four single-purpose agents in `agents/`. The conductor sequences them, runs Build as
+Twenty-five single-purpose agents in `agents/`. The conductor sequences them, runs Build as
 waves of up to `build.max_parallel` (default 10) builders in isolated worktrees, and stops at
 gates. The verifier cannot edit. The fixer cannot touch tests. Reviewers cannot fix. No agent
 can approve.
