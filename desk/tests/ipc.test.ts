@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC } from '@shared/types';
@@ -172,6 +172,31 @@ describe('registerIpc', () => {
     ])('rejects %s', async (relPath) => {
       const { invoke } = makeDeps();
       await expect(invoke(IPC.artifactRead, 'repo-1', relPath)).rejects.toThrow();
+    });
+
+    // The string guard passes here: the path is spelled correctly. Only resolving the symlink
+    // catches it, which is the point of the containment check.
+    it('rejects a string-legal path that symlinks outside the repo', async () => {
+      const changeDir = join(dir, 'docs', 'sdlc', 'change-1');
+      mkdirSync(changeDir, { recursive: true });
+      const outside = mkdtempSync(join(tmpdir(), 'paddock-outside-'));
+      writeFileSync(join(outside, 'secret.txt'), 'SECRET');
+
+      let linked = false;
+      try {
+        symlinkSync(join(outside, 'secret.txt'), join(changeDir, 'leak.md'), 'file');
+        linked = true;
+      } catch {
+        // Windows without Developer Mode refuses symlink creation for unprivileged users.
+      }
+      if (!linked) return;
+
+      const repos: RepoRef[] = [{ id: 'repo-1', path: dir, name: 'r', addedAt: new Date(0).toISOString() }];
+      const { invoke } = makeDeps({ registry: createFakeRegistry(repos) });
+      await expect(invoke(IPC.artifactRead, 'repo-1', 'docs/sdlc/change-1/leak.md')).rejects.toThrow(
+        /escapes the repository/,
+      );
+      rmSync(outside, { recursive: true, force: true });
     });
   });
 

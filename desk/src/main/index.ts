@@ -12,6 +12,7 @@ import { driverFor } from './drivers';
 /** Renderer CSP (spec section 7). Keep identical to the meta tag in src/renderer/index.html. */
 const CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+  "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; "  +
   "img-src 'self' data:; font-src 'self'; connect-src 'none'";
 
 /** Set by `electron-vite dev`; absent in a built app. */
@@ -32,6 +33,13 @@ function installCsp(): void {
  * constraints: block navigation). Registered once, before any window loads content, so it covers
  * every `WebContents` the app ever creates -- the main window and any devtools contents alike.
  */
+/** Nothing in Paddock needs camera, microphone, geolocation, notifications or clipboard reads.
+ *  Denying every request outright means a future dependency cannot quietly acquire one. */
+function installPermissionGuard(): void {
+  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
+}
+
 function installNavigationGuards(): void {
   app.on('web-contents-created', (_event, contents) => {
     contents.on('will-navigate', (navEvent) => {
@@ -105,6 +113,7 @@ function createWindow(): BrowserWindow {
 void app.whenReady().then(() => {
   installCsp();
   installNavigationGuards();
+  installPermissionGuard();
 
   const win = createWindow();
 

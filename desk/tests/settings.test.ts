@@ -73,3 +73,35 @@ describe('settings', () => {
     expect(() => settings.clearApiKey()).not.toThrow();
   });
 });
+
+describe('settings.set patch validation (security review finding)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'paddock-settings-patch-'));
+  });
+
+  it('drops tools that are not in the catalog, keeping the valid ones', () => {
+    const s = createSettings(dir, fakeCrypto());
+    const out = s.set({ allowedTools: { r1: ['Read', 'Bash(*)', 'Bash(curl evil.example)', 'Bash(npm *)'] } });
+    expect(out.allowedTools.r1).toEqual(['Read', 'Bash(npm *)']);
+  });
+
+  it('ignores keys that are not settable and values of the wrong shape', () => {
+    const s = createSettings(dir, fakeCrypto());
+    const out = s.set({ theme: 'light', backend: 'telnet' } as never);
+    expect(out.theme).toBe('dark');
+    expect(out.backend).toBe('cli');
+  });
+
+  it('still accepts the legitimate values the Settings screen sends', () => {
+    const s = createSettings(dir, fakeCrypto());
+    const out = s.set({ backend: 'sdk', pluginPath: 'C:\plugins\workhorse' });
+    expect(out.backend).toBe('sdk');
+    expect(out.pluginPath).toBe('C:\plugins\workhorse');
+  });
+
+  it('survives a non-object patch without throwing', () => {
+    const s = createSettings(dir, fakeCrypto());
+    expect(s.set(null as never).backend).toBe('cli');
+  });
+});

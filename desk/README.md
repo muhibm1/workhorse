@@ -81,3 +81,21 @@ Paddock writes only its own registry (`registry.json`: the list of repos you've 
 
 No telemetry, no network calls from the renderer, no auto-update in v1 (see the design spec,
 section 9, for the full out-of-scope list).
+
+## Packaging: Node 22 is required for `npm run dist:win`
+
+`electron-builder` 26.15.3 depends on `@noble/hashes` v2, which is ESM-only, but
+`app-builder-lib` still `require()`s it. Under Node 21 that throws `ERR_REQUIRE_ESM`
+and the build dies before producing anything. Node 22 with `require(esm)` enabled
+gets past it:
+
+```bash
+export PATH="$APPDATA/nvm/v22.1.0:$PATH"
+export NODE_OPTIONS=--experimental-require-module
+npm run dist:win
+```
+
+This affects only packaging. `dev`, `test`, `typecheck` and `build` all run fine on
+Node 21. Confirmed on 2026-09-11: the command above produced
+`dist/Paddock-0.1.0-portable.exe` (163 MB) with `resources/plugin` at version 0.2.0
+bundled inside it.

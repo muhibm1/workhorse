@@ -71,6 +71,25 @@ export function createRunState(runId: string | null = null): RunState {
   return { runId, running: true, error: null, agents: {}, log: [], costUsd: 0, sessionId: null };
 }
 
+/**
+ * `boot()` is called again by Setup's "Check again" button, so the IPC subscriptions must not be
+ * registered per call: each extra registration would replay every run event and digest into the
+ * reducer N times, duplicating log lines and agent chips. Registering once is enough — both
+ * listeners live as long as the window does, so there is nothing to tear down.
+ */
+let subscribed = false;
+function subscribeOnce(get: () => PaddockState): void {
+  if (subscribed) return;
+  subscribed = true;
+  api().run.onEvent((e) => get().applyEvent(e));
+  api().watch.onDigest((e) => get().applyDigest(e.repoId, e.digests));
+}
+
+/** Test-only: lets a test re-exercise the subscribe-once path. */
+export function __resetSubscriptionsForTest(): void {
+  subscribed = false;
+}
+
 const LOG_CAP = 500;
 
 /** Appends one line, dropping the oldest once the log would exceed the 500-line cap. */
@@ -212,8 +231,7 @@ export const usePaddockStore = create<PaddockState>()((set, get) => ({
       }),
     );
 
-    api().run.onEvent((e) => get().applyEvent(e));
-    api().watch.onDigest((e) => get().applyDigest(e.repoId, e.digests));
+    subscribeOnce(get);
   },
 
   go(screen) {

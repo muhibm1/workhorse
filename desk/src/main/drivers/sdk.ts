@@ -15,6 +15,10 @@ export function createSdkDriver(deps?: { now?: () => number }): RunDriver {
     start(args: StartArgs): RunHandle {
       const id = randomBytes(8).toString('hex');
       let stopped = false;
+      // Held so stop() can close the source stream. Breaking out of the loop is not enough on
+      // its own: a parked `for await` only re-checks `stopped` when the next message arrives,
+      // so an idle run would ignore stop() until the SDK happened to emit something.
+      let closeStream: (() => void) | null = null;
 
       async function* run(): AsyncGenerator<RunEvent> {
         const normalise = createNormaliser(now);
@@ -40,11 +44,16 @@ export function createSdkDriver(deps?: { now?: () => number }): RunDriver {
               env: { ...process.env, ANTHROPIC_API_KEY: args.apiKey ?? undefined },
             },
           });
-          for await (const msg of stream) {
-            if (stopped) break;
-            for (const event of normalise(msg)) yield event;
+          const iterator = stream[Symbol.asyncIterator]();
+          closeStream = () => void iterator.return?.(undefined);
+          if (stopped) closeStream();
+
+          while (true) {
+            const next = await iterator.next();
+            if (next.done || stopped) break;
+            for (const event of normalise(next.value)) yield event;
           }
-          yield { t: 'exit', code: 0, at: now() };
+          yield { t: 'exit', code: stopped ? null : 0, at: now() };
         } catch (err) {
           yield { t: 'error', message: message(err), at: now() };
           yield { t: 'exit', code: null, at: now() };
@@ -57,8 +66,12 @@ export function createSdkDriver(deps?: { now?: () => number }): RunDriver {
         id,
         events: generator,
         async stop(): Promise<void> {
+          // Flag, then close the source so a parked `for await` wakes. Deliberately NOT
+          // generator.return(): that injects a return completion at the pending yield and
+          // discards everything after it, so `exit` would never be yielded and the consumer's
+          // run state would stay "running" forever.
           stopped = true;
-          await generator.return(undefined);
+          closeStream?.();
         },
       };
     },

@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, realpath } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { IPC } from '@shared/types';
 import type {
   ApproveResult,
@@ -98,6 +98,29 @@ function assertArtifactPath(relPath: string): void {
   }
 }
 
+/**
+ * The string guard above constrains the *path text*; this constrains where it actually lands.
+ * A symlink inside the repo (one a prompt-injected run could have created) would otherwise let
+ * `docs/sdlc/<change>/link` resolve to anything on disk. Resolving both sides and comparing
+ * makes containment a property of the real filesystem, not of the spelling of the path.
+ */
+async function resolveInsideRepo(repoPath: string, relPath: string): Promise<string> {
+  const root = await realpath(repoPath);
+  let target: string;
+  try {
+    target = await realpath(join(root, relPath));
+  } catch {
+    // Missing file: fall back to the lexical path so the caller gets a normal ENOENT, but only
+    // after confirming that path is still inside the repo.
+    target = resolve(root, relPath);
+  }
+  const rel = relative(root, target);
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    throw new Error(`artifact path escapes the repository: ${relPath}`);
+  }
+  return target;
+}
+
 function requireRepo(registry: ReturnType<typeof createRegistry>, repoId: string): RepoRef {
   const repo = registry.get(repoId);
   if (!repo) throw new Error(`unknown repo: ${repoId}`);
@@ -189,7 +212,8 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(IPC.artifactRead, async (_e, repoId: string, relPath: string) => {
     assertArtifactPath(relPath);
     const repo = requireRepo(registry, repoId);
-    return readFile(join(repo.path, relPath), 'utf8');
+    const target = await resolveInsideRepo(repo.path, relPath);
+    return readFile(target, 'utf8');
   });
 
   // -- run -------------------------------------------------------------------
