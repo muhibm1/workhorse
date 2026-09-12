@@ -62,8 +62,12 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             You are running headless in CI. Use the wh-conformance-reviewer agent's instructions
-            on the diff between origin/${{ github.base_ref }} and HEAD, reading the change's
-            docs/sdlc/<id>/spec.md named in .workhorse/active. Post the report as a PR comment.
+            on the diff between origin/${{ github.base_ref }} and HEAD. Find the change id from
+            the change folder the diff touches:
+            git diff --name-only origin/${{ github.base_ref }}...HEAD -- docs/sdlc
+            and read that change's docs/sdlc/<id>/spec.md. Control state lives in .git/workhorse
+            on the author's machine and is not in the checkout, so do not look for it. Post the
+            report as a PR comment.
           claude_args: >-
             --plugin-dir .claude/plugins/workhorse
             --agent wh-conformance-reviewer
