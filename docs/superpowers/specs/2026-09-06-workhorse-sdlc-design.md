@@ -136,8 +136,9 @@ Every gate presents a packet with the same six sections so the human learns one 
    embedded verbatim.
 
 Approval: `/workhorse:approve <gate> [notes]` writes a block to `approvals.md` with the gate, the
-approver (from `git config user.email`), the UTC timestamp, the commit hash of the artifact
-being approved, and notes, then commits it. Rejection: `/workhorse:approve <gate> --reject "notes"`
+approver (from `git config user.email`), the UTC timestamp, the commit hash of the artifact being approved, and notes, then commits it. Before
+recording, it commits the change's artifacts so that hash genuinely contains the packet, and it
+records the packet's SHA-256, so an edit made after the decision is detectable. Rejection: `/workhorse:approve <gate> --reject "notes"`
 records the rejection and re-enters the phase with the notes as input.
 
 Enforcement: `hooks/scripts/gate-guard.js` reads `state.json` and refuses any phase-advancing

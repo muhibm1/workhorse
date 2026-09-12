@@ -17,12 +17,15 @@
 //   wh.js plugin-root                       print the plugin root path
 'use strict';
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const L = require(path.join(__dirname, '..', 'hooks', 'scripts', 'lib.js'));
 
 const PLUGIN_ROOT = path.resolve(__dirname, '..');
 const TEMPLATES = path.join(PLUGIN_ROOT, 'templates');
 const PHASES = ['intent', 'spec', 'plan', 'build', 'verify', 'review', 'deploy', 'done'];
+/** The packet a human reads at each gate, and therefore the artifact an approval must pin. */
+const GATE_PACKET = { G1: 'intent.md', G2: 'spec.md', G3: 'plan.md', G4: 'review-packet.md', G5: 'release.md' };
 
 // The gate that closes each phase, and the artifact that must exist for that gate to be live.
 // A phase whose gate is required, still pending, and whose packet exists is waiting on a human.
@@ -262,6 +265,21 @@ switch (cmd) {
     const notes = args.join(' ').trim();
     if (reject && !notes) die('a rejection needs notes so the phase can be re-entered with them');
     const who = L.git(root, ['config', 'user.email']) || process.env.USER || process.env.USERNAME || 'unknown';
+
+    // Pin what is being decided before recording the decision. Without this the recorded commit
+    // was simply HEAD, which did not contain the packet: agents write artifacts but nothing had
+    // committed them, so an approved spec could be edited afterwards with no trace of what was
+    // actually signed off. Commit the change's artifacts first, so the recorded commit really
+    // contains the packet, and hash the packet itself, so any later edit is detectable.
+    const dirRel = path.relative(root, L.changeDir(root, id)).split(path.sep).join('/');
+    const packetRel = `${dirRel}/${GATE_PACKET[g]}`;
+    const packetAbs = path.join(root, packetRel);
+    const packetSha = fs.existsSync(packetAbs)
+      ? crypto.createHash('sha256').update(fs.readFileSync(packetAbs)).digest('hex')
+      : null;
+    L.git(root, ['add', '--', dirRel]);
+    // Exits non-zero when nothing is staged (already committed); HEAD then contains it anyway.
+    L.git(root, ['commit', '-q', '-m', `chore(sdlc): ${g} packet for ${id}`, '--', dirRel]);
     const commit = L.git(root, ['rev-parse', 'HEAD']) || 'no-commit';
     const at = L.nowIso();
     const status = reject ? 'rejected' : 'approved';
@@ -271,7 +289,8 @@ switch (cmd) {
       '',
       `- Who: ${who}`,
       `- When: ${at}`,
-      `- Artifact commit: \`${commit}\``,
+      `- Artifact commit: \`${commit}\` (contains the packet below)`,
+      `- Packet: \`${packetRel}\` sha256 \`${packetSha || 'missing: no packet file existed at decision time'}\``,
       `- Tier at decision: ${L.effectiveTier(state)}${state.tier_override !== null && state.tier_override !== undefined ? ' (override)' : ''}`,
       `- Notes: ${notes || 'none'}`,
       '',
