@@ -293,6 +293,19 @@ console.log('status/metrics');
   check('metrics computed', m.code === 0 && JSON.parse(m.out).changes === 2, m.err || m.out);
 }
 
+console.log('conductor log');
+{
+  const before = Date.now();
+  const r = wh(repo, 'log', 'wh-spec-architect | spec.md written,', '19 requirements');
+  const f = path.join(repo, 'docs', 'sdlc', id, 'conductor-log.md');
+  const last = fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').pop() : '';
+  const [stamp, phase, ...rest] = last.split(' | ');
+  const t = Date.parse(stamp);
+  check('log appends one line with the phase and message', r.code === 0 && phase === L.loadState(repo, id).phase && rest.join(' | ') === 'wh-spec-architect | spec.md written, 19 requirements', r.err || last);
+  check('log stamps the real time, not a supplied one', t >= before - 1000 && t <= Date.now() + 1000, stamp);
+  check('log refuses an empty message', wh(repo, 'log').code !== 0);
+}
+
 console.log('control state location');
 {
   // A fresh fixture: these tests move branches and add worktrees, which must not disturb the rest.

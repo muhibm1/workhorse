@@ -11,6 +11,7 @@
 //   wh.js gate <G1..G5> <status>            set a gate status: pending|auto|approved|rejected|n/a
 //   wh.js approve <gate> [--reject] [notes] record a human decision in approvals.md (main session only)
 //   wh.js required                          list human gates required for the active change
+//   wh.js log "<agent> | <result>"          append a line to conductor-log.md, stamped with the real time
 //   wh.js status [--json] [--metrics]       human-readable status
 //   wh.js scaffold <template> [--out path]  render a template with state placeholders
 //   wh.js digest [--json] [--all]           emit the tracker sync payload (one change, or every change)
@@ -308,6 +309,21 @@ switch (cmd) {
     L.git(root, ['add', '--', path.relative(root, af)]);
     const sha = L.git(root, ['commit', '-q', '-m', `chore(sdlc): ${g} ${status} for ${id}`, '--', path.relative(root, af)]);
     out({ gate: g, status, who, at, committed: sha !== '' || L.git(root, ['log', '-1', '--format=%h']) });
+    break;
+  }
+
+  case 'log': {
+    // The conductor has no clock of its own; a live run showed it inventing timestamps that ran
+    // ahead of the file's own write time. The CLI stamps the time and the phase instead.
+    const root = requireRoot();
+    const { id, state } = requireActive(root);
+    const msg = args.join(' ').replace(/\s+/g, ' ').trim();
+    if (!msg) die('usage: wh.js log "<agent> | <result>"');
+    const f = path.join(L.changeDir(root, id), 'conductor-log.md');
+    if (!fs.existsSync(f)) fs.writeFileSync(f, `# Conductor log: ${id}\n\n`);
+    const line = `${L.nowIso()} | ${state.phase} | ${msg}`;
+    fs.appendFileSync(f, line + '\n');
+    out(line);
     break;
   }
 

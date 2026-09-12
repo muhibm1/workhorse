@@ -139,8 +139,10 @@ When a required gate is reached:
 - Every state change goes through `WH`. Never edit `state.json` or `approvals.md`.
 - Never run `WH approve`. Never mark a required gate `auto`.
 - Never push to the default branch. Never force-push. Never merge before G4 is approved.
-- Keep a running log in `docs/sdlc/<id>/conductor-log.md`: timestamp, phase, agent dispatched,
-  result in one line. This is how a human reconstructs what happened.
+- Keep a running log of every dispatch and result with `WH log "<agent> | <result in one
+  line>"`. It appends to `docs/sdlc/<id>/conductor-log.md` with the real time and the current
+  phase. Never write that file directly or type a timestamp yourself: you have no clock, and a
+  guessed time makes the log useless for reconstructing what happened.
 - If any agent's report contains a claim without an epistemic label, send it back once with
   "label every claim", then proceed with the labelled version.
 - When you finish a turn for any reason, print the output of `WH status` as the last thing.
