@@ -75,9 +75,11 @@ interface FleetCardProps {
   run: RunState | undefined;
   onboarded: boolean;
   onStartOnboard: () => void;
+  /** Opens this repo's Run screen — the only route to it, so the card itself is the affordance. */
+  onOpen: () => void;
 }
 
-function FleetCard({ repo, digest, run, onboarded, onStartOnboard }: FleetCardProps) {
+function FleetCard({ repo, digest, run, onboarded, onStartOnboard, onOpen }: FleetCardProps) {
   const [hovered, setHovered] = useState(false);
 
   const running = run?.running ?? false;
@@ -94,6 +96,16 @@ function FleetCard({ repo, digest, run, onboarded, onStartOnboard }: FleetCardPr
       style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${repo.name}`}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <AsciiField
         className="fleet-card-field"
@@ -112,7 +124,14 @@ function FleetCard({ repo, digest, run, onboarded, onStartOnboard }: FleetCardPr
         {!onboarded ? (
           <div className="fleet-card-onboard">
             <p className="fleet-card-title fleet-card-title-muted">Not onboarded</p>
-            <Button tone="amber" size="sm" onClick={onStartOnboard}>
+            <Button
+              tone="amber"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartOnboard();
+              }}
+            >
               Onboard
             </Button>
           </div>
@@ -144,6 +163,7 @@ export function Fleet() {
   const addRepo = usePaddockStore((s) => s.addRepo);
   const addRepoPath = usePaddockStore((s) => s.addRepoPath);
   const startRun = usePaddockStore((s) => s.startRun);
+  const go = usePaddockStore((s) => s.go);
 
   const [dragOver, setDragOver] = useState(false);
 
@@ -208,7 +228,11 @@ export function Fleet() {
               digest={digest}
               run={runs[repo.id]}
               onboarded={onboarded}
-              onStartOnboard={() => void startRun(repo.id, '__onboard__')}
+              onStartOnboard={() => {
+                void startRun(repo.id, '__onboard__');
+                go({ name: 'run', repoId: repo.id });
+              }}
+              onOpen={() => go({ name: 'run', repoId: repo.id })}
             />
           );
         })}
