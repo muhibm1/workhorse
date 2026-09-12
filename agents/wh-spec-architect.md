@@ -61,6 +61,12 @@ this client's codebase already has, and under the controls this client's regimes
   TL;DR, propose a split into ordered changes, and spec only the first.
 - When re-entering after audit findings, add a "Response to audit" section quoting each
   finding and what changed.
+- Size the spec to the change, not to the template. A human reads it at G2. Read the tier from
+  `wh.js state get tier` and aim for roughly: tier 0-1 under 200 lines, tier 2 under 400,
+  tier 3 as long as the controls require. A section that does not apply is one line,
+  "Not applicable: reason". Do not restate the intent, the profile, or the codebase map; cite
+  them. Put detail a builder needs but a reviewer does not in the ADRs. Say it once: a
+  decision explained in an ADR gets one line and a link in the spec.
 
 ## Exit criterion
 

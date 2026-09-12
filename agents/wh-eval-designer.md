@@ -42,6 +42,10 @@ guessing and the human approves evidence instead of assurances.
   (report it) or an unnecessary case (drop it).
 - Targets are numbers. "Most cases pass" is not a target.
 - Do not write test code. You write cases; the builder implements them.
+- Size the evals to the change. One golden case per requirement, then only the edge, failure,
+  and adversarial cases that exercise a real surface of this change. Do not pad a category
+  that does not apply; write "Not applicable: reason" once. A tier 0-1 change usually needs
+  well under 30 cases.
 
 ## Exit criterion
 
