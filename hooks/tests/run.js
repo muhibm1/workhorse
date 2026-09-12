@@ -306,6 +306,25 @@ console.log('conductor log');
   check('log refuses an empty message', wh(repo, 'log').code !== 0);
 }
 
+console.log('phase done');
+{
+  // A live run reached done with release.md, retro.md and the log never committed.
+  const pd = path.join(tmp, 'pd');
+  fs.mkdirSync(pd, { recursive: true });
+  const g = (...a) => execFileSync('git', a, { cwd: pd, encoding: 'utf8' }).trim();
+  g('init', '-q'); g('config', 'user.email', 'tester@example.com'); g('config', 'user.name', 'Tester');
+  wh(pd, 'init');
+  g('add', '.'); g('commit', '-q', '-m', 'onboard');
+  const pid = JSON.parse(wh(pd, 'new', 'Close me', '--tier', '0').out).change_id;
+  const dir = `docs/sdlc/${pid}`;
+  fs.writeFileSync(path.join(pd, dir, 'retro.md'), '# retro\n');
+  fs.writeFileSync(path.join(pd, 'unrelated.txt'), 'not part of the change\n');
+  const r = wh(pd, 'phase', 'done');
+  check('phase done commits the change folder', r.code === 0 && g('status', '--porcelain', '--', dir) === '' && g('log', '-1', '--format=%s') === `chore(sdlc): close ${pid}`, r.err || g('status', '--porcelain'));
+  check('phase done reports the commit', r.code === 0 && JSON.parse(r.out).committed === g('log', '-1', '--format=%h'), r.out);
+  check('phase done leaves files outside the change folder alone', g('status', '--porcelain').includes('unrelated.txt'));
+}
+
 console.log('control state location');
 {
   // A fresh fixture: these tests move branches and add worktrees, which must not disturb the rest.
