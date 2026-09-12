@@ -41,7 +41,7 @@ export type RunEvent =
   | { t: 'tool:result'; toolUseId: string; isError: boolean; agentId?: string; at: number }
   | { t: 'text'; text: string; agentId?: string; at: number }
   | { t: 'notice'; text: string; at: number }
-  | { t: 'result'; subtype: string; costUsd?: number; numTurns?: number; durationMs?: number; sessionId?: string; at: number }
+  | { t: 'result'; subtype: string; costUsd?: number; numTurns?: number; durationMs?: number; sessionId?: string; isError?: boolean; at: number }
   | { t: 'error'; message: string; at: number }
   | { t: 'exit'; code: number | null; at: number };
 

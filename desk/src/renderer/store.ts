@@ -167,7 +167,9 @@ export function applyEvent(run: RunState, envelope: RunEnvelope): RunState {
         ...base,
         running: false,
         costUsd: event.costUsd ?? base.costUsd,
-        log: appendLog(base.log, { at: event.at, text: `result: ${event.subtype}`, tone: 'mint' }),
+        // An error result is followed by an `error` event carrying the reason; a mint
+        // "result: success" line in front of it would read as the opposite.
+        log: event.isError ? base.log : appendLog(base.log, { at: event.at, text: `result: ${event.subtype}`, tone: 'mint' }),
       };
 
     case 'error':
@@ -177,8 +179,18 @@ export function applyEvent(run: RunState, envelope: RunEnvelope): RunState {
         log: appendLog(base.log, { at: event.at, text: `error: ${event.message}`, tone: 'coral' }),
       };
 
-    case 'exit':
-      return { ...base, running: false };
+    case 'exit': {
+      // A non-zero exit with no reported reason (the CLI failed to start or crashed) must still
+      // be visible. A null code is a signal, which is our own Stop.
+      if (event.code === null || event.code === 0 || base.error) return { ...base, running: false };
+      const message = `claude exited with code ${event.code}`;
+      return {
+        ...base,
+        running: false,
+        error: message,
+        log: appendLog(base.log, { at: event.at, text: `error: ${message}`, tone: 'coral' }),
+      };
+    }
 
     default:
       return base;

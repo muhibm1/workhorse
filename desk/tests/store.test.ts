@@ -66,6 +66,29 @@ describe('applyEvent (pure reducer)', () => {
 
     run = applyEvent(run, envelope({ t: 'exit', code: 1, at: 2 }));
     expect(run.running).toBe(false);
+    expect(run.error).toBe('boom'); // the reported reason is kept, not replaced by the exit code
+  });
+
+  it('a non-zero exit with no reported reason becomes a visible error; a clean or stopped exit does not', () => {
+    const crashed = applyEvent(createRunState('run1'), envelope({ t: 'exit', code: 3, at: 5 }));
+    expect(crashed.running).toBe(false);
+    expect(crashed.error).toBe('claude exited with code 3');
+    expect(crashed.log.at(-1)).toEqual({ at: 5, text: 'error: claude exited with code 3', tone: 'coral' });
+
+    for (const code of [0, null]) {
+      const ended = applyEvent(createRunState('run1'), envelope({ t: 'exit', code, at: 5 }));
+      expect(ended.error).toBeNull();
+      expect(ended.log).toEqual([]);
+    }
+  });
+
+  it('an error result logs only the reason, not a mint "result: success" line', () => {
+    let run = createRunState('run1');
+    run = applyEvent(run, envelope({ t: 'result', subtype: 'success', isError: true, costUsd: 0, at: 7 }));
+    run = applyEvent(run, envelope({ t: 'error', message: "You've hit your session limit", at: 7 }));
+    expect(run.running).toBe(false);
+    expect(run.error).toBe("You've hit your session limit");
+    expect(run.log).toEqual([{ at: 7, text: "error: You've hit your session limit", tone: 'coral' }]);
   });
 
   it('caps the log at 500 lines, dropping the oldest first', () => {
