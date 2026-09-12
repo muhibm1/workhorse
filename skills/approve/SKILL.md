@@ -10,8 +10,9 @@ allowed-tools: Bash(node *), Read, Agent
 Arguments: `$ARGUMENTS` = `<G1|G2|G3|G4|G5> [--reject] [notes...]`.
 
 This is the human act in the loop. The command records who (from `git config user.email`),
-when, the artifact commit, the tier, and your notes, appends to `approvals.md`, updates
-`state.json`, and commits both.
+when, the tier, and your notes. It first commits the change's artifacts so the approval pins
+exactly what you read, records that commit and the packet's sha256, appends to `approvals.md`
+and commits it, then updates the change's control state in `.git/workhorse` (never committed).
 
 1. Run exactly: `node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js" approve $ARGUMENTS`
 2. Print its output.

@@ -266,9 +266,11 @@ type RunEvent =
   | { t: 'exit'; code: number | null };
 ```
 
-Phase and gate are **not** derived from the stream. They come from the watcher: whenever
-`state.json` or `.workhorse/active` changes, main runs `wh.js digest` for that repo and emits
-`repo:digest`. The Run screen merges the digest (phase, gates, waiting_on, tier) with the live
+Phase and gate are **not** derived from the stream. They come from the watcher: whenever the
+control state in the git common dir changes (`.git/workhorse/active`,
+`.git/workhorse/changes/<id>/state.json`) or a `docs/sdlc` artifact changes, main runs
+`wh.js digest` for that repo and emits `repo:digest`. The watcher watches the state root as a
+second path because the repo tree prunes `.git`. The Run screen merges the digest (phase, gates, waiting_on, tier) with the live
 stream (agents, tools, text). This keeps the orb correct even for runs started from a terminal.
 
 `at` is `Date.now()` in main; the renderer computes elapsed from it.
