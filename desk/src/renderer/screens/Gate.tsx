@@ -78,6 +78,7 @@ export function Gate({ repoId, gate }: GateScreenProps) {
   const approveAction = usePaddockStore((s) => s.approve);
   const rejectAction = usePaddockStore((s) => s.reject);
   const go = usePaddockStore((s) => s.go);
+  const resumeRun = usePaddockStore((s) => s.resumeRun);
 
   const [packet, setPacket] = useState<Load<string>>({ status: 'loading' });
   const [sheetPath, setSheetPath] = useState<string | null>(null);
@@ -140,11 +141,24 @@ export function Gate({ repoId, gate }: GateScreenProps) {
     el?.scrollIntoView({ block: 'start' });
   }
 
+  // Spec 2.3: a decision hands control straight back to the agents, so approving is the only act
+  // a human performs. Found by driving the app: it used to land on a Resume button instead. If the
+  // resume cannot start (a run still winding down, a backend problem) the decision is already
+  // recorded and committed, and the Run screen's Resume button remains as the fallback.
+  async function resumeAfterDecision() {
+    try {
+      await resumeRun(repoId);
+    } catch (err) {
+      console.warn('[paddock] resume after decision did not start:', errorMessage(err));
+    }
+  }
+
   async function handleApprove() {
     setActionError(null);
     setSubmitting('approve');
     try {
       await approveAction(repoId, gate, approveNotes);
+      await resumeAfterDecision();
       go({ name: 'run', repoId } satisfies Screen);
     } catch (err) {
       setActionError(errorMessage(err));
@@ -159,6 +173,7 @@ export function Gate({ repoId, gate }: GateScreenProps) {
     setSubmitting('reject');
     try {
       await rejectAction(repoId, gate, rejectNotes);
+      await resumeAfterDecision();
       go({ name: 'run', repoId } satisfies Screen);
     } catch (err) {
       setActionError(errorMessage(err));

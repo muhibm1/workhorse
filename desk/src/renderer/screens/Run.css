@@ -12,7 +12,9 @@
 
 .run-grid {
   display: grid;
-  grid-template-columns: 1fr 640px 360px;
+  /* The left column held a label/value grid; with a bare 1fr it collapsed to about 100px at the
+     default 1280px window, and the problem text wrapped one character per line. */
+  grid-template-columns: minmax(200px, 1fr) 640px minmax(260px, 340px);
   gap: 24px;
   flex: 1 1 auto;
   min-height: 0;
@@ -49,7 +51,7 @@
 
 .run-change-fields {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 1fr; /* stacked: a side-by-side label ate the value column */
   gap: 4px 10px;
   margin: 0;
 }
@@ -61,7 +63,7 @@
 .run-change-fields dd {
   margin: 0;
   color: var(--ink-soft);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word; /* anywhere made min-content one character wide */
 }
 
 .run-change-empty {
