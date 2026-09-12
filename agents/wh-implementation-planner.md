@@ -56,6 +56,12 @@ Build phase can run in parallel.
   recommendation and put the decision in the G3 packet.
 - Keep the plan under 400 lines. A longer plan means the change should be split; say so in the
   TL;DR and plan the first part.
+- Size the task list to the change. Every task costs a full builder session plus a readability
+  and a simplifier pass, so a task must be worth that. Put a requirement's tests in the same
+  task as its implementation, and group related test-only work into one task instead of one
+  task per requirement group. A tier 0-1 change is usually 1 to 3 tasks. A live tier 1 run
+  planned 7 sequential tasks for one endpoint and was still in Build after 54 minutes, with
+  two tasks left.
 
 ## Exit criterion
 

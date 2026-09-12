@@ -99,7 +99,9 @@ The Build phase scales to the size of the plan.
      order using the profile's `build.wave_merge` strategy. On conflict, dispatch one
      `wh-builder` with both diffs and the instruction to resolve and re-run that task's tests.
    - After the wave is folded, dispatch `wh-readability-reviewer` and `wh-simplifier` in
-     sequence on the wave's diff (they may edit; they must keep tests green).
+     sequence on the wave's diff (they may edit; they must keep tests green). At tier 0-1 with
+     more than one wave, run the pair once on the whole change's diff after the last wave
+     instead: each pass is a full agent session, which dominates the cost of a small wave.
    - Record progress: `WH state set build.wave <n>` and `WH state set build.tasks_done <list>`.
    - A builder that reports blocked stops the wave. Record the block, finish the other builders,
      then either re-plan (dispatch the planner with the block report) or present the block to
