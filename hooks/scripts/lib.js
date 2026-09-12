@@ -59,28 +59,107 @@ function loadProfile(root) {
   return parseYaml(fs.readFileSync(p, 'utf8'));
 }
 
+// ---------- control state ----------
+//
+// Which change is active, and each change's state.json, used to live in tracked files
+// (.workhorse/active and docs/sdlc/<id>/state.json). A live run showed why that is wrong: the
+// conductor checked out the change branch in the main checkout, git rewrote both files from the
+// branch point, `active` went empty and the phase went backwards, and every state-driven hook
+// stood down. Builder worktrees had the same blind spot from the start. Control state now lives
+// in the git common directory: git never tracks it, no checkout can rewrite it, and every
+// worktree of the repository shares it. Artifacts stay in docs/sdlc and remain versioned.
+
+/** The repository's shared git directory, read from disk without spawning git (hooks run per tool call). */
+function gitCommonDir(root) {
+  const dotgit = path.join(root, '.git');
+  try {
+    if (fs.statSync(dotgit).isDirectory()) return dotgit;
+    // A worktree's .git is a file: "gitdir: <main>/.git/worktrees/<name>", which holds a commondir file.
+    const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(dotgit, 'utf8'));
+    if (m) {
+      const gitdir = path.resolve(root, m[1].trim());
+      const cf = path.join(gitdir, 'commondir');
+      return fs.existsSync(cf) ? path.resolve(gitdir, fs.readFileSync(cf, 'utf8').trim()) : gitdir;
+    }
+  } catch (e) { /* no .git at root; fall through */ }
+  const out = git(root, ['rev-parse', '--git-common-dir']);
+  return out ? path.resolve(root, out) : null;
+}
+
+/** Where control state lives. Outside git (no repository) it falls back to an ignored folder. */
+function stateRoot(root) {
+  const common = gitCommonDir(root);
+  return common ? path.join(common, 'workhorse') : path.join(root, '.workhorse', 'state');
+}
+
+function activeFile(root) { return path.join(stateRoot(root), 'active'); }
+function stateFile(root, id) { return path.join(stateRoot(root), 'changes', id, 'state.json'); }
+
+function setActiveChangeId(root, id) {
+  const p = activeFile(root);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, (id || '') + '\n');
+}
+
 function activeChangeId(root) {
-  const p = path.join(root, '.workhorse', 'active');
-  if (!fs.existsSync(p)) return null;
-  const id = fs.readFileSync(p, 'utf8').trim();
-  return id || null;
+  const p = activeFile(root);
+  if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8').trim() || null;
+  // One-time migration from the old tracked location. Once the new file exists, even empty, it wins.
+  const legacy = path.join(root, '.workhorse', 'active');
+  if (fs.existsSync(legacy)) {
+    const id = fs.readFileSync(legacy, 'utf8').trim();
+    if (id) { setActiveChangeId(root, id); return id; }
+  }
+  return null;
 }
 
 function changeDir(root, id) {
   return path.join(root, 'docs', 'sdlc', id);
 }
 
+function writeStateFile(root, id, state) {
+  const p = stateFile(root, id);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(state, null, 2) + '\n');
+}
+
 function loadState(root, id) {
-  const p = path.join(changeDir(root, id), 'state.json');
-  if (!fs.existsSync(p)) return null;
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
+  const p = stateFile(root, id);
+  if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+  const legacy = path.join(changeDir(root, id), 'state.json');   // one-time migration
+  if (fs.existsSync(legacy)) {
+    const s = JSON.parse(fs.readFileSync(legacy, 'utf8'));
+    writeStateFile(root, id, s);
+    return s;
+  }
+  return null;
 }
 
 function saveState(root, id, state) {
   state.updated_at = new Date().toISOString();
-  const p = path.join(changeDir(root, id), 'state.json');
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(state, null, 2) + '\n');
+  writeStateFile(root, id, state);
+}
+
+/** Every change id with state, from the control-state store and any not-yet-migrated legacy folders. */
+function listChangeIds(root) {
+  const ids = new Set();
+  const store = path.join(stateRoot(root), 'changes');
+  if (fs.existsSync(store)) {
+    for (const d of fs.readdirSync(store)) if (fs.existsSync(path.join(store, d, 'state.json'))) ids.add(d);
+  }
+  const docs = path.join(root, 'docs', 'sdlc');
+  if (fs.existsSync(docs)) {
+    for (const d of fs.readdirSync(docs)) if (fs.existsSync(path.join(docs, d, 'state.json'))) ids.add(d);
+  }
+  return [...ids].sort();
+}
+
+/** True when `abs` sits inside the control-state directory (case-insensitive on Windows). */
+function isInStateRoot(root, abs) {
+  const norm = (p) => { const r = path.resolve(p); return process.platform === 'win32' ? r.toLowerCase() : r; };
+  const sr = norm(stateRoot(root));
+  const a = norm(abs);
+  return a === sr || a.startsWith(sr + path.sep);
 }
 
 // Returns { root, profile, id, state } or nulls, never throws.
@@ -341,7 +420,8 @@ function git(root, args) {
 
 module.exports = {
   readStdinJson, emit, preToolDecision, allow, deny, ask, failOpen,
-  findRoot, isInsideWorktree, loadProfile, activeChangeId, changeDir, loadState, saveState, loadContext,
+  findRoot, isInsideWorktree, loadProfile, activeChangeId, setActiveChangeId, changeDir, loadState, saveState, loadContext,
+  gitCommonDir, stateRoot, stateFile, activeFile, listChangeIds, isInStateRoot,
   ALL_GATES, TIER_GATES, effectiveTier, requiredGates, gateSatisfied, PHASE_ARTIFACT_GATE,
   normalize, relToRoot, globToRegex, matchesAny, toolFilePath,
   parseYaml, nowIso, git,

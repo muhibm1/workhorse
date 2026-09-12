@@ -9,7 +9,7 @@ const L = require('./lib');
 const input = L.readStdinJson();
 const ctx = L.loadContext(input.cwd);
 if (!ctx.root || !ctx.profile) return L.emit({});
-if (ctx.error) return L.deny(`gate-guard could not read WorkHorse state (${ctx.error}). Fix .workhorse/active or state.json before continuing.`);
+if (ctx.error) return L.deny(`gate-guard could not read WorkHorse state (${ctx.error}). Check the control state under .git/workhorse (the active change and its state.json) before continuing.`);
 if (!ctx.id || !ctx.state) return L.emit({}); // no active change: nothing to guard
 
 const state = ctx.state;

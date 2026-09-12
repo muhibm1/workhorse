@@ -135,12 +135,13 @@ switch (cmd) {
     fs.mkdirSync(path.join(root, 'docs', 'sdlc'), { recursive: true });
     const prof = path.join(wh, 'profile.yml');
     if (!fs.existsSync(prof)) fs.copyFileSync(path.join(TEMPLATES, 'profile.yml'), prof);
-    const active = path.join(wh, 'active');
-    if (!fs.existsSync(active)) fs.writeFileSync(active, '');
+    // Control state lives in the git common dir (see lib.js). These ignores cover the legacy file
+    // and the no-git fallback, so neither can ever be committed and then rewritten by a checkout.
     const gi = path.join(root, '.gitignore');
-    const line = '.worktrees/';
-    const cur = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : '';
-    if (!cur.split(/\r?\n/).includes(line)) fs.appendFileSync(gi, (cur && !cur.endsWith('\n') ? '\n' : '') + line + '\n');
+    for (const line of ['.worktrees/', '.workhorse/active', '.workhorse/state/']) {
+      const cur = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : '';
+      if (!cur.split(/\r?\n/).includes(line)) fs.appendFileSync(gi, (cur && !cur.endsWith('\n') ? '\n' : '') + line + '\n');
+    }
     out(`initialised ${wh} and docs/sdlc/. Edit .workhorse/profile.yml (or run /workhorse:onboard to have it written for you).`);
     break;
   }
@@ -162,7 +163,7 @@ switch (cmd) {
     state.branch = `${(profile.conventions && profile.conventions.branch_prefix) || 'wh/'}${id}`;
     state.phase = 'intent';
     L.saveState(root, id, state);
-    fs.writeFileSync(path.join(root, '.workhorse', 'active'), id + '\n');
+    L.setActiveChangeId(root, id);
     const vars = stateVars(root, id, state);
     for (const t of ['intent.md', 'approvals.md']) {
       fs.writeFileSync(path.join(dir, t), render(fs.readFileSync(path.join(TEMPLATES, t), 'utf8'), vars));
@@ -173,10 +174,10 @@ switch (cmd) {
 
   case 'active': {
     const root = requireRoot();
-    if (hasFlag('--clear')) { fs.writeFileSync(path.join(root, '.workhorse', 'active'), ''); out('cleared'); break; }
+    if (hasFlag('--clear')) { L.setActiveChangeId(root, ''); out('cleared'); break; }
     if (args[0]) {
-      if (!fs.existsSync(L.changeDir(root, args[0]))) die(`no such change ${args[0]}`);
-      fs.writeFileSync(path.join(root, '.workhorse', 'active'), args[0] + '\n');
+      if (!fs.existsSync(L.changeDir(root, args[0])) && !L.loadState(root, args[0])) die(`no such change ${args[0]}`);
+      L.setActiveChangeId(root, args[0]);
       out(args[0]);
     } else out(L.activeChangeId(root) || '');
     break;
@@ -303,8 +304,9 @@ switch (cmd) {
     if (reject) state.last_rejection = { gate: g, notes, at };
     L.saveState(root, id, state);
     // Commit the approval so the audit trail is in git history.
-    L.git(root, ['add', path.relative(root, af), path.relative(root, path.join(L.changeDir(root, id), 'state.json'))]);
-    const sha = L.git(root, ['commit', '-q', '-m', `chore(sdlc): ${g} ${status} for ${id}`, '--', path.relative(root, af), path.relative(root, path.join(L.changeDir(root, id), 'state.json'))]);
+    // state.json is machine state kept outside git; approvals.md is the audit record.
+    L.git(root, ['add', '--', path.relative(root, af)]);
+    const sha = L.git(root, ['commit', '-q', '-m', `chore(sdlc): ${g} ${status} for ${id}`, '--', path.relative(root, af)]);
     out({ gate: g, status, who, at, committed: sha !== '' || L.git(root, ['log', '-1', '--format=%h']) });
     break;
   }
@@ -372,10 +374,7 @@ switch (cmd) {
     const all = hasFlag('--all');
     hasFlag('--json'); // accepted and ignored: the digest is always JSON
     if (all) {
-      const base = path.join(root, 'docs', 'sdlc');
-      const ids = fs.existsSync(base)
-        ? fs.readdirSync(base).filter((d) => fs.existsSync(path.join(base, d, 'state.json')))
-        : [];
+      const ids = L.listChangeIds(root);
       out(ids.map((cid) => buildDigest(root, cid, L.loadState(root, cid))));
       break;
     }
@@ -390,12 +389,10 @@ switch (cmd) {
 
 function computeMetrics(root) {
   const base = path.join(root, 'docs', 'sdlc');
-  if (!fs.existsSync(base)) return { changes: 0 };
   const rows = [];
-  for (const id of fs.readdirSync(base)) {
-    const sp = path.join(base, id, 'state.json');
-    if (!fs.existsSync(sp)) continue;
-    const s = JSON.parse(fs.readFileSync(sp, 'utf8'));
+  for (const id of L.listChangeIds(root)) {
+    const s = L.loadState(root, id);
+    if (!s) continue;
     const af = path.join(base, id, 'approvals.md');
     const txt = fs.existsSync(af) ? fs.readFileSync(af, 'utf8') : '';
     const approvals = (txt.match(/^## G\d: (approved|rejected)/gm) || []);
