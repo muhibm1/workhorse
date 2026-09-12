@@ -82,20 +82,24 @@ Paddock writes only its own registry (`registry.json`: the list of repos you've 
 No telemetry, no network calls from the renderer, no auto-update in v1 (see the design spec,
 section 9, for the full out-of-scope list).
 
-## Packaging: Node 22 is required for `npm run dist:win`
+## Packaging
 
-`electron-builder` 26.15.3 depends on `@noble/hashes` v2, which is ESM-only, but
-`app-builder-lib` still `require()`s it. Under Node 21 that throws `ERR_REQUIRE_ESM`
-and the build dies before producing anything. Node 22 with `require(esm)` enabled
-gets past it:
+`npm run dist:win` builds `dist/Paddock-<version>-portable.exe` on the default toolchain,
+Node 21 included. No PATH or `NODE_OPTIONS` changes are needed.
 
-```bash
-export PATH="$APPDATA/nvm/v22.1.0:$PATH"
-export NODE_OPTIONS=--experimental-require-module
-npm run dist:win
+`electron-builder` 26.15.3's `app-builder-lib` calls `require("@noble/hashes/blake2.js")`, but
+`@noble/hashes` 2.x is ESM-only, which throws `ERR_REQUIRE_ESM` below Node 22.12. `package.json`
+carries a scoped override pinning that one package to 1.8.0, which is CommonJS and exports the
+same `./blake2.js` providing the `blake2b` the builder uses:
+
+```json
+"overrides": { "app-builder-lib": { "@noble/hashes": "1.8.0" } }
 ```
 
-This affects only packaging. `dev`, `test`, `typecheck` and `build` all run fine on
-Node 21. Confirmed on 2026-09-11: the command above produced
-`dist/Paddock-0.1.0-portable.exe` (163 MB) with `resources/plugin` at version 0.2.0
-bundled inside it.
+Pinning electron-builder itself to 26.8.1 also avoids the crash, and was tried first. It was
+reverted because 26.8.1 ships `builder-util-runtime` 9.5.1 and seven high-severity advisories
+that 26.15.3 fixes. With the override, `npm audit` reports 0 vulnerabilities across all
+dependencies, and the build signs and packages cleanly. Confirmed 2026-09-11 on Node 21.7.3.
+
+Remove the override once `app-builder-lib` imports `@noble/hashes` as ESM, or once the Node
+floor for building is 22.12 or later.
