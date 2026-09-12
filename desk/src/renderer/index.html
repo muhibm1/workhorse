@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self'; connect-src 'none'" />
+    <!-- frame-ancestors is header-only; it lives in the main-process CSP (src/main/index.ts), not here. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Paddock</title>
     <link rel="stylesheet" href="./theme.css" />
