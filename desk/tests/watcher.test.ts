@@ -106,4 +106,36 @@ describe('createWatcher', () => {
     await new Promise((r) => setTimeout(r, 600));
     expect(emissions.length).toBe(baseline);
   });
+
+  it('emits when control state in the git common dir changes, and ignores the rest of .git', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const repo = makeRepo();
+    repoPath = repo.path;
+    execFileSync('git', ['init', '-q'], { cwd: repo.path });
+
+    watcher = createWatcher({ digest: async () => [], debounceMs: 150 });
+    const emissions: { repoId: string; digests: ChangeDigest[] }[] = [];
+    watcher.on((e) => emissions.push(e));
+    watcher.watch(repo); // creates .git/workhorse so there is something to watch
+    await waitFor(() => emissions.length >= 1, 2000);
+    await new Promise((r) => setTimeout(r, 400)); // let the initial scan settle
+    const baseline = emissions.length;
+
+    const stateDir = join(repo.path, '.git', 'workhorse');
+    writeFileSync(join(stateDir, 'active'), 'x\n');
+    await waitFor(() => emissions.length > baseline, 2000);
+    const afterActive = emissions.length;
+
+    mkdirSync(join(stateDir, 'changes', 'x'), { recursive: true });
+    writeFileSync(join(stateDir, 'changes', 'x', 'state.json'), '{"phase":"build"}');
+    await waitFor(() => emissions.length > afterActive, 2000);
+    await new Promise((r) => setTimeout(r, 300));
+    const afterState = emissions.length;
+
+    // Everything else under .git stays silent: the repo tree still prunes it.
+    writeFileSync(join(repo.path, '.git', 'description'), 'noise');
+    writeFileSync(join(stateDir, 'scratch.txt'), 'noise');
+    await new Promise((r) => setTimeout(r, 600));
+    expect(emissions.length).toBe(afterState);
+  });
 });

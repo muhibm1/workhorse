@@ -147,7 +147,7 @@ gate is unapproved.
 
 ### 4.5 State
 
-`docs/sdlc/<change-id>/state.json`:
+`.git/workhorse/changes/<change-id>/state.json`:
 
 ```json
 {
@@ -169,8 +169,13 @@ gate is unapproved.
 conductor sets `mode` to `fix` when it dispatches the fixer and back to `normal` when the
 verifier reports green.
 
-The active change is recorded in `.workhorse/active` (a single line holding the change id) so
-hooks can find `state.json` without parsing the conversation.
+Control state lives in the git common directory, not in tracked files: the active change in
+`.git/workhorse/active` and each change's state in `.git/workhorse/changes/<id>/state.json`.
+Git never tracks that directory, so no checkout can rewrite it, and every worktree of the
+repository shares it, so hooks enforce inside builder worktrees too. It used to live in
+`.workhorse/active` and `docs/sdlc/<id>/state.json`; a live run showed a branch checkout
+rewriting both from the branch point, emptying the active change and turning the phase
+backwards, which disabled every state-driven hook. Old repositories migrate on first read.
 
 ## 5. Deterministic guardrails
 
@@ -268,13 +273,15 @@ gate; the phase commands exist for running or re-running one phase.
 ```
 .workhorse/
   profile.yml          the client profile (committed)
-  active               id of the active change (committed, may be empty)
+.git/workhorse/        control state, never committed
+  active               id of the active change
+  changes/<id>/state.json
 docs/sdlc/
   codebase-map.md
   constraints.md
   <change-id>/
     intent.md  spec.md  evals.md  plan.md  verification.md  review-packet.md
-    release.md  approvals.md  retro.md  state.json  adr/
+    release.md  approvals.md  retro.md  adr/
 docs/handover/         written at Handover
 CLAUDE.md              client-facing, under one page
 ```

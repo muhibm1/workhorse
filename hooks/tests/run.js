@@ -293,6 +293,71 @@ console.log('status/metrics');
   check('metrics computed', m.code === 0 && JSON.parse(m.out).changes === 2, m.err || m.out);
 }
 
+console.log('control state location');
+{
+  // A fresh fixture: these tests move branches and add worktrees, which must not disturb the rest.
+  const cs = path.join(tmp, 'cs');
+  fs.mkdirSync(cs, { recursive: true });
+  const g = (...a) => execFileSync('git', a, { cwd: cs, encoding: 'utf8' }).trim();
+  g('init', '-q'); g('config', 'user.email', 'tester@example.com'); g('config', 'user.name', 'Tester');
+  wh(cs, 'init');
+  g('add', '.'); g('commit', '-q', '-m', 'onboard');   // profile tracked, as in a real client repo
+  const cid = JSON.parse(wh(cs, 'new', 'Survive checkout', '--tier', '1').out).change_id;
+  wh(cs, 'phase', 'build');
+
+  const stateAt = path.join(cs, '.git', 'workhorse', 'changes', cid, 'state.json');
+  check('state.json lives in the git common dir', fs.existsSync(stateAt));
+  check('the active change lives in the git common dir',
+    fs.readFileSync(path.join(cs, '.git', 'workhorse', 'active'), 'utf8').trim() === cid);
+  check('no state.json is written into docs/sdlc', !fs.existsSync(path.join(cs, 'docs', 'sdlc', cid, 'state.json')));
+  check('.gitignore covers the legacy active file', fs.readFileSync(path.join(cs, '.gitignore'), 'utf8').includes('.workhorse/active'));
+
+  // The bug this guards: checking out the change branch rewrote tracked state from the branch point,
+  // so the active change went empty, the phase went backwards, and every state-driven hook stood down.
+  g('checkout', '-q', '-b', 'elsewhere', 'HEAD');
+  g('commit', '-q', '--allow-empty', '-m', 'other work');
+  check('the active change survives a branch checkout', wh(cs, 'active').out === cid);
+  check('the phase survives a branch checkout', wh(cs, 'state', 'get', 'phase').out === 'build');
+
+  // Worktrees share the same state, so hooks enforce inside builder worktrees too.
+  const wt = path.join(tmp, 'cs-wt');
+  g('worktree', 'add', '-q', wt, '-b', 'builder-t1');
+  check('a worktree sees the same active change', wh(wt, 'active').out === cid);
+  check('a worktree sees the same phase', wh(wt, 'state', 'get', 'phase').out === 'build');
+  wh(wt, 'mode', 'fix');
+  check('a change made from a worktree is visible in the main checkout', wh(cs, 'state', 'get', 'mode').out === 'fix');
+  const wtTestEdit = { session_id: 's', cwd: wt, hook_event_name: 'PreToolUse', tool_name: 'Edit',
+    tool_input: { file_path: path.join(wt, 'tests', 'a.test.js') } };
+  check('test-lock enforces inside a builder worktree', decision(hook('test-lock.js', wtTestEdit)) === 'deny');
+  wh(cs, 'mode', 'normal');
+
+  // Control state is managed by the CLI only, including from a worktree, where it sits outside the root.
+  const editMain = { session_id: 's', cwd: cs, hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: stateAt } };
+  const writeWt = { session_id: 's', cwd: wt, hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: stateAt } };
+  check('protect-paths denies editing control state', decision(hook('protect-paths.js', editMain)) === 'deny');
+  check('protect-paths denies editing control state from a worktree', decision(hook('protect-paths.js', writeWt)) === 'deny');
+}
+
+console.log('legacy state migration');
+{
+  const lg = path.join(tmp, 'legacy');
+  fs.mkdirSync(lg, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: lg });
+  wh(lg, 'init');
+  // Lay down the old layout by hand: the active id in .workhorse/active, state.json in docs/sdlc.
+  const lid = '2026-01-01-old-change';
+  fs.mkdirSync(path.join(lg, 'docs', 'sdlc', lid), { recursive: true });
+  fs.writeFileSync(path.join(lg, '.workhorse', 'active'), lid + '\n');
+  fs.writeFileSync(path.join(lg, 'docs', 'sdlc', lid, 'state.json'), JSON.stringify({
+    change_id: lid, title: 'old', tier: 1, tier_override: null, phase: 'review', mode: 'normal',
+    gates: { G1: 'auto', G2: 'approved', G3: 'auto', G4: 'pending', G5: 'pending' }, verification: { status: 'green' },
+  }));
+  check('a legacy active change is still found', wh(lg, 'active').out === lid);
+  check('legacy state is still read', wh(lg, 'state', 'get', 'phase').out === 'review');
+  check('legacy state is migrated into the git common dir',
+    fs.existsSync(path.join(lg, '.git', 'workhorse', 'changes', lid, 'state.json')));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

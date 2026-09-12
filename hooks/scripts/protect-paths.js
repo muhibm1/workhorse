@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // PreToolUse (Edit|Write|MultiEdit|NotebookEdit): deny protected_paths, ask on sensitive_paths.
 'use strict';
+const path = require('path');
 const L = require('./lib');
 
 const input = L.readStdinJson();
@@ -10,6 +11,12 @@ if (ctx.error) return L.failOpen(`protect-paths could not read profile: ${ctx.er
 
 const file = L.toolFilePath(input);
 if (!file) return L.emit({});
+
+// Control state lives in the git common dir and is managed only by the wh CLI. From a worktree it
+// sits outside the worktree root, so check the absolute path before the repo-relative one.
+if (L.isInStateRoot(ctx.root, path.resolve(input.cwd || process.cwd(), file))) {
+  return L.deny('WorkHorse control state (the active change and each state.json) is managed by the wh CLI. Do not edit it directly.');
+}
 const rel = L.relToRoot(ctx.root, file);
 if (rel === null) return L.emit({});
 

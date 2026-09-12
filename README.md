@@ -122,9 +122,10 @@ client's `.claude/skills/` and naming it in the profile's `notes`.
 
 ```
 .workhorse/profile.yml      the client profile (hooks and agents read it)
-.workhorse/active           id of the active change
+.git/workhorse/             control state, never committed: the active change and each
+                            change's state.json, shared by every worktree
 docs/sdlc/<change-id>/      intent, spec, evals, plan, verification, review-packet,
-                            release, approvals, retro, state.json, adr/, verify-logs/
+                            release, approvals, retro, adr/, verify-logs/
 docs/handover/              written at handover
 CLAUDE.md                   one page, client-facing
 ```
