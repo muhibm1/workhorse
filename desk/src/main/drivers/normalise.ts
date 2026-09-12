@@ -36,7 +36,7 @@ export function createNormaliser(now: () => number): (msg: unknown) => RunEvent[
         case 'rate_limit_event':
           return fromRateLimit(msg, at);
         case 'result':
-          return [fromResult(msg, at)];
+          return fromResult(msg, at);
         default:
           return [];
       }
@@ -156,16 +156,27 @@ function fromRateLimit(msg: Rec, at: number): RunEvent[] {
   return [{ t: 'notice', text: parts.join(' '), at }];
 }
 
-function fromResult(msg: Rec, at: number): RunEvent {
-  return {
+/**
+ * The run's final message. When the CLI flags it `is_error` (session or usage limit, API error,
+ * turn cap) the reason is in `result`, so an error event follows it. A live run resumed 115 times,
+ * each ending on "You've hit your session limit", with nothing on screen to say so.
+ */
+function fromResult(msg: Rec, at: number): RunEvent[] {
+  const subtype = str(msg.subtype);
+  const isError = msg.is_error === true || subtype.startsWith('error');
+  const result: RunEvent = {
     t: 'result',
-    subtype: str(msg.subtype),
+    subtype,
     ...optional('costUsd', num(msg.total_cost_usd)),
     ...optional('numTurns', num(msg.num_turns)),
     ...optional('durationMs', num(msg.duration_ms)),
     ...optional('sessionId', str(msg.session_id) || undefined),
+    ...optional('isError', isError || undefined),
     at,
   };
+  if (!isError) return [result];
+  const reason = str(msg.result).trim() || strings(msg.errors).join('; ') || `run ended: ${subtype || 'error'}`;
+  return [result, { t: 'error', message: reason, at }];
 }
 
 type Rec = Record<string, unknown>;

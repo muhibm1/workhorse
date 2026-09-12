@@ -47,3 +47,31 @@ describe('normalise (explore-subagent fixture)', () => {
     expect(n(null)).toEqual([]); expect(n('x')).toEqual([]); expect(n({})).toEqual([]);
   });
 });
+
+describe('normalise (error results)', () => {
+  const n = () => createNormaliser(() => 9);
+
+  it('turns an is_error result into a result plus an error carrying the reason', () => {
+    // The shape a run ended with 115 times in a live test: subtype "success", is_error true.
+    const ev = n()({
+      type: 'result', subtype: 'success', is_error: true, total_cost_usd: 0,
+      result: "You've hit your session limit · resets 2:40am (America/Chicago)",
+    });
+    expect(ev).toEqual([
+      { t: 'result', subtype: 'success', costUsd: 0, isError: true, at: 9 },
+      { t: 'error', message: "You've hit your session limit · resets 2:40am (America/Chicago)", at: 9 },
+    ]);
+  });
+
+  it('falls back to the errors list, then the subtype, when there is no result text', () => {
+    expect(n()({ type: 'result', subtype: 'error_during_execution', errors: ['a', 'b'] })[1])
+      .toEqual({ t: 'error', message: 'a; b', at: 9 });
+    expect(n()({ type: 'result', subtype: 'error_max_turns' })[1])
+      .toEqual({ t: 'error', message: 'run ended: error_max_turns', at: 9 });
+  });
+
+  it('a successful result stays a single event with no isError flag', () => {
+    const ev = n()({ type: 'result', subtype: 'success', is_error: false, result: 'done' });
+    expect(ev).toEqual([{ t: 'result', subtype: 'success', at: 9 }]);
+  });
+});

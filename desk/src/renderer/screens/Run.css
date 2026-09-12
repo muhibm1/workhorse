@@ -111,6 +111,15 @@
   justify-content: center;
 }
 
+.run-error {
+  max-width: 560px;
+  margin: 0 0 10px;
+  color: var(--coral);
+  font-size: 13px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .run-gate-actions {
   display: flex;
   gap: 10px;

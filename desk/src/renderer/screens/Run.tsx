@@ -362,6 +362,11 @@ export function Run({ repoId }: RunProps) {
             )}
           </div>
 
+          {run && !run.running && run.error && (
+            <p className="run-error" role="alert">
+              {`Last run stopped: ${run.error}`}
+            </p>
+          )}
           <div className="run-primary">
             {run?.running ? (
               <Button tone="danger" onClick={() => void stopRun(repoId)}>
