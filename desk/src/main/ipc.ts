@@ -1,4 +1,6 @@
 import { readFile, realpath } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join as joinPath } from 'node:path';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { IPC } from '@shared/types';
 import type {
@@ -155,6 +157,11 @@ function parseApproveResult(result: WhResult): ApproveResult {
  * events to the renderer. Never trusts a renderer-supplied filesystem path: every handler that
  * touches a repo takes a `repoId` and resolves the path through `deps.registry` (spec 5.1).
  */
+/** A repo is onboarded once `/workhorse:onboard` has written its profile. */
+function isOnboarded(repoPath: string): boolean {
+  return existsSync(joinPath(repoPath, '.workhorse', 'profile.yml'));
+}
+
 export function registerIpc(deps: IpcDeps): void {
   const { ipcMain, dialog, win, registry, settings, watcher, driverFor, pluginPath } = deps;
 
@@ -195,12 +202,15 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(IPC.systemCheck, () => deps.syscheck(pluginPath));
 
   // -- repos -----------------------------------------------------------------
-  ipcMain.handle(IPC.reposList, () => registry.list());
+  ipcMain.handle(IPC.reposList, () =>
+    registry.list().map((r) => ({ ...r, onboarded: isOnboarded(r.path) })),
+  );
 
   ipcMain.handle(IPC.reposAdd, (_e, path: string) => {
     const ref = registry.add(path);
     watcher.watch(ref);
-    return ref;
+    // A copy: the registry persists refs, and `onboarded` must never be written to disk.
+    return { ...ref, onboarded: isOnboarded(ref.path) };
   });
 
   ipcMain.handle(IPC.reposRemove, (_e, id: string) => {
@@ -268,6 +278,7 @@ export function registerIpc(deps: IpcDeps): void {
 
   // -- watch -------------------------------------------------------------
   watcher.on((e) => {
-    win.webContents.send(IPC.watchDigest, e);
+    const repo = registry.get(e.repoId);
+    win.webContents.send(IPC.watchDigest, { ...e, onboarded: repo ? isOnboarded(repo.path) : false });
   });
 }

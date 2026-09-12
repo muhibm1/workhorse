@@ -137,7 +137,7 @@ describe('window.paddock isolation via the api() accessor', () => {
     // property on a captured object sidesteps that, since property narrowing isn't affected.
     const captured: {
       onEvent: ((e: RunEnvelope) => void) | null;
-      onDigest: ((e: { repoId: string; digests: ChangeDigest[] }) => void) | null;
+      onDigest: ((e: { repoId: string; digests: ChangeDigest[]; onboarded: boolean }) => void) | null;
     } = { onEvent: null, onDigest: null };
 
     const fakePaddock: Partial<PaddockApi> = {
@@ -189,7 +189,10 @@ describe('window.paddock isolation via the api() accessor', () => {
     expect((usePaddockStore.getState().runs.repo1 as RunState).sessionId).toBe('s1');
 
     expect(captured.onDigest).not.toBeNull();
-    captured.onDigest?.({ repoId: 'repo1', digests: [digest('c2', '2026-02-01T00:00:00.000Z')] });
+    captured.onDigest?.({ repoId: 'repo1', digests: [digest('c2', '2026-02-01T00:00:00.000Z')], onboarded: true });
+    // A watcher event carries onboarded, and the store must copy it onto the repo so Fleet stops
+    // offering to onboard a repo whose profile now exists.
+    expect(usePaddockStore.getState().repos.find((r) => r.id === 'repo1')?.onboarded).toBe(true);
     expect(usePaddockStore.getState().digests.repo1?.[0].change_id).toBe('c2');
   });
 });

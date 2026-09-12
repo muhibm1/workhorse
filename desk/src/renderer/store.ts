@@ -62,6 +62,7 @@ export interface PaddockState {
   applyEvent(e: RunEnvelope): void;
   /** Replaces `digests[repoId]`, newest `updated_at` first (see `activeDigest`). */
   applyDigest(repoId: string, digests: ChangeDigest[]): void;
+  setOnboarded(repoId: string, onboarded: boolean): void;
   /** The newest digest for a repo by `updated_at`, or `null` when none has arrived yet. */
   activeDigest(repoId: string): ChangeDigest | null;
 }
@@ -82,7 +83,10 @@ function subscribeOnce(get: () => PaddockState): void {
   if (subscribed) return;
   subscribed = true;
   api().run.onEvent((e) => get().applyEvent(e));
-  api().watch.onDigest((e) => get().applyDigest(e.repoId, e.digests));
+  api().watch.onDigest((e) => {
+    get().applyDigest(e.repoId, e.digests);
+    get().setOnboarded(e.repoId, e.onboarded);
+  });
 }
 
 /** Test-only: lets a test re-exercise the subscribe-once path. */
@@ -236,6 +240,12 @@ export const usePaddockStore = create<PaddockState>()((set, get) => ({
 
   go(screen) {
     set({ screen });
+  },
+
+  setOnboarded(repoId, onboarded) {
+    set((s) => ({
+      repos: s.repos.map((r) => (r.id === repoId && r.onboarded !== onboarded ? { ...r, onboarded } : r)),
+    }));
   },
 
   async addRepo() {
