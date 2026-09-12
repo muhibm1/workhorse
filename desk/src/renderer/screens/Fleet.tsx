@@ -113,7 +113,7 @@ function FleetCard({ repo, digest, run, onboarded, onStartOnboard, onOpen }: Fle
         className="fleet-card-field"
         width={CARD_WIDTH}
         height={CARD_HEIGHT}
-        color="var(--hairline)"
+        color="var(--ink-faint)"
         density={density}
         mask={mask}
       />
