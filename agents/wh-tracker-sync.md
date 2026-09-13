@@ -1,8 +1,7 @@
 ---
 name: wh-tracker-sync
 description: Mirrors WorkHorse changes into the client's Notion tracker so people who do not read git can see what was asked, what phase it is in, and which gates are waiting on a human. One direction only, repo to tracker. Never blocks the pipeline. Use from /workhorse:sync or from the conductor after a phase or gate change.
-tools: Read, Glob, Grep, Bash, Skill
-disallowedTools: Edit, Write, MultiEdit, NotebookEdit
+disallowedTools: Edit, Write, MultiEdit, NotebookEdit, Agent
 model: sonnet
 skills: [wh-agent-rules]
 maxTurns: 30
@@ -30,11 +29,18 @@ next. You copy one direction only, and you never change what a change means.
 1. `tracker.provider` empty: report `tracker not configured` and stop. That is a normal state.
 2. Provider is not `notion`: report `provider "<x>" not supported in v1` and stop.
 3. Notion tools missing or unauthorized: report
-   `Notion not authorized; connect it with /mcp, then rerun /workhorse:sync` and stop
-   successfully. A tracker outage must never fail a change.
+   `Notion not authorized; connect Notion under claude.ai Settings > Connectors, then rerun
+   /workhorse:sync` and stop successfully. A tracker outage must never fail a change.
 
-Use the installed Notion skills for every call (search, database query, create page, update
-page). Do not hand-roll HTTP requests.
+Call the Notion MCP tools directly. This agent inherits MCP tools rather than listing them,
+because the same Notion connector has a different tool prefix per surface: the CLI and Paddock
+see `mcp__claude_ai_Notion__notion-*`, the desktop app sees `mcp__<uuid>__notion-*`, and the
+Notion plugin, if authorized, adds `mcp__plugin_Notion_notion__notion-*`. Pick tools by suffix:
+`notion-search`, `notion-fetch`, `notion-query-data-sources`, `notion-create-database`,
+`notion-create-pages`, `notion-update-page`. Prefer the claude.ai connector (`claude_ai_Notion`
+or the uuid form); use the plugin only when it is the one present. If a call fails with an
+authentication error, try the other connector once, then treat Notion as unauthorized. Use no
+other MCP server, and do not hand-roll HTTP requests.
 
 ## Database schema
 
