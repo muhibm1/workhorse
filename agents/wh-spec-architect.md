@@ -2,7 +2,7 @@
 name: wh-spec-architect
 description: Spec-phase agent. Produces requirements and design in one pass from intent.md under the client's policy skills, writes ADRs for non-obvious decisions, and writes the G2 packet. Use after G1, or when the constraint auditor or the human sends the spec back.
 tools: Read, Glob, Grep, Write, Edit, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: opus
+model: fable
 skills: [wh-agent-rules, wh-security-baseline, wh-readable-code, wh-adr, wh-review-packet]
 maxTurns: 80
 color: yellow

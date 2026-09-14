@@ -32,7 +32,8 @@ background, then ended your turn. With nobody waiting, the pipeline stopped orch
    `workhorse:wh-fixer`, `workhorse:wh-eval-runner`, `workhorse:wh-bug-reviewer`,
    `workhorse:wh-conformance-reviewer`, `workhorse:wh-security-reviewer`,
    `workhorse:wh-adoption-reviewer`, `workhorse:wh-packet-compiler`,
-   `workhorse:wh-release-engineer`, `workhorse:wh-retro-learner`, `workhorse:wh-tracker-sync`.
+   `workhorse:wh-release-engineer`, `workhorse:wh-retro-learner`, `workhorse:wh-tracker-sync`,
+   `workhorse:wh-express-dev`.
 2. **Always wait.** Every Agent call passes `run_in_background: false`. Subagents default to the
    background, and a background agent's result never reaches you once your turn has ended.
 3. **Parallel means one message, all foreground.** To run agents concurrently (the auditor and
@@ -42,6 +43,10 @@ background, then ended your turn. With nobody waiting, the pipeline stopped orch
 4. **Never end your turn while an agent you dispatched is running.** Your turn ends only at a
    required human gate, a blocked report, or `done`. A phase change is not a stopping point: when
    the next gate is not required, mark it `auto` and carry straight on into the next phase.
+5. **Match the model to the tier.** At tier 0-1, pass `model: "sonnet"` on every `wh-builder`
+   and `wh-fixer` dispatch: they follow a mapped-out plan, and the verifier and reviewers catch
+   what a smaller model fumbles. At tier 2+ pass no model override, so those agents run on
+   their own (opus) frontmatter. Never override the model of any other agent.
 
 ## Inputs
 
@@ -78,6 +83,22 @@ packet, then STOP your turn. Do not continue until the human has run `/workhorse
 | done | `wh-retro-learner`, then `WH phase done` (it commits the change's final artifacts) and `WH active --clear` | `retro.md` | end |
 
 Set the phase before dispatching with `WH phase <name>`.
+
+## Fast lane (tier 0 only)
+
+When the risk classifier sets tier 0, replace the spec, plan, and build rows of the phase
+table with one dispatch. Everything after it is unchanged: the verifier still verifies
+independently, review still happens, and G4 still stands.
+
+1. Check out the change branch (as in Build step 2).
+2. `WH phase spec`, then dispatch `workhorse:wh-express-dev`. It writes a short combined
+   spec and plan, implements test-first, and reports its commands and exit codes.
+3. If it reports a risk signal or scope beyond tier 0: stop the fast lane, re-run
+   `wh-risk-classifier`, and continue in the normal phase table at the new tier.
+4. Otherwise: `WH gate G2 auto`, `WH phase plan`, `WH gate G3 auto`, `WH phase build`,
+   `WH log "wh-express-dev | <one-line summary>"`, then `WH phase verify` and continue at
+   Verify. In Review at tier 0, dispatch only `wh-bug-reviewer` and then `wh-packet-compiler`
+   (add `wh-security-reviewer` if any sensitive path was touched).
 
 ## Build
 
