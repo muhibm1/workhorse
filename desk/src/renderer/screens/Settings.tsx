@@ -89,6 +89,26 @@ export function Settings() {
     }
   }
 
+  const [notifyInput, setNotifyInput] = useState<string>(settings?.notifyUrl ?? '');
+  const [notifySaved, setNotifySaved] = useState(false);
+  const [notifyError, setNotifyError] = useState<string | null>(null);
+  useEffect(() => {
+    setNotifyInput(settings?.notifyUrl ?? '');
+  }, [settings?.notifyUrl]);
+
+  async function onSaveNotify() {
+    setNotifyError(null);
+    const updated = await window.paddock.settings.set({ notifyUrl: notifyInput.trim() || null });
+    usePaddockStore.setState({ settings: updated });
+    // The main process drops URLs it refuses (only https, or http to localhost, are accepted),
+    // so a submitted value that did not stick is the user's signal something was wrong with it.
+    if (notifyInput.trim() && updated.notifyUrl !== notifyInput.trim()) {
+      setNotifyError('URL not accepted: use https:// (or http://localhost for a local ntfy).');
+    } else {
+      setNotifySaved(true);
+    }
+  }
+
   async function onSaveTools() {
     if (!selectedRepoId || !settings) return;
     const updated = await window.paddock.settings.set({
@@ -210,6 +230,34 @@ export function Settings() {
             </div>
           </>
         )}
+      </Panel>
+
+      <Panel title="Phone notifications" className="settings-panel">
+        <p className="settings-hint">
+          When a change reaches a human gate, Paddock POSTs a push notification to this URL.
+          Works with ntfy.sh: install the ntfy app, subscribe to a topic, and paste
+          https://ntfy.sh/&lt;your-topic&gt; here. Leave empty to turn off.
+        </p>
+        <div className="settings-key-row">
+          <input
+            id="notify-url"
+            type="text"
+            className="settings-input"
+            placeholder="https://ntfy.sh/my-private-topic"
+            value={notifyInput}
+            onChange={(e) => {
+              setNotifyInput(e.target.value);
+              setNotifySaved(false);
+              setNotifyError(null);
+            }}
+            autoComplete="off"
+          />
+          <Button tone="primary" size="sm" onClick={onSaveNotify}>
+            Save
+          </Button>
+          {notifySaved && <Badge tone="mint">Saved</Badge>}
+        </div>
+        {notifyError && <p className="settings-error">{notifyError}</p>}
       </Panel>
 
       <Panel title="Prerequisites" className="settings-panel">

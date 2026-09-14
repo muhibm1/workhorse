@@ -32,14 +32,14 @@ describe('settings', () => {
 
   it('returns defaults when nothing is stored', () => {
     const settings = createSettings(dir, fakeCrypto());
-    expect(settings.get()).toEqual({ backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark' });
+    expect(settings.get()).toEqual({ backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark', notifyUrl: null });
     expect(settings.hasApiKey()).toBe(false);
   });
 
   it('persists a patch and re-reads it', () => {
     const settings = createSettings(dir, fakeCrypto());
     const after = settings.set({ backend: 'sdk', pluginPath: '/custom/plugin', allowedTools: { r1: ['Read'] } });
-    expect(after).toEqual({ backend: 'sdk', pluginPath: '/custom/plugin', allowedTools: { r1: ['Read'] }, theme: 'dark' });
+    expect(after).toEqual({ backend: 'sdk', pluginPath: '/custom/plugin', allowedTools: { r1: ['Read'] }, theme: 'dark', notifyUrl: null });
 
     const reopened = createSettings(dir, fakeCrypto());
     expect(reopened.get()).toEqual(after);
@@ -103,5 +103,35 @@ describe('settings.set patch validation (security review finding)', () => {
   it('survives a non-object patch without throwing', () => {
     const s = createSettings(dir, fakeCrypto());
     expect(s.set(null as never).backend).toBe('cli');
+  });
+});
+
+describe('notifyUrl validation', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'paddock-settings-'));
+  });
+
+  it('accepts https anywhere and http only to loopback', () => {
+    const settings = createSettings(dir, fakeCrypto());
+    expect(settings.set({ notifyUrl: 'https://ntfy.sh/my-topic' }).notifyUrl).toBe('https://ntfy.sh/my-topic');
+    expect(settings.set({ notifyUrl: 'http://localhost:8080/t' }).notifyUrl).toBe('http://localhost:8080/t');
+    expect(settings.set({ notifyUrl: 'http://127.0.0.1/t' }).notifyUrl).toBe('http://127.0.0.1/t');
+  });
+
+  it('rejects cleartext to a real host, other schemes, and garbage, keeping the previous value', () => {
+    const settings = createSettings(dir, fakeCrypto());
+    settings.set({ notifyUrl: 'https://ntfy.sh/keep' });
+    for (const bad of ['http://evil.example/t', 'ftp://x/t', 'javascript:alert(1)', 'not a url', 'x'.repeat(3000)]) {
+      expect(settings.set({ notifyUrl: bad }).notifyUrl).toBe('https://ntfy.sh/keep');
+    }
+  });
+
+  it('null and empty string turn notifications off', () => {
+    const settings = createSettings(dir, fakeCrypto());
+    settings.set({ notifyUrl: 'https://ntfy.sh/t' });
+    expect(settings.set({ notifyUrl: null }).notifyUrl).toBeNull();
+    settings.set({ notifyUrl: 'https://ntfy.sh/t' });
+    expect(settings.set({ notifyUrl: '  ' as unknown as string }).notifyUrl).toBeNull();
   });
 });

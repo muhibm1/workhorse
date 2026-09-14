@@ -18,6 +18,7 @@ import type { createSettings } from './settings';
 import type { Watcher } from './watcher';
 import type { RunDriver, RunHandle } from './drivers';
 import type { WhResult } from './wh';
+import { createAutoResume, createGateNotifier, createStallTimer, postNotification } from './autopilot';
 
 /**
  * Structural (not `Electron.*`) types for the three Electron objects `registerIpc` touches, so
@@ -168,14 +169,37 @@ export function registerIpc(deps: IpcDeps): void {
   /** At most one running run per repo (plan Task 10): keyed by repoId, cleared once the
    *  driver's event stream ends (including on `stop()`, which drains it to `exit`). */
   const activeRuns = new Map<string, RunHandle>();
+  /** Last run id per repo, so autopilot notices land on the run the renderer is showing. */
+  const lastRunId = new Map<string, string>();
+
+  function sendNotice(repoId: string, text: string): void {
+    const runId = lastRunId.get(repoId);
+    if (!runId) return;
+    const envelope: RunEnvelope = { runId, repoId, event: { t: 'notice', text, at: Date.now() } };
+    win.webContents.send(IPC.runEvent, envelope);
+  }
+
+  const autoResume = createAutoResume({
+    resume: (repoId) => void startRun(repoId, RESUME_PROMPT),
+    emit: sendNotice,
+    hasActiveRun: (repoId) => activeRuns.has(repoId),
+  });
+
+  const STALL_MS = 10 * 60_000;
 
   async function pumpEvents(repoId: string, handle: RunHandle): Promise<void> {
+    const stall = createStallTimer(STALL_MS, () =>
+      sendNotice(repoId, 'no output for 10 minutes; the run may be stalled — check the log, or Stop and Resume'),
+    );
     try {
       for await (const event of handle.events) {
+        stall.poke();
         const envelope: RunEnvelope = { runId: handle.id, repoId, event };
         win.webContents.send(IPC.runEvent, envelope);
+        autoResume.onEvent(repoId, event);
       }
     } finally {
+      stall.stop();
       if (activeRuns.get(repoId) === handle) activeRuns.delete(repoId);
     }
   }
@@ -194,6 +218,7 @@ export function registerIpc(deps: IpcDeps): void {
       apiKey: deps.safe.readApiKey(),
     });
     activeRuns.set(repoId, handle);
+    lastRunId.set(repoId, handle.id);
     void pumpEvents(repoId, handle);
     return { runId: handle.id };
   }
@@ -239,15 +264,21 @@ export function registerIpc(deps: IpcDeps): void {
   });
 
   // -- run -------------------------------------------------------------------
-  ipcMain.handle(IPC.runStart, (_e, repoId: string, prompt: string) =>
-    startRun(repoId, buildStartPrompt(prompt)),
-  );
+  // Any human action on a repo's runs supersedes a scheduled auto-resume for it.
+  ipcMain.handle(IPC.runStart, (_e, repoId: string, prompt: string) => {
+    autoResume.cancel(repoId);
+    return startRun(repoId, buildStartPrompt(prompt));
+  });
 
-  ipcMain.handle(IPC.runResume, (_e, repoId: string) => startRun(repoId, RESUME_PROMPT));
+  ipcMain.handle(IPC.runResume, (_e, repoId: string) => {
+    autoResume.cancel(repoId);
+    return startRun(repoId, RESUME_PROMPT);
+  });
 
   ipcMain.handle(IPC.runStop, async (_e, runId: string) => {
     const entry = [...activeRuns.entries()].find(([, handle]) => handle.id === runId);
     if (!entry) return;
+    autoResume.cancel(entry[0]);
     await entry[1].stop();
   });
 
@@ -277,8 +308,14 @@ export function registerIpc(deps: IpcDeps): void {
   });
 
   // -- watch -------------------------------------------------------------
+  const gateNotifier = createGateNotifier({
+    getUrl: () => settings.get().notifyUrl,
+    post: (url, n) => void postNotification(url, n),
+  });
+
   watcher.on((e) => {
     const repo = registry.get(e.repoId);
     win.webContents.send(IPC.watchDigest, { ...e, onboarded: repo ? isOnboarded(repo.path) : false });
+    gateNotifier.onDigests(e.repoId, repo?.name ?? e.repoId, e.digests);
   });
 }

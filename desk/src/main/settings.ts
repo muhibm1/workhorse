@@ -2,7 +2,30 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import type { Settings } from '@shared/types';
 
-const DEFAULTS: Settings = { backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark' };
+const DEFAULTS: Settings = { backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark', notifyUrl: null };
+
+/**
+ * A notify URL must be somewhere a notification can safely go: https anywhere, or plain http
+ * only to the loopback host (a local ntfy for testing). Anything else — other schemes, other
+ * plain-http hosts — is rejected so a renderer compromise cannot turn gate notifications into
+ * a cleartext exfiltration channel.
+ */
+export function sanitiseNotifyUrl(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > 2048) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return undefined;
+  }
+  const loopback = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  if (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && loopback)) return trimmed;
+  return undefined;
+}
 
 /**
  * Shaped like Electron's `safeStorage`, but under names that don't tie this module to Electron:
@@ -57,6 +80,10 @@ function sanitisePatch(patch: unknown): Partial<Settings> {
       );
     }
     clean.allowedTools = tools;
+  }
+  if ('notifyUrl' in p) {
+    const url = sanitiseNotifyUrl(p.notifyUrl);
+    if (url !== undefined) clean.notifyUrl = url;
   }
   return clean;
 }
