@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { applyEvent, createRunState, usePaddockStore, type RunState } from '../src/renderer/store';
-import type { ChangeDigest, PaddockApi, RunEnvelope, RunEvent, SysCheck } from '../src/shared/types';
+import type { ChangeDigest, PaddockApi, RunEnvelope, RunEvent, Settings, SysCheck } from '../src/shared/types';
 
 function envelope(event: RunEvent, repoId = 'repo1', runId = 'run1'): RunEnvelope {
   return { runId, repoId, event };
@@ -166,8 +166,8 @@ describe('window.paddock isolation via the api() accessor', () => {
     const fakePaddock: Partial<PaddockApi> = {
       system: { check: async () => sys },
       settings: {
-        get: async () => ({ backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark' }),
-        set: async (p) => ({ backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark', ...p }),
+        get: async () => ({ backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark', notifyUrl: null }),
+        set: async (p) => ({ backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark', notifyUrl: null, ...p } as Settings),
         setApiKey: async () => {},
         hasApiKey: async () => false,
         clearApiKey: async () => {},

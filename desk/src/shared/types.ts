@@ -58,6 +58,8 @@ export interface Settings {
   pluginPath: string | null;
   allowedTools: Record<string, string[]>;
   theme: 'dark';
+  /** ntfy-style push URL for "a gate is waiting on you" notifications; null = off. */
+  notifyUrl: string | null;
 }
 
 export interface ApproveResult { gate: Gate; status: 'approved' | 'rejected'; who: string; at: string; committed: string | boolean; }

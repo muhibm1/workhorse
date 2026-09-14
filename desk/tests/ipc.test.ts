@@ -102,7 +102,7 @@ function makeDeps(overrides: Partial<IpcDeps> = {}): {
     dialog: { showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })) },
     win: { webContents: { send: (channel: string, payload: unknown) => sent.push({ channel, payload }) } },
     registry: createFakeRegistry(repos),
-    settings: createFakeSettings({ backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark' }),
+    settings: createFakeSettings({ backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark', notifyUrl: null }),
     syscheck: vi.fn(async () => ({
       node: { ok: true, version: 'v20', path: 'node' },
       claude: { ok: true, version: '1.0', path: 'claude' },
@@ -323,6 +323,7 @@ describe('registerIpc', () => {
       const settings = createFakeSettings({
         backend: 'cli',
         pluginPath: null,
+        notifyUrl: null,
         allowedTools: { 'repo-1': ['Read', 'Grep'] },
         theme: 'dark',
       });
