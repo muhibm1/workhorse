@@ -2,7 +2,7 @@
 name: wh-implementation-planner
 description: Plan-phase agent. Turns an approved spec into plan.md, a test-first task list grouped into file-disjoint waves so up to profile.build.max_parallel builders can run at once, with a verification plan, rollback, and the G3 packet. Use after G2, or to re-plan when a builder is blocked.
 tools: Read, Glob, Grep, Write, Edit
-model: opus
+model: fable
 skills: [wh-agent-rules, wh-readable-code, wh-adr, wh-review-packet]
 maxTurns: 60
 color: orange
