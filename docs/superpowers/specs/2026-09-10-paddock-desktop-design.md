@@ -86,31 +86,36 @@ If `node` or `claude` is missing, a setup screen explains what to install and wh
 
 ### 3.1 Orb
 
-The `thinking-orbs` engine (MIT) is used for geometry only. Each frame,
-`MODE_FRAMES[mode](size, t, opts)` returns dots and lines; Paddock paints them with its own
-painter so the orb takes the app palette rather than greyscale. Size 320 px, with `opts`
-derived from the library's 64 px preset scaled by `radiusScale` and `scaleCounts` so dot
-density stays legible.
+The `thinking-orbs` engine (MIT) supplies geometry, depth shading and motion, and the orb must
+look and move the way libraries.dev/orbs shows it. Each frame,
+`MODE_FRAMES[mode](size, t, opts)` returns dots and lines. Size 320 px, with `opts` the
+library's full-size profile (the one its radii and counts were tuned for, a 300 pt frame)
+carrying the 64 px preset's speed and per-state extras; `t` is page time, as in the library's
+own component. (Revised 2026-09-15: the earlier 64 px preset scaled by guessed multipliers
+rendered sparse and flat.)
 
 State mapping, driven by the merged run state:
 
 | Situation | Orb state | Speed | Ring |
 |---|---|---|---|
-| no active change | breathing | 0.6 | none |
+| no active change | breathing | 1 | none |
 | intent | composing | 1 | cyan |
 | spec | weaving | 1 | cyan |
 | plan | shaping | 1 | cyan |
-| build | working | 1.2 | cyan, satellite count shown |
+| build | working | 1 | cyan, satellite count shown |
 | verify | solving | 1 | cyan |
 | review | searching | 1 | cyan |
 | deploy | connecting | 1 | cyan |
-| stopped at a gate | breathing | 0.5 | amber, pulsing |
-| run error | breathing | 0.3 | coral, static |
-| done | breathing | 0.6 | mint, fades after 5 s |
+| stopped at a gate | breathing | 1 | amber, pulsing |
+| run error | breathing | 1 | coral, static |
+| done | breathing | 1 | mint, fades after 5 s |
 
-Palette painting: dot ink value `white` (0 dark, 1 light) maps to a two-stop mix from the ring
-colour at 35% to the ring colour at 100%; near dots (higher `z`) are brighter. Lines use the
-ring colour at 40%. `prefers-reduced-motion` freezes the orb on a still frame.
+Palette painting keeps the engine's shading: its dark-theme ink (1 - `white`, so near dots are
+bright and far dots dim) multiplies a two-stop gradient for the ring tone (cyan to violet while
+running, amber to pink at a gate, coral to pink on error, mint to cyan when done), with the
+engine's alpha and draw order unchanged. With no active change the orb is the engine's own
+grey. The ring is a CSS circle at the orb's edge in the tone colour with a soft glow; at a gate
+it pulses. `prefers-reduced-motion` freezes the orb on a still frame and stops the pulse.
 
 ### 3.2 Radial controls
 
@@ -125,18 +130,24 @@ stations, and close on outside click or Escape.
 
 | Token | Value | Use |
 |---|---|---|
-| `--ground` | `#0B0F14` | window background |
-| `--panel` | `#111820` | cards, rails, sheets |
-| `--panel-2` | `#16202A` | hover, inputs |
-| `--hairline` | `#1E2A35` | rules, grid, brackets |
-| `--ink` | `#E6EDF3` | primary text |
-| `--ink-soft` | `#9FB0BF` | secondary text |
-| `--ink-faint` | `#5E6F7E` | labels, disabled |
-| `--cyan` | `#7DE3F0` | agents, activity, focus |
-| `--amber` | `#F2B45C` | human required, gates |
-| `--mint` | `#6EE7B7` | verification green, done |
-| `--coral` | `#F87171` | red, errors, destructive |
-| `--violet` | `#A78BFA` | tier 3 only |
+The Dracula palette (revised 2026-09-15 from the original navy scheme).
+
+| Token | Value | Use |
+|---|---|---|
+| `--ground` | `#21222c` | window background |
+| `--panel` | `#282a36` | cards, rails, sheets |
+| `--panel-2` | `#313442` | raised: hover, pills, stations |
+| `--hairline` | `#3a3d4f` | borders and rules (`#44475a` at 55%) |
+| `--hairline-strong` | `#44475a` | hovered borders |
+| `--ink` | `#f8f8f2` | primary text |
+| `--ink-soft` | `#c4c7d4` | secondary text |
+| `--ink-faint` | `#6272a4` | labels, disabled (Dracula comment) |
+| `--cyan` | `#8be9fd` | agents, activity, running |
+| `--amber` | `#ffb86c` | human required, gates |
+| `--mint` | `#50fa7b` | verification green, done |
+| `--coral` | `#ff5555` | red, errors, destructive |
+| `--violet` | `#bd93f9` | the accent: primary actions, focus, active nav; tier 3 |
+| `--pink` | `#ff79c6` | second gradient stop |
 
 Dark only. Every colour is a token; nothing is literal in components.
 
@@ -145,9 +156,12 @@ Dark only. Every colour is a token; nothing is literal in components.
 - UI: **Manrope** 400/500/600/700, loaded from a bundled woff2 (no network at runtime).
 - Data, labels, ASCII: **JetBrains Mono** 400/500/700, bundled.
 - Labels are uppercase mono at 0.68 rem with 0.1 em tracking. Numbers use tabular figures.
-- Panels have corner brackets: four 8 px L-shapes in `--hairline`, brightening to `--cyan` on
-  focus or when the panel represents something active.
-- A 24 px hairline grid is painted on the Run screen background at 6% opacity.
+- Surfaces are continuous and rounded: panels 16 px, controls 12 px, badges are pills, the Run
+  stage 24 px. A panel is a hairline border with a soft drop shadow; the one that wants
+  attention takes an accent (or, for a card waiting on you, amber) border and glow.
+- Navigation is a 60 px icon rail (Fleet, Run, Settings) under an accent logo tile, with a
+  52 px top bar holding the breadcrumb and a "waiting on you" pill.
+- A 24 px hairline grid is a faint texture inside the Run stage only.
 - Metric bars: 2 px tall, `--hairline` track, colour fill.
 
 ### 4.3 ASCII field

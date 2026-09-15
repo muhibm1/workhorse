@@ -19,7 +19,7 @@ export function Setup() {
   const go = usePaddockStore((s) => s.go);
 
   return (
-    <main className="screen setup-screen grid-bg">
+    <main className="screen setup-screen">
       <Panel title="Setup" className="setup-panel" active>
         <p>
           Paddock needs Node.js 18 or newer and the <span className="mono">claude</span> CLI on

@@ -208,7 +208,7 @@ export function Gate({ repoId, gate }: GateScreenProps) {
   const busy = submitting !== null;
 
   return (
-    <div className="gate-screen grid-bg">
+    <div className="gate-screen">
       <Panel className="gate-header" title={`Gate ${gate}`}>
         <div className="gate-header-row">
           <div className="gate-header-item">

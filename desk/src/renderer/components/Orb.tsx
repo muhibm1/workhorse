@@ -1,32 +1,17 @@
 /**
- * The centrepiece (spec 3): a palette-painted thinking orb. `thinking-orbs/engine` supplies pure
- * geometry only (`MODE_FRAMES`) — Paddock paints every frame itself so dots take the app's ring
- * colour instead of the library's built-in greyscale ink.
+ * The centrepiece (spec 3): a `thinking-orbs` orb at the quality libraries.dev/orbs shows.
  *
- * Deviation from the plan, confirmed by inspecting `node_modules/thinking-orbs/dist/engine/*.d.ts`
- * and, since a `.d.ts` can list more than a bundle actually re-exports, the built
- * `dist/engine.cjs` module itself (`Object.keys(require('thinking-orbs/dist/engine.cjs'))`):
- * the runtime export list is exactly `MODE_DRAWS, MODE_FRAMES, STATE_TO_MODE, finalizeFrame,
- * makeProj, paint, paintFrame, paintLines, radiusScale, resolvePreset`. `scaleCounts` and
- * `scaleRadii` are declared in `engine/profiles.d.ts` but are NOT part of the `./engine`
- * subpath's public surface (dead-code-eliminated from the bundle since nothing exported from
- * `engine/index.ts` calls them) — `tests/asciiMask.test.ts`'s sibling module hit the same wall
- * with `vnoise` and left the same note. `scaleCounts`/`scaleRadii` are reimplemented locally
- * below, following the key-naming convention the library itself uses (visible by decompiling
- * `engine.cjs`): options ending in `N` are counts (`ghostN`, `nodeN`, `orbitN`, `strandN`),
- * options ending in `R` are base radii (`ghostR`, `nodeR`, `partR`). This is a best-effort match
- * to the library's unexported `scaleCounts`/`scaleRadii`, not a verified reproduction of them.
+ * Geometry, depth shading and motion are the library's own: `MODE_FRAMES` at the 64px preset's
+ * speed, on the full-size profile (`lib/orbProfile.ts`), painted the way the engine's `paint`
+ * paints (matte ink per dot, near dots brighter on dark, far to near). The only change is the
+ * ink: instead of grey, each dot's brightness scales a Dracula gradient for the run's tone, so
+ * the shading survives the colour. Idle (`ring: 'none'`) paints with the engine's grey
+ * `paintFrame` untouched. The tone's ring and its gate pulse are CSS (`.orb-ring`).
  */
 import { useEffect, useMemo, useRef } from 'react';
-import {
-  MODE_FRAMES,
-  STATE_TO_MODE,
-  resolvePreset,
-  radiusScale,
-  type ModeOpts,
-  type OrbFrame,
-} from 'thinking-orbs/engine';
+import { MODE_FRAMES, paintFrame, type OrbFrame } from 'thinking-orbs/engine';
 import type { OrbSpec, RingTone } from '@/lib/orbState';
+import { fullSizePreset } from '@/lib/orbProfile';
 
 export interface OrbProps {
   spec: OrbSpec;
@@ -36,101 +21,60 @@ export interface OrbProps {
 }
 
 const DEFAULT_SIZE = 320;
-/** Preset opts are tuned for this size (the library ships exactly 64 and 20). */
-const PRESET_SIZE = 64;
-/** Plan Task 6: "clamped so counts at most triple". */
-const MAX_COUNT_SCALE = 3;
-const RING_INSET = 6;
-const RING_WIDTH = 2;
-const PULSE_PERIOD_S = 1.6;
-const PULSE_MIN = 0.4;
-const PULSE_MAX = 1;
+/** The engine's own cap: past 2x the extra pixels cost frames and add nothing visible. */
+const MAX_DPR = 2;
 
-const COUNT_KEY = /N$/;
-const RADIUS_KEY = /R$/;
+type Rgb = [number, number, number];
 
-/** Local stand-in for the library's unexported `scaleCounts`; see header note. */
-function scaleCounts(opts: ModeOpts, scale: number): ModeOpts {
-  const out: ModeOpts = { ...opts };
-  for (const key of Object.keys(out)) {
-    if (!COUNT_KEY.test(key)) continue;
-    const v = out[key];
-    if (typeof v === 'number') out[key] = Math.max(1, Math.round(v * scale));
-  }
-  return out;
-}
+/** Gradient stops per tone, top-left to bottom-right, as theme.css tokens. */
+const TONE_STOPS: Record<Exclude<RingTone, 'none'>, [string, string]> = {
+  cyan: ['--cyan', '--violet'],
+  amber: ['--amber', '--pink'],
+  coral: ['--coral', '--pink'],
+  mint: ['--mint', '--cyan'],
+};
 
-/** Local stand-in for the library's unexported `scaleRadii`; see header note. */
-function scaleRadii(opts: ModeOpts, scale: number): ModeOpts {
-  const out: ModeOpts = { ...opts };
-  for (const key of Object.keys(out)) {
-    if (!RADIUS_KEY.test(key)) continue;
-    const v = out[key];
-    if (typeof v === 'number') out[key] = v * scale;
-  }
-  return out;
-}
-
-function readTone(tone: Exclude<RingTone, 'none'>): string {
-  if (typeof document === 'undefined') return '#7DE3F0';
-  const varName = `--${tone}`;
-  const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-  return value || '#7DE3F0';
-}
-
-/** `#rrggbb` -> `[r, g, b]`. Falls back to the cyan token's own values on a bad string. */
-function hexToRgb(hex: string): [number, number, number] {
+function hexToRgb(hex: string, fallback: Rgb): Rgb {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
-  if (!m) return [125, 227, 240];
-  return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : fallback;
+}
+
+function readToken(name: string, fallback: Rgb): Rgb {
+  if (typeof document === 'undefined') return fallback;
+  return hexToRgb(getComputedStyle(document.documentElement).getPropertyValue(name), fallback);
 }
 
 const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
 
 /**
- * Maps a dot's ink value to an alpha over the ring colour: 35% at `white = 0` up to 100% at
- * `white = 1`, nudged brighter for dots nearer the camera (`z`, normalised against the frame's
- * own extent so it self-scales to whichever mode is active).
+ * The engine's `paint` + `paintLines` with coloured ink. The engine mirrors `white` on dark
+ * themes (ink = 1 - white); that brightness multiplies the gradient colour at the dot's position,
+ * so a near dot is the full tone and a far one a dim version of it, exactly where the grey
+ * original is bright or dim. Alpha and draw order are the engine's, unchanged.
  */
-function paintPalette(ctx: CanvasRenderingContext2D, frame: OrbFrame, rgb: [number, number, number]): void {
-  const [r, g, b] = rgb;
-  let zMax = 0;
-  for (const d of frame.dots) zMax = Math.max(zMax, Math.abs(d.z));
-  const zSpan = zMax || 1;
-
-  if (frame.lines.length > 0) {
-    ctx.lineCap = 'round';
-    for (const line of frame.lines) {
-      const a = clamp01(0.4 * (line.a ?? 1));
-      if (a <= 0.02) continue;
-      ctx.strokeStyle = `rgba(${r},${g},${b},${a})`;
-      ctx.lineWidth = line.w;
-      ctx.beginPath();
-      ctx.moveTo(line.x1, line.y1);
-      ctx.lineTo(line.x2, line.y2);
-      ctx.stroke();
-    }
+function paintTinted(ctx: CanvasRenderingContext2D, frame: OrbFrame, size: number, from: Rgb, to: Rgb): void {
+  const ink = (x: number, y: number, white: number): string => {
+    const lum = 1 - clamp01(white);
+    const k = clamp01((x + y) / (2 * size));
+    const r = Math.round((from[0] + (to[0] - from[0]) * k) * lum);
+    const g = Math.round((from[1] + (to[1] - from[1]) * k) * lum);
+    const b = Math.round((from[2] + (to[2] - from[2]) * k) * lum);
+    return `${r},${g},${b}`;
+  };
+  for (const line of frame.lines) {
+    ctx.strokeStyle = `rgba(${ink((line.x1 + line.x2) / 2, (line.y1 + line.y2) / 2, line.white)},${line.a ?? 1})`;
+    ctx.lineWidth = line.w;
+    ctx.beginPath();
+    ctx.moveTo(line.x1, line.y1);
+    ctx.lineTo(line.x2, line.y2);
+    ctx.stroke();
   }
-
   for (const dot of frame.dots) {
-    const base = 0.35 + 0.65 * clamp01(dot.white);
-    const zBoost = 0.08 * (dot.z / zSpan);
-    const a = clamp01(base + zBoost) * (dot.a ?? 1);
-    if (a <= 0.02) continue;
-    ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
+    ctx.fillStyle = `rgba(${ink(dot.x, dot.y, dot.white)},${dot.a ?? 1})`;
     ctx.beginPath();
     ctx.arc(dot.x, dot.y, dot.r, 0, Math.PI * 2);
     ctx.fill();
   }
-}
-
-function drawRing(ctx: CanvasRenderingContext2D, size: number, rgb: [number, number, number], alpha: number): void {
-  const [r, g, b] = rgb;
-  ctx.strokeStyle = `rgba(${r},${g},${b},${clamp01(alpha)})`;
-  ctx.lineWidth = RING_WIDTH;
-  ctx.beginPath();
-  ctx.arc(size / 2, size / 2, size / 2 - RING_INSET, 0, Math.PI * 2);
-  ctx.stroke();
 }
 
 function prefersReducedMotion(): boolean {
@@ -139,20 +83,7 @@ function prefersReducedMotion(): boolean {
 
 export function Orb({ spec, size = DEFAULT_SIZE, agentCount }: OrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  const mode = STATE_TO_MODE[spec.state];
-
-  // Opts tuned for the 64px preset, scaled to the size we actually render at. Counts scale
-  // linearly (capped at 3x per the plan); radii use the library's own sub-linear `radiusScale`
-  // curve so large orbs don't get comically fat dots.
-  const opts = useMemo<ModeOpts>(() => {
-    const base = resolvePreset(spec.state, PRESET_SIZE).opts;
-    const countScale = Math.min(MAX_COUNT_SCALE, size / PRESET_SIZE);
-    const radiusRatio = radiusScale(size, 0.6) / radiusScale(PRESET_SIZE, 0.6);
-    return scaleRadii(scaleCounts(base, countScale), radiusRatio);
-  }, [spec.state, size]);
-
-  const baseSpeed = useMemo(() => resolvePreset(spec.state, PRESET_SIZE).speed, [spec.state]);
+  const preset = useMemo(() => fullSizePreset(spec.state), [spec.state]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -160,26 +91,22 @@ export function Orb({ spec, size = DEFAULT_SIZE, agentCount }: OrbProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return undefined;
 
-    const dpr = Math.min(2, (typeof devicePixelRatio !== 'undefined' && devicePixelRatio) || 1);
+    const dpr = Math.min(MAX_DPR, (typeof devicePixelRatio !== 'undefined' && devicePixelRatio) || 1);
     canvas.width = Math.round(size * dpr);
     canvas.height = Math.round(size * dpr);
 
-    const frameFn = MODE_FRAMES[mode];
-    const ringRgb = spec.ring === 'none' ? null : hexToRgb(readTone(spec.ring));
+    const frameFn = MODE_FRAMES[preset.mode];
+    const stops = spec.ring === 'none' ? null : TONE_STOPS[spec.ring];
+    const from = stops ? readToken(stops[0], [139, 233, 253]) : null;
+    const to = stops ? readToken(stops[1], [189, 147, 249]) : null;
+    const rate = preset.speed * spec.speed;
 
     const render = (tSeconds: number) => {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, size, size);
-      const frame = frameFn(size, tSeconds * spec.speed * baseSpeed, opts);
-      if (ringRgb) {
-        const ringAlpha = spec.pulse
-          ? PULSE_MIN + (PULSE_MAX - PULSE_MIN) * (0.5 + 0.5 * Math.sin((tSeconds / PULSE_PERIOD_S) * 2 * Math.PI))
-          : PULSE_MAX;
-        paintPalette(ctx, frame, ringRgb);
-        drawRing(ctx, size, ringRgb, ringAlpha);
-      } else {
-        paintPalette(ctx, frame, [125, 227, 240]);
-      }
+      const frame = frameFn(size, tSeconds * rate, preset.opts);
+      if (from && to) paintTinted(ctx, frame, size, from, to);
+      else paintFrame(ctx, frame, true);
     };
 
     if (prefersReducedMotion()) {
@@ -188,24 +115,27 @@ export function Orb({ spec, size = DEFAULT_SIZE, agentCount }: OrbProps) {
     }
 
     let raf = 0;
-    let start: number | null = null;
     const tick = (ts: number) => {
-      if (start === null) start = ts;
-      render((ts - start) / 1000);
+      // The library's clock: seconds since page load, so a state change keeps the orb's phase
+      // instead of snapping it back to t = 0.
+      render(ts / 1000);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [mode, opts, size, spec.speed, spec.pulse, spec.ring, baseSpeed]);
+  }, [preset, size, spec.speed, spec.ring]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="orb"
-      style={{ width: size, height: size, display: 'block' }}
-      role="img"
-      aria-label={`orb: ${spec.state}`}
-      data-agent-count={agentCount}
-    />
+    <div className="orb" data-tone={spec.ring} data-pulse={spec.pulse || undefined} style={{ width: size, height: size }}>
+      {spec.ring !== 'none' && <span className="orb-ring" aria-hidden="true" />}
+      <canvas
+        ref={canvasRef}
+        className="orb-canvas"
+        style={{ width: size, height: size }}
+        role="img"
+        aria-label={`orb: ${spec.state}`}
+        data-agent-count={agentCount}
+      />
+    </div>
   );
 }

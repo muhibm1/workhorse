@@ -2,7 +2,7 @@
    theme.css (spec 4.1); nothing here is a literal colour. Imported by Settings.tsx / Setup.tsx. */
 
 .screen {
-  padding: 24px 32px;
+  padding: 28px 32px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -10,10 +10,17 @@
   overflow-y: auto;
 }
 
-.settings-panel {
+.settings-panel > .panel-body,
+.setup-panel > .panel-body {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 10px;
+}
+
+.settings-select {
+  align-self: flex-start;
+  min-width: 240px;
 }
 
 .settings-hint {
@@ -43,7 +50,7 @@
 }
 
 .settings-radio input[type='radio'] {
-  accent-color: var(--cyan);
+  accent-color: var(--accent);
 }
 
 .settings-field {
@@ -62,21 +69,22 @@
 .settings-input,
 .settings-select,
 .settings-textarea {
-  background: var(--panel-2);
+  background: var(--ground);
   border: 1px solid var(--hairline);
-  border-radius: 4px;
+  border-radius: 10px;
   color: var(--ink);
-  padding: 6px 10px;
+  padding: 8px 12px;
   font-family: inherit;
   font-size: 0.88rem;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
 }
 
 .settings-input:focus,
 .settings-select:focus,
 .settings-textarea:focus {
-  outline: 1px solid var(--cyan);
-  outline-offset: 1px;
-  border-color: var(--cyan);
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .settings-input {

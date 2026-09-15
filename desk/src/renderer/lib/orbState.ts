@@ -41,7 +41,7 @@ const PHASE_ORB: Partial<Record<Phase, { state: OrbState; speed: number }>> = {
   intent: { state: 'composing', speed: 1 },
   spec: { state: 'weaving', speed: 1 },
   plan: { state: 'shaping', speed: 1 },
-  build: { state: 'working', speed: 1.2 },
+  build: { state: 'working', speed: 1 },
   verify: { state: 'solving', speed: 1 },
   review: { state: 'searching', speed: 1 },
   deploy: { state: 'connecting', speed: 1 },
@@ -56,18 +56,20 @@ const PHASE_ORB: Partial<Record<Phase, { state: OrbState; speed: number }>> = {
  * "running" independent of phase/blockingGate/done/error, so it is intentionally unused here.
  */
 export function orbSpecFor(input: OrbSpecInput): OrbSpec {
+  // Every speed is 1: the orb moves at the library's own tuned rate (libraries.dev/orbs), and
+  // the state it shows, its colour and the gate pulse carry the meaning instead.
   if (input.error) {
-    return { state: 'breathing', speed: 0.3, ring: 'coral', pulse: false };
+    return { state: 'breathing', speed: 1, ring: 'coral', pulse: false };
   }
   if (input.blockingGate) {
-    return { state: 'breathing', speed: 0.5, ring: 'amber', pulse: true };
+    return { state: 'breathing', speed: 1, ring: 'amber', pulse: true };
   }
   if (input.done) {
-    return { state: 'breathing', speed: 0.6, ring: 'mint', pulse: false };
+    return { state: 'breathing', speed: 1, ring: 'mint', pulse: false };
   }
   const mapped = input.phase ? PHASE_ORB[input.phase] : undefined;
   if (mapped) {
     return { state: mapped.state, speed: mapped.speed, ring: 'cyan', pulse: false };
   }
-  return { state: 'breathing', speed: 0.6, ring: 'none', pulse: false };
+  return { state: 'breathing', speed: 1, ring: 'none', pulse: false };
 }
