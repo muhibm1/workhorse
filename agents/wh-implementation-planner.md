@@ -65,7 +65,7 @@ Build phase can run in parallel.
   fine; bodies are not.
 - If the spec needs a decision you cannot make (two valid designs), write an ADR with a
   recommendation and put the decision in the G3 packet.
-- Keep the plan under 400 lines. A longer plan means the change should be split; say so in the
+- Keep the plan under 400 lines (the artifact-size hook flags one over 500). A longer plan means the change should be split; say so in the
   TL;DR and plan the first part.
 - Size the task list to the change. Every task costs a full builder session plus a readability
   and a simplifier pass, so a task must be worth that. Put a requirement's tests in the same
