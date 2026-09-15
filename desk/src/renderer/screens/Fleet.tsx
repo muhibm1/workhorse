@@ -155,15 +155,20 @@ function FleetCard({ repo, digest, run, onboarded, onStartOnboard, onOpen }: Fle
                   onStartOnboard(trimmed);
                 }}
               >
-                <input
+                <textarea
                   className="fleet-card-onboard-input mono"
                   autoFocus
+                  rows={4}
                   value={context}
-                  placeholder="industry, users, hosting"
+                  placeholder={'industry, users, hosting, compliance regimes\n\nEnter to start, Shift+Enter for a new line'}
                   aria-label="Client context"
                   onChange={(e) => setContext(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') setAsking(false);
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      e.currentTarget.form?.requestSubmit();
+                    }
                   }}
                 />
                 <Button type="submit" tone="amber" size="sm" disabled={!context.trim()}>

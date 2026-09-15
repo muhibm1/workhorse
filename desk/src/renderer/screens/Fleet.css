@@ -113,18 +113,22 @@
 .fleet-card-onboard-form {
   display: flex;
   gap: 6px;
-  align-items: center;
+  align-items: flex-end;
+  width: 100%;
 }
 
 .fleet-card-onboard-input {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 6em; /* four lines visible while typing */
+  resize: vertical;
+  line-height: 1.45;
   background: var(--panel-2);
   border: 1px solid var(--hairline);
   border-radius: 3px;
   color: var(--ink);
   font-size: 11px;
-  padding: 5px 7px;
+  padding: 6px 8px;
 }
 
 .fleet-card-onboard-input:focus-visible {

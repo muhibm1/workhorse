@@ -124,6 +124,8 @@
 
 .gate-textarea {
   resize: vertical;
+  min-height: 7.5em; /* five lines visible while typing */
+  line-height: 1.45;
   background: var(--panel-2);
   border: 1px solid var(--hairline);
   border-radius: 4px;
@@ -131,6 +133,70 @@
   font-family: 'Manrope', system-ui, sans-serif;
   font-size: 0.84rem;
   padding: 8px;
+}
+
+.gate-decisions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.gate-decision {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: var(--panel-2);
+}
+
+.gate-decision-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.gate-decision-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.gate-decision-option input {
+  margin-top: 2px;
+  accent-color: var(--cyan);
+}
+
+.gate-decision-note {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--ink);
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-size: 0.8rem;
+  padding: 6px 8px;
+}
+
+.gate-decision-note:focus-visible {
+  outline: 1px solid var(--cyan);
+  outline-offset: -1px;
+}
+
+.gate-decisions-hint {
+  font-size: 0.78rem;
+  margin: 0;
 }
 
 .gate-textarea:focus-visible {

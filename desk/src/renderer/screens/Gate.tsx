@@ -17,6 +17,13 @@ import { Panel } from '@/components/Panel';
 import { Button } from '@/components/Button';
 import { Badge, type BadgeTone } from '@/components/Badge';
 import { Markdown, slugify } from '@/components/Markdown';
+import {
+  composeApprovalNotes,
+  decisionsComplete,
+  parseDecisions,
+  type DecisionChoice,
+  type DecisionPick,
+} from '@/decisions';
 import './Gate.css';
 
 const PACKET_FILE: Record<GateId, string> = {
@@ -136,6 +143,20 @@ export function Gate({ repoId, gate }: GateScreenProps) {
 
   const index = useMemo(() => (packet.status === 'loaded' ? buildIndex(packet.data) : []), [packet]);
 
+  // The packet's "Decisions requested" rows. wh.js approve refuses an approval that does not
+  // answer each one by id, so the form asks for every decision before Approve is enabled.
+  const decisions = useMemo(() => (packet.status === 'loaded' ? parseDecisions(packet.data) : []), [packet]);
+  const [choices, setChoices] = useState<Record<string, DecisionChoice>>({});
+  useEffect(() => setChoices({}), [relPath]);
+  const decisionsDone = decisionsComplete(decisions, choices);
+
+  function setChoice(id: string, patch: Partial<DecisionChoice>) {
+    setChoices((prev) => {
+      const current = prev[id] ?? { pick: null, note: '' };
+      return { ...prev, [id]: { ...current, ...patch } };
+    });
+  }
+
   function scrollToSlug(slug: string) {
     const el = contentRef.current?.querySelector<HTMLElement>(`#${CSS.escape(slug)}`);
     el?.scrollIntoView({ block: 'start' });
@@ -157,7 +178,7 @@ export function Gate({ repoId, gate }: GateScreenProps) {
     setActionError(null);
     setSubmitting('approve');
     try {
-      await approveAction(repoId, gate, approveNotes);
+      await approveAction(repoId, gate, composeApprovalNotes(decisions, choices, approveNotes));
       await resumeAfterDecision();
       go({ name: 'run', repoId } satisfies Screen);
     } catch (err) {
@@ -240,6 +261,44 @@ export function Gate({ repoId, gate }: GateScreenProps) {
           </nav>
 
           <div className="gate-actions">
+            {decisions.length > 0 && (
+              <fieldset className="gate-decisions" disabled={busy}>
+                <legend className="label">{`Decisions requested (${decisions.length})`}</legend>
+                {decisions.map((d) => {
+                  const choice = choices[d.id] ?? { pick: null, note: '' };
+                  const option = (pick: DecisionPick, text: string) => (
+                    <label className="gate-decision-option" key={pick}>
+                      <input
+                        type="radio"
+                        name={`decision-${d.id}`}
+                        checked={choice.pick === pick}
+                        onChange={() => setChoice(d.id, { pick })}
+                      />
+                      <span>{text}</span>
+                    </label>
+                  );
+                  return (
+                    <div className="gate-decision" key={d.id}>
+                      <div className="gate-decision-title">
+                        <Badge tone="amber">{d.id}</Badge>
+                        <span>{d.decision}</span>
+                      </div>
+                      {option('recommendation', `Recommendation: ${d.recommendation || 'as written in the packet'}`)}
+                      {d.alternative && option('alternative', `Alternative: ${d.alternative}`)}
+                      {option('other', 'Other (say what below)')}
+                      <input
+                        className="gate-decision-note"
+                        value={choice.note}
+                        placeholder={choice.pick === 'other' ? 'Required: what you decided' : 'Optional note'}
+                        aria-label={`${d.id} note`}
+                        onChange={(e) => setChoice(d.id, { note: e.target.value })}
+                      />
+                    </div>
+                  );
+                })}
+              </fieldset>
+            )}
+
             <div className="gate-form">
               <label className="label" htmlFor="gate-approve-notes">
                 Approve notes
@@ -250,10 +309,13 @@ export function Gate({ repoId, gate }: GateScreenProps) {
                 value={approveNotes}
                 onChange={(e) => setApproveNotes(e.target.value)}
                 placeholder="Optional notes"
-                rows={3}
+                rows={5}
                 disabled={busy}
               />
-              <Button tone="primary" onClick={handleApprove} disabled={busy}>
+              {!decisionsDone && (
+                <p className="gate-muted gate-decisions-hint">Answer every decision above to enable Approve.</p>
+              )}
+              <Button tone="primary" onClick={handleApprove} disabled={busy || !decisionsDone}>
                 {submitting === 'approve' ? 'Approving…' : `Approve ${gate}`}
               </Button>
             </div>
@@ -268,7 +330,7 @@ export function Gate({ repoId, gate }: GateScreenProps) {
                 value={rejectNotes}
                 onChange={(e) => setRejectNotes(e.target.value)}
                 placeholder="Required: why this is going back"
-                rows={3}
+                rows={5}
                 disabled={busy}
               />
               <Button tone="danger" onClick={handleReject} disabled={busy || rejectNotes.trim() === ''}>

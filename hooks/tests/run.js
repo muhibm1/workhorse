@@ -191,6 +191,14 @@ console.log('gate-guard');
   check('the approved packet is tracked, not left untracked', execFileSync('git', ['ls-files', packetRel], { cwd: repo, encoding: 'utf8' }).trim() === packetRel);
   check('allows merge after G4', decision(hook('gate-guard.js', bash('gh pr merge 12'))) === 'none');
   check('allows release.md after G4', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/release.md`))) === 'none');
+  // --accept-all answers every decision with the recommendation and keeps any notes.
+  fs.writeFileSync(path.join(repo, 'docs', 'sdlc', id, 'release.md'),
+    '# Release\n\n## Decisions requested\n\n| # | Decision | Recommendation | Alternative |\n|---|---|---|---|\n| D1 | Deploy Friday | Wait for Monday | Deploy Friday |\n');
+  const aa = wh(repo, 'approve', 'G5', '--accept-all', 'fine by me');
+  check('--accept-all approves and composes the decision notes', aa.code === 0
+    && /D1: recommendation accepted\. fine by me/.test(fs.readFileSync(path.join(repo, 'docs', 'sdlc', id, 'approvals.md'), 'utf8')), aa.err);
+  check('a rejection needs no decision answers', wh(repo, 'approve', 'G5', '--reject', 'not yet').code === 0);
+  fs.unlinkSync(path.join(repo, 'docs', 'sdlc', id, 'release.md')); // the next checks want no packet on disk
   const rj = wh(repo, 'approve', 'G5', '--reject');
   check('reject needs notes', rj.code !== 0);
   const rj2 = wh(repo, 'approve', 'G5', '--reject', 'not yet');
@@ -275,11 +283,19 @@ console.log('digest');
   // Approval flips waiting_on and is parsed back out of approvals.md.
   fs.writeFileSync(path.join(ddir, 'verification.md'), '# Verification\n\nStatus: green\n');
   wh(repo, 'state', 'set', 'verification.status', 'green');
-  const ap = wh(repo, 'approve', 'G4', 'ship it');
-  check('approve succeeds for the digest fixture', ap.code === 0, ap.err);
+  // The packet asks two decisions (D1, D2). An approval must answer both by id: a live G4
+  // approval answered one of two, and the retro found the same slip in the change before it.
+  const di = d().decision_items;
+  check('digest exposes structured decision items', di.length === 2 && di[0].id === 'D1'
+    && di[0].decision === 'Retain logs for 7 years' && di[0].recommendation === 'Accept', JSON.stringify(di));
+  const half = wh(repo, 'approve', 'G4', 'D1 accepted, ship it');
+  check('approve refuses when a packet decision goes unanswered', half.code !== 0 && /do not answer D2/.test(half.err), half.err);
+  check('the refusal names the unanswered decision', /D2: Log to Postgres not files/.test(half.err), half.err);
+  const ap = wh(repo, 'approve', 'G4', 'D1: accepted. D2: alternative, files are fine here. ship it');
+  check('approve succeeds once every decision is answered', ap.code === 0, ap.err);
   const la = d().last_approval;
   check('digest parses the full approval block', la && la.gate === 'G4' && la.status === 'approved'
-    && la.who === 'tester@example.com' && la.at.length > 0 && la.notes === 'ship it', JSON.stringify(la));
+    && la.who === 'tester@example.com' && la.at.length > 0 && la.notes === 'D1: accepted. D2: alternative, files are fine here. ship it', JSON.stringify(la));
   check('waiting_on clears once the gate is approved', d().waiting_on === 'Agents');
 
   // page_id round-trips so a resync updates rather than duplicates.

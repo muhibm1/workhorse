@@ -10,7 +10,8 @@
 //                                           "done" also commits the change's artifacts
 //   wh.js mode <normal|fix>                 set fix mode (locks tests)
 //   wh.js gate <G1..G5> <status>            set a gate status: pending|auto|approved|rejected|n/a
-//   wh.js approve <gate> [--reject] [notes] record a human decision in approvals.md (main session only)
+//   wh.js approve <gate> [--reject] [notes] record a human decision in approvals.md (main session only);
+//                                           an approval must answer every packet decision by id, or pass --accept-all
 //   wh.js required                          list human gates required for the active change
 //   wh.js log "<agent> | <result>"          append a line to conductor-log.md, stamped with the real time
 //   wh.js status [--json] [--metrics]       human-readable status
@@ -284,10 +285,12 @@ switch (cmd) {
     const root = requireRoot();
     const { id, state } = requireActive(root);
     const reject = hasFlag('--reject');
+    const acceptAll = hasFlag('--accept-all');
     const g = args.shift();
-    if (!L.ALL_GATES.includes(g)) die('usage: wh.js approve <G1..G5> [--reject] [notes]');
-    const notes = args.join(' ').trim();
+    if (!L.ALL_GATES.includes(g)) die('usage: wh.js approve <G1..G5> [--reject | --accept-all] [notes]');
+    let notes = args.join(' ').trim();
     if (reject && !notes) die('a rejection needs notes so the phase can be re-entered with them');
+    if (!reject) notes = requireDecisionsAnswered(readArtifact(root, id, GATE_PACKET[g]), notes, acceptAll);
     const who = L.git(root, ['config', 'user.email']) || process.env.USER || process.env.USERNAME || 'unknown';
 
     // Pin what is being decided before recording the decision. Without this the recorded commit
@@ -477,14 +480,15 @@ function sectionText(md, re, maxLen) {
   return maxLen && t.length > maxLen ? t.slice(0, maxLen - 1) + '\u2026' : t;
 }
 
-// Rows of the "Decisions requested" table in a gate packet, as short strings.
-function decisionRows(md, max) {
+// The "Decisions requested" table of a gate packet, one object per row that has an id (D1,
+// D2, ...). The renderer's decisions.ts parses the same table; keep the two in step.
+function decisionItems(md) {
   if (!md) return [];
   const lines = md.split(/\r?\n/);
   const start = lines.findIndex((l) => /^#{1,6}.*decisions requested/i.test(l));
   if (start < 0) return [];
-  const rows = [];
-  for (let i = start + 1; i < lines.length && rows.length < (max || 5); i++) {
+  const items = [];
+  for (let i = start + 1; i < lines.length; i++) {
     const l = lines[i].trim();
     if (/^#{1,6}\s/.test(l)) break;
     if (!l.startsWith('|')) continue;
@@ -492,10 +496,37 @@ function decisionRows(md, max) {
     if (cells.length < 2) continue;
     if (/^:?-{2,}/.test(cells[0])) continue;
     if (/^#$/.test(cells[0]) && /^decision$/i.test(cells[1] || '')) continue;
-    const text = cells.slice(0, 3).filter(Boolean).join(' \u2014 ');
-    if (text) rows.push(text.length > 300 ? text.slice(0, 299) + '\u2026' : text);
+    if (!/^D\d+$/i.test(cells[0]) || !cells[1]) continue;
+    items.push({ id: cells[0].toUpperCase(), decision: cells[1], recommendation: cells[2] || '', alternative: cells[3] || '' });
   }
-  return rows;
+  return items;
+}
+
+// The same rows as short strings, for the tracker and the Fleet card.
+function decisionRows(md, max) {
+  return decisionItems(md).slice(0, max || 5).map((d) => {
+    const text = [d.id, d.decision, d.recommendation].filter(Boolean).join(' \u2014 ');
+    return text.length > 300 ? text.slice(0, 299) + '\u2026' : text;
+  });
+}
+
+// Every decision the packet asked for must be answered in the approval notes, by id. A live
+// G4 approval answered one of two decisions; the retro found the same slip in the change
+// before it. --accept-all records "recommendation accepted" for each, for the common case.
+function requireDecisionsAnswered(packetMd, notes, acceptAll) {
+  const items = decisionItems(packetMd);
+  if (items.length === 0) return notes;
+  if (acceptAll) {
+    const prefix = items.map((d) => `${d.id}: recommendation accepted`).join('; ');
+    return notes ? `${prefix}. ${notes}` : prefix;
+  }
+  const missing = items.filter((d) => !new RegExp(`\\b${d.id}\\b`, 'i').test(notes));
+  if (missing.length) {
+    die(`the packet asks for ${items.length} decision(s) and the notes do not answer ${missing.map((d) => d.id).join(', ')}. ` +
+      `Name each one in the notes (for example "D1: recommendation accepted; D2: alternative, because ..."), or pass --accept-all to accept every recommendation.\n` +
+      missing.map((d) => `  ${d.id}: ${d.decision} (recommendation: ${d.recommendation || 'none given'})`).join('\n'));
+  }
+  return notes;
 }
 
 function lastApproval(root, id) {
@@ -567,6 +598,7 @@ function buildDigest(root, id, state) {
     outcome: sectionText(intentMd, /^#{1,6}\s*outcome\b/i, 600),
     tldr: sectionText(packetMd, /^#{1,6}.*(tl;dr|tldr)/i, 900),
     decisions: decisionRows(packetMd, 5),
+    decision_items: decisionItems(packetMd),
     last_approval: lastApproval(root, id),
     artifacts: fs.existsSync(L.changeDir(root, id))
       ? fs.readdirSync(L.changeDir(root, id)).filter((f) => f.endsWith('.md')).sort()

@@ -26,6 +26,7 @@ export interface ChangeDigest {
   verification: 'none' | 'red' | 'green' | string;
   branch: string; pr_url: string; commit: string;
   problem: string; outcome: string; tldr: string; decisions: string[];
+  decision_items?: { id: string; decision: string; recommendation: string; alternative: string }[];
   last_approval: { gate: Gate; status: 'approved' | 'rejected'; who: string; at: string; notes: string } | null;
   artifacts: string[]; artifact_dir: string;
   tracker: { provider: string; database: string; page_id: string | null };
