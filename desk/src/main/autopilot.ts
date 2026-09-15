@@ -108,6 +108,10 @@ export function createAutoResume(opts: {
   const attempts = new Map<string, number>();
 
   return {
+    // Relies on the drivers' contract that an `error` event is followed by that run's `exit`
+    // (both drivers emit them back to back); `init` clears any leftover so a later run can
+    // never inherit an earlier run's error. A driver that emits non-fatal `error` events
+    // mid-run would need this revisited.
     onEvent(repoId, event) {
       if (event.t === 'init') lastError.delete(repoId);
       if (event.t === 'error' && typeof event.message === 'string') lastError.set(repoId, event.message);
@@ -136,7 +140,14 @@ export function createAutoResume(opts: {
       const at = new Date(now() + delay);
       const hh = String(at.getHours()).padStart(2, '0');
       const mm = String(at.getMinutes()).padStart(2, '0');
-      opts.emit(repoId, `usage limit: auto-resume scheduled for ${hh}:${mm}`);
+      // Say when the time is a guess, so a parse failure is visible in the log rather than
+      // looking like a tracked reset (ecc-silent-failure-hunter finding).
+      opts.emit(
+        repoId,
+        parsed === null
+          ? `usage limit: auto-resume scheduled for ${hh}:${mm} (reset time not readable, so this is a retry, attempt ${tries} of ${maxAttempts})`
+          : `usage limit: auto-resume scheduled for ${hh}:${mm}`,
+      );
       pending.set(repoId, setTimeout(() => {
         pending.delete(repoId);
         if (opts.hasActiveRun(repoId)) return;
@@ -213,6 +224,8 @@ export async function postNotification(
       method: 'POST',
       headers: { Title: notification.title, Priority: 'high', Tags: 'bell' },
       body: notification.body,
+      // An unresponsive host must fail in seconds, not hang until the OS socket timeout.
+      signal: AbortSignal.timeout(10_000),
     });
     return res.ok;
   } catch {

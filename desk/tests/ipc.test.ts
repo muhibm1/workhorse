@@ -422,6 +422,27 @@ describe('registerIpc', () => {
       expect(deps.watcher.unwatch).toHaveBeenCalledWith(ref.id);
     });
 
+    it('removing a repo cancels its scheduled auto-resume (ecc-typescript-reviewer finding)', async () => {
+      vi.useFakeTimers();
+      try {
+        const events: RunEvent[] = [
+          { t: 'error', message: 'usage limit reached', at: 1 }, // no reset time: 30-minute fallback
+          { t: 'exit', code: 0, at: 2 },
+        ];
+        const start = vi.fn(() => finishedHandle('run-1', events));
+        const { invoke, sent } = makeDeps({ driverFor: vi.fn((): RunDriver => ({ name: 'cli', start })) });
+        await invoke(IPC.runStart, 'repo-1', 'do a thing');
+        for (let i = 0; i < 20; i++) await Promise.resolve(); // let the event pump drain
+        expect(JSON.stringify(sent)).toContain('auto-resume scheduled');
+
+        await invoke(IPC.reposRemove, 'repo-1');
+        await vi.advanceTimersByTimeAsync(60 * 60_000);
+        expect(start).toHaveBeenCalledTimes(1); // the resume never fired for the removed repo
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('list returns the registry contents, each marked with whether it is onboarded', async () => {
       const { invoke, repos } = makeDeps();
       await expect(invoke(IPC.reposList)).resolves.toEqual(repos.map((r) => ({ ...r, onboarded: false })));
@@ -492,6 +513,15 @@ describe('registerIpc', () => {
         payload: { repoId: 'repo-1', digests: [{ change_id: 'c1' }], onboarded: false },
       });
     });
+
+    it('never sends to a destroyed window (ecc-silent-failure-hunter finding)', () => {
+      const send = vi.fn(() => {
+        throw new Error('Object has been destroyed');
+      });
+      const { watcherOn } = makeDeps({ win: { isDestroyed: () => true, webContents: { send } } });
+      expect(() => watcherOn[0]({ repoId: 'repo-1', digests: [] })).not.toThrow();
+      expect(send).not.toHaveBeenCalled();
+    });
   });
 
   describe('settings', () => {
@@ -509,6 +539,43 @@ describe('registerIpc', () => {
       expect(await invoke(IPC.settingsHasKey)).toBe(true);
       await invoke(IPC.settingsClearKey);
       expect(await invoke(IPC.settingsHasKey)).toBe(false);
+    });
+
+    describe('notify URL host confirmation (flagged by both reviewers)', () => {
+      function withDialog(response: number | null) {
+        const showMessageBox = vi.fn(async () => ({ response: response ?? 1 }));
+        const dialog = response === null
+          ? { showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })) }
+          : { showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })), showMessageBox };
+        return { ...makeDeps({ dialog }), showMessageBox };
+      }
+
+      it('saves ntfy.sh and loopback without asking', async () => {
+        const { invoke, showMessageBox } = withDialog(1);
+        expect(((await invoke(IPC.settingsSet, { notifyUrl: 'https://ntfy.sh/topic' })) as Settings).notifyUrl).toBe('https://ntfy.sh/topic');
+        expect(((await invoke(IPC.settingsSet, { notifyUrl: 'http://localhost:8080/t' })) as Settings).notifyUrl).toBe('http://localhost:8080/t');
+        expect(showMessageBox).not.toHaveBeenCalled();
+      });
+
+      it('asks before a new host, and drops only the URL when the answer is Cancel', async () => {
+        const { invoke, showMessageBox } = withDialog(1);
+        const out = (await invoke(IPC.settingsSet, { notifyUrl: 'https://attacker.example/x', backend: 'sdk' })) as Settings;
+        expect(showMessageBox).toHaveBeenCalledTimes(1);
+        expect(out.notifyUrl).toBeNull();
+        expect(out.backend).toBe('sdk'); // the rest of the patch still applies
+      });
+
+      it('saves a new host when the human chooses Allow', async () => {
+        const { invoke } = withDialog(0);
+        const out = (await invoke(IPC.settingsSet, { notifyUrl: 'https://push.example.org/t' })) as Settings;
+        expect(out.notifyUrl).toBe('https://push.example.org/t');
+      });
+
+      it('refuses a new host when no confirmation dialog is available', async () => {
+        const { invoke } = withDialog(null);
+        const out = (await invoke(IPC.settingsSet, { notifyUrl: 'https://push.example.org/t' })) as Settings;
+        expect(out.notifyUrl).toBeNull();
+      });
     });
   });
 

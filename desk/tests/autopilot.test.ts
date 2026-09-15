@@ -212,11 +212,12 @@ describe('buildGateNotification / postNotification', () => {
     const fetchFn = vi.fn().mockResolvedValue({ ok: true });
     const ok = await postNotification('https://ntfy.sh/t', { title: 'T', body: 'B' }, fetchFn as unknown as typeof fetch);
     expect(ok).toBe(true);
-    expect(fetchFn).toHaveBeenCalledWith('https://ntfy.sh/t', {
+    expect(fetchFn).toHaveBeenCalledWith('https://ntfy.sh/t', expect.objectContaining({
       method: 'POST',
       headers: { Title: 'T', Priority: 'high', Tags: 'bell' },
       body: 'B',
-    });
+      signal: expect.any(AbortSignal), // bounded: an unresponsive host fails in seconds
+    }));
     const down = vi.fn().mockRejectedValue(new Error('offline'));
     await expect(postNotification('https://x', { title: 'T', body: 'B' }, down as unknown as typeof fetch)).resolves.toBe(false);
   });
@@ -252,6 +253,13 @@ describe('fixes for wh-bug-reviewer findings on 4f25dd3', () => {
       };
       return { ar, resume, emit, limitStop };
     }
+
+    it('says when the resume time is a guess rather than a read reset', () => {
+      const { emit, limitStop } = setup();
+      limitStop();
+      expect(emit).toHaveBeenCalledWith('r1', expect.stringContaining('reset time not readable'));
+      expect(emit).toHaveBeenCalledWith('r1', expect.stringContaining('attempt 1 of 3'));
+    });
 
     it('stops after three consecutive limit stops and hands back to the human', () => {
       const { resume, emit, limitStop } = setup();

@@ -103,7 +103,7 @@ export function Settings() {
     // The main process drops URLs it refuses (only https, or http to localhost, are accepted),
     // so a submitted value that did not stick is the user's signal something was wrong with it.
     if (notifyInput.trim() && updated.notifyUrl !== notifyInput.trim()) {
-      setNotifyError('URL not accepted: use https:// (or http://localhost for a local ntfy).');
+      setNotifyError('URL not saved: use https:// (or http://localhost for a local ntfy), and choose Allow when Paddock asks to confirm a new host.');
     } else {
       setNotifySaved(true);
     }

@@ -1,7 +1,7 @@
 {
   "name": "paddock",
   "productName": "Paddock",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The WorkHorse desktop: watch every repo, drive runs, open gates.",
   "main": "./out/main/index.js",
   "private": true,
@@ -13,8 +13,8 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win portable"
+    "dist": "node scripts/predist-check.js && npm run build && electron-builder",
+    "dist:win": "node scripts/predist-check.js && npm run build && electron-builder --win portable"
   },
   "dependencies": {
     "chokidar": "5.0.0",
