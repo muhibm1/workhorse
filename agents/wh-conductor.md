@@ -186,7 +186,9 @@ report to the packet compiler.
 
 When a required gate is reached:
 
-1. Make sure the packet exists: for G1 the intent writer's summary block in `intent.md`; for G2
+1. If this gate was rejected earlier (`WH state get gates.<G>` is `rejected`), set it back with
+   `WH gate <G> pending`: only a pending gate reads as waiting on the human in the digest,
+   Paddock, the tracker, and phone notifications. Then make sure the packet exists: for G1 the intent writer's summary block in `intent.md`; for G2
    the spec architect's packet at the end of `spec.md`; for G3 the planner's packet at the end
    of `plan.md`; for G4 `review-packet.md`; for G5 `release.md`. If it is missing, dispatch the
    agent again with "write the gate packet only".

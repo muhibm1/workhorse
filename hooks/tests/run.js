@@ -262,6 +262,16 @@ console.log('digest');
   check('digest extracts decision rows, skipping the header', d().decisions.length === 2, JSON.stringify(d().decisions));
   check('decision row keeps id and text', /^D1 /.test(d().decisions[0]));
 
+  // A rejected gate waits on the agents reworking it, not on the human; presenting it again sets
+  // it back to pending. The old rule (anything not approved is waiting) showed Approve buttons
+  // during rework and hid the re-presentation from phone notifications.
+  const rjd = wh(repo, 'approve', 'G4', '--reject', 'needs a retention ADR');
+  check('reject succeeds for the digest fixture', rjd.code === 0, rjd.err);
+  check('a rejected gate waits on Agents, not on the human',
+    d().waiting_on === 'Agents' && d().blocking_gate === null, JSON.stringify([d().waiting_on, d().blocking_gate]));
+  wh(repo, 'gate', 'G4', 'pending');
+  check('presenting the gate again puts it back on the human', d().blocking_gate === 'G4');
+
   // Approval flips waiting_on and is parsed back out of approvals.md.
   fs.writeFileSync(path.join(ddir, 'verification.md'), '# Verification\n\nStatus: green\n');
   wh(repo, 'state', 'set', 'verification.status', 'green');

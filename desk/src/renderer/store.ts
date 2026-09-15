@@ -120,7 +120,10 @@ function shortAgentName(agentType: string): string {
  */
 export function applyEvent(run: RunState, envelope: RunEnvelope): RunState {
   const { runId, event } = envelope;
-  const base: RunState = { ...run, runId };
+  // A different run id means main started a run the renderer did not (an auto-resume). Begin a
+  // fresh state, so it shows as running with a Stop button and the last run's error is gone.
+  const base: RunState =
+    run.runId !== null && run.runId !== runId ? createRunState(runId) : { ...run, runId };
 
   switch (event.t) {
     case 'init':
