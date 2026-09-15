@@ -91,6 +91,18 @@ describe('applyEvent (pure reducer)', () => {
     expect(run.log).toEqual([{ at: 7, text: "error: You've hit your session limit", tone: 'coral' }]);
   });
 
+  it('a run started by main (an auto-resume) gets a fresh running state on its first event', () => {
+    // Found by wh-bug-reviewer on 4f25dd3: the old state stayed stopped with the limit error, so
+    // the resumed run had no Stop button and showed "Last run stopped" throughout.
+    let run = createRunState('old');
+    run = applyEvent(run, envelope({ t: 'error', message: "You've hit your session limit", at: 1 }, 'repo1', 'old'));
+    run = applyEvent(run, envelope({ t: 'exit', code: 0, at: 2 }, 'repo1', 'old'));
+    expect(run.running).toBe(false);
+    run = applyEvent(run, envelope({ t: 'init', sessionId: 's2', plugins: [], skills: [], at: 3 }, 'repo1', 'new'));
+    expect(run).toMatchObject({ runId: 'new', running: true, error: null, sessionId: 's2' });
+    expect(run.log).toEqual([]);
+  });
+
   it('caps the log at 500 lines, dropping the oldest first', () => {
     let run = createRunState('run1');
     for (let i = 0; i < 520; i += 1) {

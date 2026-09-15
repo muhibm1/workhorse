@@ -221,3 +221,73 @@ describe('buildGateNotification / postNotification', () => {
     await expect(postNotification('https://x', { title: 'T', body: 'B' }, down as unknown as typeof fetch)).resolves.toBe(false);
   });
 });
+
+describe('fixes for wh-bug-reviewer findings on 4f25dd3', () => {
+  it('parses the "resets in" duration form', () => {
+    const now = new Date('2026-09-13T12:00:00Z');
+    expect(parseLimitReset('limit reached · resets in 3h 20m', now)).toBe((200 + 2) * MIN);
+    expect(parseLimitReset('resets in 45m', now)).toBe((45 + 2) * MIN);
+  });
+
+  it('lands on the real reset across the autumn clock change', () => {
+    // 00:30 CDT on 2026-11-01 is 05:30Z. Clocks fall back at 02:00, so "2:40am" is 2:40 CST,
+    // 08:40Z: 190 minutes away, not the 130 that wall-clock subtraction gives.
+    const ms = parseLimitReset('resets 2:40am (America/Chicago)', new Date('2026-11-01T05:30:00Z'));
+    expect(ms).toBe((190 + 2) * MIN);
+  });
+
+  describe('auto-resume streak cap', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    function setup() {
+      const resume = vi.fn();
+      const emit = vi.fn();
+      const ar = createAutoResume({ resume, emit, hasActiveRun: () => false, fallbackDelayMs: 5 * MIN, maxAttempts: 3 });
+      const limitStop = () => {
+        // A date-form reset cannot be parsed, so each stop falls back to the retry delay.
+        ar.onEvent('r1', { t: 'error', message: 'hit your weekly limit · resets Oct 9, 5pm' });
+        ar.onEvent('r1', { t: 'exit', code: 0 });
+        vi.advanceTimersByTime(6 * MIN);
+      };
+      return { ar, resume, emit, limitStop };
+    }
+
+    it('stops after three consecutive limit stops and hands back to the human', () => {
+      const { resume, emit, limitStop } = setup();
+      limitStop(); limitStop(); limitStop();
+      expect(resume).toHaveBeenCalledTimes(3);
+      limitStop();
+      expect(resume).toHaveBeenCalledTimes(3);
+      expect(emit).toHaveBeenLastCalledWith('r1', expect.stringContaining('resume manually'));
+    });
+
+    it('a run that ends any other way resets the streak', () => {
+      const { ar, resume, limitStop } = setup();
+      limitStop(); limitStop();
+      ar.onEvent('r1', { t: 'exit', code: 0 }); // a clean run in between
+      limitStop(); limitStop(); limitStop();
+      expect(resume).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  it('passes the repo id to post, so a failed push can be reported on that repo', () => {
+    const post = vi.fn();
+    const n = createGateNotifier({ getUrl: () => 'https://ntfy.sh/t', post });
+    n.onDigests('r9', 'svc', [digest({ blocking_gate: null })]);
+    n.onDigests('r9', 'svc', [digest({ blocking_gate: 'G2' })]);
+    expect(post.mock.calls[0][2]).toBe('r9');
+  });
+
+  it('notifies again when a rejected gate is presented again', () => {
+    // wh.js now reports a rejected gate as waiting on agents (blocking_gate null) until the
+    // conductor sets it back to pending, so the re-presentation reads as a new arrival.
+    const post = vi.fn();
+    const n = createGateNotifier({ getUrl: () => 'https://ntfy.sh/t', post });
+    n.onDigests('r1', 'svc', [digest({ blocking_gate: null })]);
+    n.onDigests('r1', 'svc', [digest({ blocking_gate: 'G2' })]);
+    n.onDigests('r1', 'svc', [digest({ blocking_gate: null })]);
+    n.onDigests('r1', 'svc', [digest({ blocking_gate: 'G2' })]);
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+});

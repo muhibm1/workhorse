@@ -43,7 +43,15 @@ function wallClockMinutes(now: Date, timeZone: string | undefined): number {
  * buffer, or null when the message carries no parseable time (then the caller falls back to a
  * fixed retry). A reset time earlier than the current wall clock means tomorrow.
  */
+const RESET_IN_RE = /resets\s+in\s+(?:(\d+)\s*h(?:ours?|rs?)?)?\s*(?:(\d+)\s*m(?:in(?:utes?|s)?)?)?/i;
+
 export function parseLimitReset(message: string, now: Date): number | null {
+  // "resets in 3h 20m": a duration, no clock or zone involved.
+  const d = RESET_IN_RE.exec(message);
+  if (d && (d[1] || d[2])) {
+    return (parseInt(d[1] ?? '0', 10) * 60 + parseInt(d[2] ?? '0', 10)) * MINUTE + 2 * MINUTE;
+  }
+
   const m = RESET_RE.exec(message);
   if (!m) return null;
   let hour = parseInt(m[1], 10);
@@ -53,13 +61,18 @@ export function parseLimitReset(message: string, now: Date): number | null {
   if (meridiem === 'am' && hour === 12) hour = 0;
   if (hour > 23 || minute > 59) return null;
 
-  let current: number;
+  const target = hour * 60 + minute;
+  let delta: number;
   try {
-    current = wallClockMinutes(now, m[4]);
+    delta = (target - wallClockMinutes(now, m[4]) + 24 * 60) % (24 * 60);
+    // Wall-clock subtraction is off by the shift on a clock-change night. Check where the delay
+    // actually lands in the zone and correct once, so the resume is not an hour early or late.
+    const landed = wallClockMinutes(new Date(now.getTime() + delta * MINUTE), m[4]);
+    delta += ((target - landed + 24 * 60 + 12 * 60) % (24 * 60)) - 12 * 60;
+    if (delta < 0) delta += 24 * 60;
   } catch {
     return null; // unrecognised time zone name
   }
-  const delta = (hour * 60 + minute - current + 24 * 60) % (24 * 60);
   return delta * MINUTE + 2 * MINUTE;
 }
 
@@ -79,13 +92,20 @@ export function createAutoResume(opts: {
   maxDelayMs?: number;
   /** Used when the message has no parseable reset time (default 30 min). */
   fallbackDelayMs?: number;
+  /** Auto-resumes in a row that may hit the limit again before it is left to the human (3). */
+  maxAttempts?: number;
   now?: () => number;
 }): AutoResume {
   const maxDelay = opts.maxDelayMs ?? 8 * 60 * MINUTE;
   const fallback = opts.fallbackDelayMs ?? 30 * MINUTE;
+  const maxAttempts = opts.maxAttempts ?? 3;
   const now = opts.now ?? Date.now;
   const lastError = new Map<string, string>();
   const pending = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Consecutive limit stops per repo. Bounds the loop when a reset time cannot be parsed (a
+   *  weekly limit with a date, say): without it the 30-minute fallback would retry until the
+   *  reset, starting a run every half hour. */
+  const attempts = new Map<string, number>();
 
   return {
     onEvent(repoId, event) {
@@ -95,7 +115,17 @@ export function createAutoResume(opts: {
 
       const message = lastError.get(repoId);
       lastError.delete(repoId);
-      if (!message || !isLimitError(message) || pending.has(repoId)) return;
+      if (!message || !isLimitError(message)) {
+        attempts.delete(repoId); // a run that ended any other way resets the streak
+        return;
+      }
+      if (pending.has(repoId)) return;
+      const tries = (attempts.get(repoId) ?? 0) + 1;
+      if (tries > maxAttempts) {
+        opts.emit(repoId, `usage limit: ${maxAttempts} auto-resumes in a row hit the limit again; resume manually when it lifts`);
+        return;
+      }
+      attempts.set(repoId, tries);
 
       const parsed = parseLimitReset(message, new Date(now()));
       if (parsed !== null && parsed > maxDelay) {
@@ -119,6 +149,7 @@ export function createAutoResume(opts: {
     },
 
     cancel(repoId) {
+      attempts.delete(repoId); // a human acted; the next limit stop starts a fresh streak
       const timer = pending.get(repoId);
       if (!timer) return;
       clearTimeout(timer);
@@ -206,7 +237,7 @@ function newestDigest(digests: ChangeDigest[]): ChangeDigest | null {
  */
 export function createGateNotifier(opts: {
   getUrl: () => string | null;
-  post: (url: string, n: GateNotification) => void;
+  post: (url: string, n: GateNotification, repoId: string) => void;
 }): GateNotifier {
   const lastGate = new Map<string, Gate | null>();
   return {
@@ -218,7 +249,7 @@ export function createGateNotifier(opts: {
       lastGate.set(repoId, gate);
       if (isBaseline || !gate || gate === previous || !newest) return;
       const url = opts.getUrl();
-      if (url) opts.post(url, buildGateNotification(repoName, newest));
+      if (url) opts.post(url, buildGateNotification(repoName, newest), repoId);
     },
   };
 }

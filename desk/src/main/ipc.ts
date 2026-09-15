@@ -310,7 +310,13 @@ export function registerIpc(deps: IpcDeps): void {
   // -- watch -------------------------------------------------------------
   const gateNotifier = createGateNotifier({
     getUrl: () => settings.get().notifyUrl,
-    post: (url, n) => void postNotification(url, n),
+    // A failed push must not be silent: the user believes their phone is covering the gates.
+    post: (url, n, repoId) =>
+      void postNotification(url, n).then((ok) => {
+        if (ok) return;
+        console.warn(`paddock: phone notification to the configured URL failed (${n.title})`);
+        sendNotice(repoId, 'phone notification failed; check the URL in Settings > Phone notifications');
+      }),
   });
 
   watcher.on((e) => {

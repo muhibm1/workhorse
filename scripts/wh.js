@@ -513,8 +513,12 @@ function buildDigest(root, id, state) {
   const packetExists = artifactHere
     ? fs.existsSync(path.join(L.changeDir(root, id), artifactHere))
     : false;
+  // Only a pending gate waits on the human. A rejected one waits on the agents reworking it; the
+  // conductor sets it back to pending when it presents the gate again. Treating "rejected" as
+  // waiting (the old `!== 'approved'`) showed Approve buttons and would have suppressed the
+  // re-presentation notification, because the gate never appeared to change.
   const humanGate =
-    gateHere && required.includes(gateHere) && gates[gateHere] !== 'approved' && packetExists
+    gateHere && required.includes(gateHere) && (gates[gateHere] || 'pending') === 'pending' && packetExists
       ? gateHere
       : null;
 
