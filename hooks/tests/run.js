@@ -314,6 +314,9 @@ console.log('conductor log');
   check('log appends one line with the phase and message', r.code === 0 && phase === L.loadState(repo, id).phase && rest.join(' | ') === 'wh-spec-architect | spec.md written, 19 requirements', r.err || last);
   check('log stamps the real time, not a supplied one', t >= before - 1000 && t <= Date.now() + 1000, stamp);
   check('log refuses an empty message', wh(repo, 'log').code !== 0);
+  wh(repo, 'log', `${phase} | wh-release-engineer | release.md written`);
+  const repeated = fs.readFileSync(f, 'utf8').trim().split('\n').pop();
+  check('log drops a phase the caller repeated', repeated.split(' | ').filter((s) => s === phase).length === 1, repeated);
 }
 
 console.log('plugin structure');
@@ -398,12 +401,18 @@ console.log('phase done');
   g('add', '.'); g('commit', '-q', '-m', 'onboard');
   const pid = JSON.parse(wh(pd, 'new', 'Close me', '--tier', '0').out).change_id;
   const dir = `docs/sdlc/${pid}`;
+  // A live run closed the change before the retro existed, leaving retro.md out of the close
+  // commit; phase done now refuses until it exists.
+  const early = wh(pd, 'phase', 'done');
+  check('phase done refuses while retro.md is missing', early.code !== 0 && /retro\.md does not exist/.test(early.err), early.err);
   fs.writeFileSync(path.join(pd, dir, 'retro.md'), '# retro\n');
   fs.writeFileSync(path.join(pd, 'unrelated.txt'), 'not part of the change\n');
   const r = wh(pd, 'phase', 'done');
   check('phase done commits the change folder', r.code === 0 && g('status', '--porcelain', '--', dir) === '' && g('log', '-1', '--format=%s') === `chore(sdlc): close ${pid}`, r.err || g('status', '--porcelain'));
   check('phase done reports the commit', r.code === 0 && JSON.parse(r.out).committed === g('log', '-1', '--format=%h'), r.out);
   check('phase done leaves files outside the change folder alone', g('status', '--porcelain').includes('unrelated.txt'));
+  JSON.parse(wh(pd, 'new', 'No retro', '--tier', '0').out);
+  check('--no-retro closes a change without a retro', wh(pd, 'phase', 'done', '--no-retro').code === 0);
 }
 
 console.log('control state location');

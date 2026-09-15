@@ -226,6 +226,12 @@ switch (cmd) {
     const { id, state } = requireActive(root);
     const p = args[0];
     if (!PHASES.includes(p)) die(`phase must be one of ${PHASES.join(', ')}`);
+    // The retro must exist before the change closes, so the close commit carries it. A live run
+    // closed first and would have left retro.md out of history; the order is now enforced here.
+    if (p === 'done' && !hasFlag('--no-retro') &&
+        !fs.existsSync(path.join(L.changeDir(root, id), 'retro.md'))) {
+      die('cannot close the change: retro.md does not exist. Dispatch wh-retro-learner first, or pass --no-retro to close without one.');
+    }
     state.phase = p;
     if (p !== 'verify' && p !== 'build') state.mode = 'normal';
     L.saveState(root, id, state);
@@ -328,7 +334,8 @@ switch (cmd) {
     // ahead of the file's own write time. The CLI stamps the time and the phase instead.
     const root = requireRoot();
     const { id, state } = requireActive(root);
-    const msg = args.join(' ').replace(/\s+/g, ' ').trim();
+    // The CLI adds the phase itself; drop one the caller included, which doubled it in live logs.
+    const msg = args.join(' ').replace(/\s+/g, ' ').trim().replace(new RegExp(`^${state.phase}\\s*\\|\\s*`), '');
     if (!msg) die('usage: wh.js log "<agent> | <result>"');
     const f = path.join(L.changeDir(root, id), 'conductor-log.md');
     if (!fs.existsSync(f)) fs.writeFileSync(f, `# Conductor log: ${id}\n\n`);
