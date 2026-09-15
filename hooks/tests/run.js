@@ -407,10 +407,14 @@ console.log('phase done');
   check('phase done refuses while retro.md is missing', early.code !== 0 && /retro\.md does not exist/.test(early.err), early.err);
   fs.writeFileSync(path.join(pd, dir, 'retro.md'), '# retro\n');
   fs.writeFileSync(path.join(pd, 'unrelated.txt'), 'not part of the change\n');
+  fs.mkdirSync(path.join(pd, '.workhorse', 'instincts'), { recursive: true });
+  fs.writeFileSync(path.join(pd, '.workhorse', 'instincts', 'wait-for-close.md'), '---\nid: wait-for-close\nconfidence: 0.7\n---\n');
   const r = wh(pd, 'phase', 'done');
   check('phase done commits the change folder', r.code === 0 && g('status', '--porcelain', '--', dir) === '' && g('log', '-1', '--format=%s') === `chore(sdlc): close ${pid}`, r.err || g('status', '--porcelain'));
   check('phase done reports the commit', r.code === 0 && JSON.parse(r.out).committed === g('log', '-1', '--format=%h'), r.out);
   check('phase done leaves files outside the change folder alone', g('status', '--porcelain').includes('unrelated.txt'));
+  check('the close commit carries the retro instincts too',
+    g('ls-files', '.workhorse/instincts').includes('wait-for-close.md') && g('status', '--porcelain', '--', '.workhorse/instincts') === '');
   JSON.parse(wh(pd, 'new', 'No retro', '--tier', '0').out);
   check('--no-retro closes a change without a retro', wh(pd, 'phase', 'done', '--no-retro').code === 0);
 }
