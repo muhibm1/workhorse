@@ -58,6 +58,11 @@ above. The higher tier always wins.
   `src/auth/session.ts`" is.
 - Never lower a tier because the change seems small. Size is not risk.
 - If you cannot tell whether a path will be touched, assume it will.
+- "Touching" a protected or sensitive path means the change will modify it: the diff will
+  include that file. Code that only reads a sensitive file at runtime (serving the version from
+  `package.json`, say) is not a tier-2 signal by itself; record it as context and classify on
+  the other signals. A live run rated a read-only `/version` endpoint tier 2 on this confusion,
+  which cost the change three extra human gates.
 
 ## Exit criterion
 

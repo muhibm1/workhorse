@@ -356,6 +356,37 @@ console.log('plugin structure');
   check('the conductor can name every vendored ECC agent', undispatchable.length === 0, undispatchable.join(', '));
 }
 
+console.log('artifact-size');
+{
+  // Two live runs wrote intents of 268 and 270 lines against a 150-line rule; prompt guidance
+  // alone did not hold, so a hook now measures after each write.
+  const az = path.join(tmp, 'az');
+  fs.mkdirSync(az, { recursive: true });
+  const g = (...a) => execFileSync('git', a, { cwd: az, encoding: 'utf8' }).trim();
+  g('init', '-q'); g('config', 'user.email', 'tester@example.com'); g('config', 'user.name', 'Tester');
+  wh(az, 'init');
+  const aid = JSON.parse(wh(az, 'new', 'Size me', '--tier', '1').out).change_id;
+  const put = (name, n) => {
+    const rel = `docs/sdlc/${aid}/${name}`;
+    fs.writeFileSync(path.join(az, rel), Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n') + '\n');
+    return { session_id: 's', cwd: az, hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(az, rel) } };
+  };
+  const res = (input) => hook('artifact-size.js', input);
+
+  const big = res(put('intent.md', 200));
+  check('an intent over 190 lines is sent back to be cut', big.decision === 'block' && /200 lines; the limit for intent\.md is 190/.test(big.reason || ''), JSON.stringify(big));
+  check('an intent within the limit passes silently', res(put('intent.md', 120)).decision === undefined);
+  check('a tier-1 spec over 250 lines is sent back', res(put('spec.md', 300)).decision === 'block');
+  wh(az, 'state', 'set', 'tier', '2');
+  check('the same spec passes at tier 2 (limit 500)', res(put('spec.md', 300)).decision === undefined);
+  wh(az, 'state', 'set', 'tier', '3');
+  check('a tier-3 spec has no size limit', res(put('spec.md', 900)).decision === undefined);
+  check('a plan over 500 lines is sent back', res(put('plan.md', 520)).decision === 'block');
+  fs.writeFileSync(path.join(az, 'README.md'), 'x\n'.repeat(1000));
+  check('files outside a change folder are ignored',
+    res({ session_id: 's', cwd: az, hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(az, 'README.md') } }).decision === undefined);
+}
+
 console.log('phase done');
 {
   // A live run reached done with release.md, retro.md and the log never committed.

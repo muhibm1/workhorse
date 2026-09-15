@@ -58,7 +58,8 @@ build from, without designing the solution.
 
 - Do not design. No architecture, no file lists, no library choices in intent.md.
 - Fill every section. "Not applicable: reason" beats blank.
-- Keep it under 150 lines of ordinary length, about 8 KB. Intent is a starting point, not a
+- Keep it under 150 lines of ordinary length, about 8 KB. The artifact-size hook flags an
+  intent over 190 lines after each write; when it does, cut and write again. Intent is a starting point, not a
   spec. A small request gets a short intent: do not pad a section to look thorough.
 - Do not set the tier; the classifier does.
 
