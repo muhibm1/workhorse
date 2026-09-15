@@ -119,7 +119,7 @@ export function Settings() {
   }
 
   return (
-    <main className="screen settings-screen grid-bg">
+    <main className="screen settings-screen">
       <h1 className="label">Settings</h1>
 
       <Panel title="Backend" className="settings-panel">

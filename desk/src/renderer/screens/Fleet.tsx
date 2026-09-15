@@ -1,11 +1,11 @@
 /**
- * Fleet screen (spec 2.1): every registered repository as a card in a responsive grid, sorted
- * with human-blocked changes first, then repos with a run in progress, then idle ones. Clicking a
- * card, or pressing Enter or Space on it, opens that repo's Run screen.
+ * Fleet screen (spec 2.1): every registered repository as a card, sorted with human-blocked
+ * changes first, then repos with a run in progress, then idle ones. Clicking a card, or pressing
+ * Enter or Space on it, opens that repo's Run screen.
  *
- * Each card carries an `AsciiField` background. Its mask is `max(AMBIENT_FLOOR, glyph)`, so the
- * whole card holds a faint field and the active phase's letter emerges from it. Density rises
- * while a run is active and on hover.
+ * Each card carries an `AsciiField` strip. Its mask is `max(AMBIENT_FLOOR, glyph)`, so the whole
+ * strip holds a faint field and the active phase's letter emerges from it. Density rises while a
+ * run is active and on hover; the ink is amber when a gate waits on you and cyan while running.
  *
  * Registering a repo: the native folder dialog (`store.addRepo`) or dropping a folder onto the
  * screen. `onDrop` reads `e.dataTransfer.files[0].path`, which only Electron's renderer populates
@@ -25,13 +25,16 @@ import { AsciiField } from '@/components/AsciiField';
 import { Panel } from '@/components/Panel';
 import { Badge, type BadgeTone } from '@/components/Badge';
 import { Button } from '@/components/Button';
+import { ChevronRight, PlusIcon } from '@/components/Icons';
 import './Fleet.css';
 
-/** Fixed footprint so the card's `AsciiField` (a canvas; it needs real pixel dimensions, not a
- * percentage) always matches the card it paints. `fleet-cards` wraps them in a flex grid rather
- * than stretching each card to fill a track. */
+/** Fixed card width so the card's `AsciiField` strip (a canvas; it needs real pixel dimensions,
+ * not a percentage) always matches the card it sits in. `fleet-cards` wraps them in a flex grid
+ * rather than stretching each card to fill a track. */
 const CARD_WIDTH = 340;
-const CARD_HEIGHT = 176;
+const CARD_PADDING = 18;
+const FIELD_WIDTH = CARD_WIDTH - 2 * CARD_PADDING - 2; // minus the 1px border on each side
+const FIELD_HEIGHT = 88;
 
 const GLYPH_FONT = "'JetBrains Mono', ui-monospace, monospace";
 // Tuned from measurement, not guessed: at 0.25 idle, noise x density rarely cleared the
@@ -39,11 +42,11 @@ const GLYPH_FONT = "'JetBrains Mono', ui-monospace, monospace";
 const IDLE_DENSITY = 0.7;
 const RUNNING_DENSITY = 1.0;
 const HOVER_DENSITY_BOOST = 0.25;
-/** Mask floor outside the phase glyph, so the whole card carries an ambient field. */
+/** Mask floor outside the phase glyph, so the whole strip carries an ambient field. */
 const AMBIENT_FLOOR = 0.45;
 
-/** Tier 0-1 read as neutral, 2 as amber (plan T11). Tier 3 is also `neutral` here — Badge.tsx /
- * theme.css style it violet off a `data-tier="3"` attribute instead of a badge tone. */
+/** Tier 0-1 read as neutral, 2 as amber. Tier 3 is also `neutral` here — Badge.tsx /
+ * primitives.css style it violet off a `data-tier="3"` attribute instead of a badge tone. */
 function tierTone(tier: number): BadgeTone {
   return tier === 2 ? 'amber' : 'neutral';
 }
@@ -62,12 +65,21 @@ function phaseGlyphChar(phase: Phase | null | undefined): string {
 
 type FleetRank = 0 | 1 | 2;
 
+function waitingOnYou(digest: ChangeDigest | null): boolean {
+  return Boolean(digest?.blocking_gate && digest.waiting_on.startsWith('You'));
+}
+
 /** Spec 2.1 sort key: human-blocked first, then a repo with a run in progress, then idle.
  * `Array#sort` is stable, so ties keep the repos' existing relative order. */
 function fleetRank(digest: ChangeDigest | null, run: RunState | undefined): FleetRank {
-  if (digest?.blocking_gate && digest.waiting_on.startsWith('You')) return 0;
+  if (waitingOnYou(digest)) return 0;
   if (run?.running) return 1;
   return 2;
+}
+
+function activeAgentCount(run: RunState | undefined): number {
+  if (!run) return 0;
+  return Object.values(run.agents).filter((agent) => agent.stoppedAt === undefined).length;
 }
 
 /** Electron populates a real filesystem `path` on a dropped `File`; the DOM lib's `File` type
@@ -93,23 +105,28 @@ function FleetCard({ repo, digest, run, onboarded, onStartOnboard, onOpen }: Fle
   const [context, setContext] = useState('');
 
   const running = run?.running ?? false;
+  const waiting = waitingOnYou(digest);
+  const agents = activeAgentCount(run);
   // Rasterising a glyph touches the DOM (asciiMask.ts's `glyph`), so this is memoised per
   // character rather than redone on every hover/density re-render.
   const mask = useMemo(() => {
     const shape = glyph(phaseGlyphChar(digest?.phase), GLYPH_FONT);
     // A glyph alone confines the texture to one letter, and a card with no phase gets a dot's
-    // worth of area: measured at 25 of 59,840 pixels painted. The floor gives the whole card an
-    // ambient field and lets the phase letter emerge from it.
+    // worth of area. The floor gives the whole strip an ambient field and lets the phase letter
+    // emerge from it.
     return (u: number, v: number) => Math.max(AMBIENT_FLOOR, shape(u, v));
   }, [digest?.phase]);
   const density = (running ? RUNNING_DENSITY : IDLE_DENSITY) + (hovered ? HOVER_DENSITY_BOOST : 0);
-  const waitingOnYou = Boolean(digest && digest.waiting_on.startsWith('You'));
+  const fieldColor = waiting ? 'var(--amber)' : running ? 'var(--cyan)' : 'var(--ink-faint)';
+
+  const cls = ['fleet-card', waiting ? 'fleet-card-waiting' : '', onboarded ? '' : 'fleet-card-new']
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <Panel
-      className="fleet-card"
-      active={waitingOnYou}
-      style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}
+      className={cls}
+      style={{ width: CARD_WIDTH }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       role="button"
@@ -117,93 +134,113 @@ function FleetCard({ repo, digest, run, onboarded, onStartOnboard, onOpen }: Fle
       aria-label={`Open ${repo.name}`}
       onClick={onOpen}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onOpen();
         }
       }}
     >
-      <AsciiField
-        className="fleet-card-field"
-        width={CARD_WIDTH}
-        height={CARD_HEIGHT}
-        color="var(--ink-faint)"
-        density={density}
-        mask={mask}
-      />
-      <div className="fleet-card-body">
-        <div className="fleet-card-header">
-          <span className="label">{repo.name}</span>
-          {digest && <span className="fleet-card-client label">{digest.client}</span>}
+      <div className="fleet-card-head">
+        <div className="fleet-card-names">
+          <span className="fleet-card-repo">{repo.name}</span>
+          <span className="label">{onboarded ? (digest?.client ?? 'onboarded') : 'not onboarded'}</span>
         </div>
+        {onboarded &&
+          (waiting && digest ? (
+            <Badge tone="amber">{digest.waiting_on}</Badge>
+          ) : running ? (
+            <Badge tone="cyan">{agents > 0 ? `${agents} ${agents === 1 ? 'agent' : 'agents'}` : 'running'}</Badge>
+          ) : (
+            <Badge tone="neutral">idle</Badge>
+          ))}
+      </div>
 
-        {!onboarded ? (
-          <div className="fleet-card-onboard">
-            <p className="fleet-card-title fleet-card-title-muted">Not onboarded</p>
-            {asking ? (
-              // Collected here rather than left to the skill: runs are headless, so a bare
-              // /workhorse:onboard stops at its "what industry?" question with nobody to answer.
-              <form
-                className="fleet-card-onboard-form"
-                onClick={(e) => e.stopPropagation()}
-                onSubmit={(e) => {
+      {!onboarded ? (
+        asking ? (
+          // Collected here rather than left to the skill: runs are headless, so a bare
+          // /workhorse:onboard stops at its "what industry?" question with nobody to answer.
+          <form
+            className="fleet-onboard"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const trimmed = context.trim();
+              if (!trimmed) return;
+              setAsking(false);
+              onStartOnboard(trimmed);
+            }}
+          >
+            <textarea
+              className="fleet-onboard-input"
+              autoFocus
+              rows={4}
+              value={context}
+              placeholder="Industry, users, hosting, compliance regimes"
+              aria-label="Client context"
+              onChange={(e) => setContext(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setAsking(false);
+                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  e.stopPropagation();
-                  const trimmed = context.trim();
-                  if (!trimmed) return;
-                  setAsking(false);
-                  onStartOnboard(trimmed);
-                }}
-              >
-                <textarea
-                  className="fleet-card-onboard-input mono"
-                  autoFocus
-                  rows={4}
-                  value={context}
-                  placeholder={'industry, users, hosting, compliance regimes\n\nEnter to start, Shift+Enter for a new line'}
-                  aria-label="Client context"
-                  onChange={(e) => setContext(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') setAsking(false);
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      e.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                />
-                <Button type="submit" tone="amber" size="sm" disabled={!context.trim()}>
-                  Go
-                </Button>
-              </form>
-            ) : (
-              <Button
-                tone="amber"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setAsking(true);
-                }}
-              >
+                  e.currentTarget.form?.requestSubmit();
+                }
+              }}
+            />
+            <div className="fleet-onboard-foot">
+              <span className="composer-hint">Enter to start · Shift+Enter new line</span>
+              <Button type="submit" tone="amber" size="sm" disabled={!context.trim()}>
                 Onboard
               </Button>
-            )}
-          </div>
-        ) : digest ? (
-          <>
-            <p className="fleet-card-title">{digest.title}</p>
-            <div className="fleet-card-badges">
-              <Badge tone="cyan">{digest.phase}</Badge>
-              <Badge tone={tierTone(digest.tier)} data-tier={digest.tier === 3 ? '3' : undefined}>
-                Tier {digest.tier}
-              </Badge>
-              <Badge tone={verificationTone(digest.verification)}>{digest.verification}</Badge>
-              {waitingOnYou && <Badge tone="amber">{digest.waiting_on}</Badge>}
             </div>
-          </>
+          </form>
         ) : (
-          <p className="fleet-card-title fleet-card-title-muted">No active change</p>
-        )}
-      </div>
+          <div className="fleet-card-onboard">
+            <p className="fleet-card-text">
+              WorkHorse has not audited this repository yet. Onboarding writes its profile, codebase map and
+              client CLAUDE.md.
+            </p>
+            <Button
+              tone="amber"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAsking(true);
+              }}
+            >
+              Onboard
+            </Button>
+          </div>
+        )
+      ) : (
+        <>
+          <div className="fleet-card-field">
+            <AsciiField width={FIELD_WIDTH} height={FIELD_HEIGHT} color={fieldColor} density={density} mask={mask} />
+          </div>
+          {digest ? (
+            <>
+              <p className="fleet-card-text">{digest.title}</p>
+              <div className="fleet-card-badges">
+                <Badge tone={digest.phase === 'done' ? 'mint' : 'cyan'}>{digest.phase}</Badge>
+                <Badge tone={tierTone(digest.tier)} data-tier={digest.tier === 3 ? '3' : undefined}>
+                  Tier {digest.tier}
+                </Badge>
+                <Badge tone={verificationTone(digest.verification)}>{digest.verification}</Badge>
+              </div>
+            </>
+          ) : (
+            <p className="fleet-card-text fleet-card-text-muted">No active change</p>
+          )}
+          <div className="fleet-card-foot">
+            <span className="fleet-card-meta mono">{digest?.status_label ?? 'ready for a change'}</span>
+            <span className={`fleet-card-cta${waiting ? ' fleet-card-cta-amber' : running ? ' fleet-card-cta-cyan' : ''}`}>
+              {waiting ? 'Review' : running ? 'Watch' : 'Open'}
+              <ChevronRight />
+            </span>
+          </div>
+        </>
+      )}
     </Panel>
   );
 }
@@ -228,6 +265,13 @@ export function Fleet() {
     [repos, digests, runs],
   );
 
+  const summary = useMemo(() => {
+    const onboardedCount = repos.filter((r) => r.onboarded ?? (digests[r.id]?.length ?? 0) > 0).length;
+    const runningCount = repos.filter((r) => runs[r.id]?.running).length;
+    const waitingCount = repos.filter((r) => waitingOnYou(digests[r.id]?.[0] ?? null)).length;
+    return `${onboardedCount} onboarded · ${runningCount} running · ${waitingCount} waiting on you`;
+  }, [repos, digests, runs]);
+
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragOver(true);
@@ -243,30 +287,37 @@ export function Fleet() {
   if (repos.length === 0) {
     return (
       <div
-        className={`fleet fleet-empty${dragOver ? ' fleet-empty-dragover' : ''}`}
+        className={`fleet fleet-empty${dragOver ? ' fleet-dragover' : ''}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <p className="label">No repositories registered</p>
-        <p className="fleet-empty-hint">Drop a repo folder here, or</p>
-        <Button tone="primary" onClick={() => void addRepo()}>
-          Add repository
-        </Button>
+        <div className="fleet-empty-card">
+          <h1 className="fleet-title">No repositories yet</h1>
+          <p className="fleet-empty-hint">Drop a repository folder anywhere in this window, or pick one.</p>
+          <Button tone="primary" onClick={() => void addRepo()}>
+            <PlusIcon />
+            Add repository
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
     <div
-      className={`fleet fleet-grid${dragOver ? ' fleet-grid-dragover' : ''}`}
+      className={`fleet${dragOver ? ' fleet-dragover' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="fleet-toolbar">
-        <span className="label">Fleet</span>
-        <Button tone="ghost" size="sm" onClick={() => void addRepo()}>
+      <div className="fleet-head">
+        <div className="fleet-head-text">
+          <h1 className="fleet-title">Repositories</h1>
+          <p className="fleet-summary">{summary}</p>
+        </div>
+        <Button tone="primary" onClick={() => void addRepo()}>
+          <PlusIcon />
           Add repository
         </Button>
       </div>

@@ -23,6 +23,7 @@ import { LogRail } from '@/components/LogRail';
 import { Panel } from '@/components/Panel';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
+import { ArrowRight, ChevronLeft } from '@/components/Icons';
 import { polar, STATIONS, stationAngle, phaseIndex, type Station as StationSlot } from '@/lib/polar';
 import type { ChangeDigest, Gate } from '@shared/types';
 import './Run.css';
@@ -120,6 +121,12 @@ export function Run({ repoId }: RunProps) {
   const [hiddenAgents, setHiddenAgents] = useState<ReadonlySet<string>>(() => new Set());
   const timersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const logWrapRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLFormElement | null>(null);
+
+  // The composer opens under the 640px stage, below the fold on a laptop-height window.
+  useEffect(() => {
+    if (starting) composerRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [starting]);
 
   // Switching repos: nothing this screen owns locally should bleed from one run into another.
   useEffect(() => {
@@ -243,13 +250,14 @@ export function Run({ repoId }: RunProps) {
               <p className="run-change-empty">No change yet in this repository.</p>
             )}
           </Panel>
-          <Button tone="ghost" size="sm" onClick={() => go({ name: 'fleet' })}>
+          <button type="button" className="run-back" onClick={() => go({ name: 'fleet' })}>
+            <ChevronLeft />
             Back to Fleet
-          </Button>
+          </button>
         </aside>
 
         <section className="run-center">
-          <div className="run-stage grid-bg bracket" style={{ width: STAGE_SIZE, height: STAGE_SIZE }}>
+          <div className="run-stage" style={{ width: STAGE_SIZE, height: STAGE_SIZE }}>
             {STATIONS.map((station, i) => {
               const { x, y } = polar(STAGE_CENTER, STAGE_CENTER, STATION_RADIUS, stationAngle(i));
               const { lit, current } = stationState(station, digest);
@@ -390,12 +398,13 @@ export function Run({ repoId }: RunProps) {
                 Resume
               </Button>
             ) : starting ? (
-              <form className="run-start-form" onSubmit={handleStart}>
+              <form className="composer run-start-form" ref={composerRef} onSubmit={handleStart}>
                 <textarea
-                  className="run-start-input mono"
+                  className="composer-input mono"
                   autoFocus
                   rows={5}
                   value={prompt}
+                  aria-label="Problem and outcome"
                   onChange={(e) => setPrompt(e.target.value)}
                   onKeyDown={(e) => {
                     // Enter sends, Shift+Enter makes a new line: the chat convention.
@@ -403,15 +412,22 @@ export function Run({ repoId }: RunProps) {
                       e.preventDefault();
                       e.currentTarget.form?.requestSubmit();
                     }
+                    if (e.key === 'Escape') setStarting(false);
                   }}
-                  placeholder={'problem -> outcome\n\nDescribe the problem in your own words, then the outcome you want. Shift+Enter for a new line.'}
+                  placeholder="Describe the problem in your own words, then the outcome you want."
                 />
-                <Button type="submit" tone="primary" disabled={!prompt.trim()}>
-                  Start
-                </Button>
-                <Button type="button" tone="ghost" onClick={() => setStarting(false)}>
-                  Cancel
-                </Button>
+                <div className="composer-foot">
+                  <span className="composer-hint">problem -&gt; outcome · Enter to start · Shift+Enter new line</span>
+                  <div className="composer-actions">
+                    <Button type="button" tone="ghost" size="sm" onClick={() => setStarting(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" tone="primary" size="sm" disabled={!prompt.trim()}>
+                      Start
+                      <ArrowRight />
+                    </Button>
+                  </div>
+                </div>
               </form>
             ) : (
               <Button tone="primary" onClick={() => setStarting(true)}>
@@ -427,14 +443,23 @@ export function Run({ repoId }: RunProps) {
       </div>
 
       <footer className="run-status-strip mono">
-        <span className="label">Session</span>
-        <span className="tnum">{run?.sessionId ?? '—'}</span>
-        <span className="label">Backend</span>
-        <span>{settings?.backend ?? '—'}</span>
-        <span className="label">Elapsed</span>
-        <span className="tnum">{formatElapsed(elapsedMs)}</span>
-        <span className="label">Cost</span>
-        <span className="tnum">{run ? formatCost(run.costUsd) : '—'}</span>
+        <span className="run-strip-item">
+          Session <span className="run-strip-value tnum">{run?.sessionId ?? '—'}</span>
+        </span>
+        <span className="run-strip-item">
+          Backend <span className="run-strip-value">{settings?.backend ?? '—'}</span>
+        </span>
+        <span className="run-strip-item">
+          Elapsed <span className="run-strip-value tnum">{formatElapsed(elapsedMs)}</span>
+        </span>
+        <span className="run-strip-item">
+          Cost <span className="run-strip-value tnum">{run ? formatCost(run.costUsd) : '—'}</span>
+        </span>
+        {digest && digest.verification !== 'none' && (
+          <span className={`run-strip-verification run-strip-${verificationTone(digest.verification)}`}>
+            {`verification ${digest.verification}`}
+          </span>
+        )}
       </footer>
     </div>
   );

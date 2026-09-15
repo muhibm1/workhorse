@@ -1,6 +1,5 @@
-/* The app shell (plan Task 15): left nav (Fleet, Settings) plus the routed screen. Every colour
-   is a CSS token from theme.css (spec 4.1); nothing here is a literal colour. Setup (spec 2.5)
-   renders full-bleed with no nav -- see App.tsx's early return. */
+/* The app shell: a 60px icon rail, a 52px top bar, and the routed screen. Every colour is a
+   token from theme.css. Setup renders full-bleed with neither -- see App.tsx's early return. */
 
 .app-shell {
   display: flex;
@@ -12,41 +11,127 @@
   display: block;
 }
 
-.app-nav {
+/* ---------------------------------------------------------------------- Icon rail */
+
+.app-rail {
   flex: 0 0 auto;
-  width: 64px;
+  width: 60px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 10px;
   padding: 16px 0;
-  background: var(--panel);
   border-right: 1px solid var(--hairline);
 }
 
-.app-nav-item {
-  width: 100%;
-  padding: 10px 4px;
+.app-logo {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 14px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: var(--ground);
+  box-shadow: 0 8px 24px -8px var(--accent);
+}
+
+.rail-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
   background: transparent;
-  border: none;
-  border-left: 2px solid transparent;
   color: var(--ink-faint);
   cursor: pointer;
-  text-align: center;
+  transition: color 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out;
 }
 
-.app-nav-item:hover {
+.rail-btn:hover:not(:disabled) {
   color: var(--ink-soft);
+  background: var(--panel);
 }
 
-.app-nav-item-active {
-  color: var(--cyan);
-  border-left-color: var(--cyan);
+.rail-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rail-btn-active,
+.rail-btn-active:hover:not(:disabled) {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* ---------------------------------------------------------------------- Main column */
+
+.app-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-topbar {
+  flex: 0 0 auto;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.app-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+}
+
+.app-crumb {
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-crumb:hover {
+  color: var(--ink-soft);
+  background: var(--panel);
+}
+
+.app-crumb-current {
+  color: var(--ink);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-waiting {
+  cursor: pointer;
+}
+
+.app-waiting:hover {
+  background: color-mix(in srgb, var(--amber) 22%, transparent);
 }
 
 .app-content {
   flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
+  min-height: 0;
   overflow: auto;
 }

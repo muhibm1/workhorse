@@ -1,5 +1,6 @@
-/* Paddock theme. Dark only. The :root tokens are exactly spec section 4.1; nothing else in the
-   renderer names a colour. Fonts are bundled woff2 files served from /fonts (no network). */
+/* Paddock theme: the Dracula palette on continuous rounded surfaces. Dark only. The :root
+   tokens are the only place the renderer names a colour. Fonts are bundled woff2 files served
+   from /fonts (no network). */
 
 @font-face {
   font-family: 'Manrope';
@@ -19,18 +20,30 @@
 
 :root {
   color-scheme: dark;
-  --ground: #0B0F14;
-  --panel: #111820;
-  --panel-2: #16202A;
-  --hairline: #1E2A35;
-  --ink: #E6EDF3;
-  --ink-soft: #9FB0BF;
-  --ink-faint: #5E6F7E;
-  --cyan: #7DE3F0;
-  --amber: #F2B45C;
-  --mint: #6EE7B7;
-  --coral: #F87171;
-  --violet: #A78BFA;
+  --ground: #21222c;
+  --panel: #282a36;
+  --panel-2: #313442;
+  /* #44475a (Dracula "current line") at 55% over the panel, flattened so it works anywhere. */
+  --hairline: #3a3d4f;
+  --hairline-strong: #44475a;
+  --ink: #f8f8f2;
+  --ink-soft: #c4c7d4;
+  --ink-faint: #6272a4;
+  --cyan: #8be9fd;
+  --amber: #ffb86c;
+  --mint: #50fa7b;
+  --coral: #ff5555;
+  --violet: #bd93f9;
+  --pink: #ff79c6;
+  /* The one accent: primary actions, focus, the active nav item. Cyan = running,
+     amber = waiting on you, mint = verified, coral = reject or error. */
+  --accent: var(--violet);
+
+  --radius-panel: 16px;
+  --radius-control: 12px;
+  --radius-stage: 24px;
+  --shadow-card: 0 1px 0 rgb(0 0 0 / 25%), 0 12px 32px -20px rgb(0 0 0 / 60%);
+  --shadow-float: 0 18px 48px -18px rgb(0 0 0 / 75%);
 }
 
 *,
@@ -56,11 +69,35 @@ body {
 }
 
 :focus-visible {
-  outline: 1px solid var(--cyan);
+  outline: 2px solid color-mix(in srgb, var(--accent) 75%, transparent);
   outline-offset: 2px;
 }
 
-/* Type utilities (spec 4.2). */
+::selection {
+  background: color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--panel-2);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--hairline-strong);
+}
+
+/* Type utilities. */
 .mono {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
@@ -78,63 +115,81 @@ body {
   color: var(--ink-faint);
 }
 
-/* Corner brackets (spec 4.2): four 8px L-shapes. ::before draws the two top corners, ::after the
-   two bottom ones; each L is a 8x1 and a 1x8 gradient strip. Wrap a panel in .bracket; add
-   .active (or focus anything inside) to brighten them to --cyan. */
-.bracket {
-  position: relative;
-  --bracket-ink: var(--hairline);
+/* The composer: every multi-line text box (start a change, onboard context, gate notes).
+   A rounded raised well that lights up in the accent while you type. */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-card);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
 }
 
-.bracket.active,
-.bracket:focus-within {
-  --bracket-ink: var(--cyan);
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 8%, transparent), var(--shadow-float);
 }
 
-.bracket::before,
-.bracket::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 8px;
-  pointer-events: none;
-  background-repeat: no-repeat;
-  background-image:
-    linear-gradient(var(--bracket-ink), var(--bracket-ink)),
-    linear-gradient(var(--bracket-ink), var(--bracket-ink)),
-    linear-gradient(var(--bracket-ink), var(--bracket-ink)),
-    linear-gradient(var(--bracket-ink), var(--bracket-ink));
-  background-size:
-    8px 1px,
-    1px 8px,
-    8px 1px,
-    1px 8px;
+.composer-input {
+  width: 100%;
+  min-height: 7.5em; /* five lines visible while typing */
+  resize: vertical;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  padding: 0;
 }
 
-.bracket::before {
-  top: 0;
-  background-position:
-    left top,
-    left top,
-    right top,
-    right top;
+.composer-input::placeholder {
+  color: var(--ink-faint);
 }
 
-.bracket::after {
-  bottom: 0;
-  background-position:
-    left bottom,
-    left bottom,
-    right bottom,
-    right bottom;
+.composer-input:focus-visible {
+  outline: none;
 }
 
-/* 24px hairline grid at 6% opacity (spec 4.2), used on the Run screen stage. */
-.grid-bg {
-  background-color: var(--ground);
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--hairline) 6%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--hairline) 6%, transparent) 1px, transparent 1px);
-  background-size: 24px 24px;
+.composer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+
+.composer-hint {
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+}
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Single-line inputs and selects share one look. */
+.input {
+  background: var(--ground);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  color: var(--ink);
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.input:focus,
+.input:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
 }

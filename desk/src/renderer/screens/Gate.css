@@ -8,7 +8,7 @@
   gap: 16px;
   height: 100%;
   min-height: 0;
-  padding: 16px;
+  padding: 20px 24px;
   box-sizing: border-box;
 }
 
@@ -25,6 +25,7 @@
 .gate-header-item {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
   min-width: 160px;
 }
@@ -55,14 +56,14 @@
 
 .gate-body {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 280px 1fr;
   gap: 16px;
   flex: 1 1 auto;
   min-height: 0;
 }
 
 .gate-body:has(.gate-sheet) {
-  grid-template-columns: 240px 1fr 360px;
+  grid-template-columns: 280px 1fr 360px;
 }
 
 .gate-index {
@@ -94,8 +95,8 @@
   text-align: left;
   background: transparent;
   border: none;
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: 10px;
+  padding: 7px 10px;
   color: var(--ink-soft);
   font-size: 0.82rem;
   cursor: pointer;
@@ -125,14 +126,19 @@
 .gate-textarea {
   resize: vertical;
   min-height: 7.5em; /* five lines visible while typing */
-  line-height: 1.45;
-  background: var(--panel-2);
+  line-height: 1.5;
+  background: var(--ground);
   border: 1px solid var(--hairline);
-  border-radius: 4px;
+  border-radius: 14px;
   color: var(--ink);
   font-family: 'Manrope', system-ui, sans-serif;
   font-size: 0.84rem;
-  padding: 8px;
+  padding: 10px 12px;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.gate-textarea::placeholder {
+  color: var(--ink-faint);
 }
 
 .gate-decisions {
@@ -148,11 +154,11 @@
 .gate-decision {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 8px;
+  gap: 6px;
+  padding: 10px 12px;
   border: 1px solid var(--hairline);
-  border-radius: 4px;
-  background: var(--panel-2);
+  border-radius: var(--radius-control);
+  background: var(--ground);
 }
 
 .gate-decision-title {
@@ -176,22 +182,23 @@
 
 .gate-decision-option input {
   margin-top: 2px;
-  accent-color: var(--cyan);
+  accent-color: var(--accent);
 }
 
 .gate-decision-note {
   background: var(--panel);
   border: 1px solid var(--hairline);
-  border-radius: 4px;
+  border-radius: 10px;
   color: var(--ink);
   font-family: 'Manrope', system-ui, sans-serif;
   font-size: 0.8rem;
-  padding: 6px 8px;
+  padding: 7px 10px;
 }
 
 .gate-decision-note:focus-visible {
-  outline: 1px solid var(--cyan);
-  outline-offset: -1px;
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .gate-decisions-hint {
@@ -200,8 +207,9 @@
 }
 
 .gate-textarea:focus-visible {
-  outline: 1px solid var(--cyan);
-  outline-offset: -1px;
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .gate-textarea:disabled {
@@ -319,15 +327,15 @@
   font-size: 0.85em;
   background: var(--panel-2);
   border: 1px solid var(--hairline);
-  border-radius: 3px;
-  padding: 1px 4px;
+  border-radius: 6px;
+  padding: 1px 5px;
 }
 
 .md pre {
-  background: var(--panel-2);
+  background: var(--ground);
   border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 10px;
+  border-radius: var(--radius-control);
+  padding: 12px 14px;
   overflow-x: auto;
 }
 
@@ -347,10 +355,13 @@
 .md-table-wrap {
   overflow-x: auto;
   margin: 0 0 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-control);
 }
 
 .md table {
   border-collapse: collapse;
+  border-style: hidden; /* the rounded wrapper draws the outer edge */
   width: 100%;
   font-size: 0.84rem;
 }
@@ -373,15 +384,16 @@
   background: transparent;
   border: none;
   padding: 0;
-  color: var(--cyan);
+  color: var(--accent);
   text-decoration: underline;
+  text-underline-offset: 2px;
   cursor: pointer;
   font: inherit;
 }
 
 .md-path:hover,
 .md-path:focus-visible {
-  color: color-mix(in srgb, var(--cyan) 85%, white);
+  color: var(--pink);
 }
 
 .md-inert {
@@ -390,5 +402,5 @@
 
 .md input[type='checkbox'] {
   margin-right: 6px;
-  accent-color: var(--cyan);
+  accent-color: var(--accent);
 }
