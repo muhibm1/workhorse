@@ -91,10 +91,11 @@ Run the hook tests: `node hooks/tests/run.js`.
 
 ## Agents
 
-Twenty-six single-purpose agents in `agents/`. The conductor sequences them, runs Build as
-waves of up to `build.max_parallel` (default 10) builders in isolated worktrees, and stops at
-gates. The verifier cannot edit. The fixer cannot touch tests. Reviewers cannot fix. No agent
-can approve.
+Thirty-five single-purpose agents in `agents/`: twenty-six WorkHorse agents and nine vendored
+from ECC (`ecc-*`). The conductor sequences them, runs Build as waves of up to
+`build.max_parallel` (default 10) builders in isolated worktrees, and stops at gates. The
+verifier cannot edit or spawn agents. The fixer cannot touch tests. Reviewers cannot fix. No
+agent can approve.
 
 | Phase | Agents |
 |-------|--------|
@@ -103,13 +104,23 @@ can approve.
 | Spec | spec-architect, constraint-auditor, eval-designer |
 | Plan | implementation-planner |
 | Build | builder (xN), readability-reviewer, simplifier |
-| Verify | verifier, fixer, eval-runner |
-| Review | bug-reviewer, conformance-reviewer, security-reviewer, adoption-reviewer, packet-compiler |
+| Verify | eval-runner, verifier, fixer, ecc-build-error-resolver |
+| Review | bug-reviewer, conformance-reviewer, security-reviewer, adoption-reviewer, packet-compiler, plus ECC specialists by stack (typescript, python, react, fastapi, database, rag-pipeline, silent-failure-hunter, pr-test-analyzer) |
 | Deploy | release-engineer |
 | Handover | handover-writer |
 | Maintain | incident-triager, retro-learner |
 | Any | tracker-sync (Notion mirror) |
 | All | conductor |
+| Tier 0 | express-dev (spec, plan, and build in one session) |
+
+### What comes from ECC
+
+WorkHorse vendors a reviewed subset of [ECC](https://github.com/affaan-m/ECC) (MIT), listed
+with the upstream commit in `vendor/ecc/VENDORED.md`: nine agents and the common, TypeScript,
+Python, React, and web rule packs, which builders and reviewers read through the
+`wh-language-standards` skill. ECC's hooks, the other agents and skills, and its observation-
+based learning are deliberately not vendored; the reasons are in
+`docs/ecc-adoption.md`.
 
 ## Policy skills
 

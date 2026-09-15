@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEST = path.resolve(__dirname, '..', 'resources', 'plugin');
-const INCLUDE = ['.claude-plugin', 'agents', 'skills', 'hooks', 'scripts', 'templates', 'README.md'];
+const INCLUDE = ['.claude-plugin', 'agents', 'skills', 'hooks', 'scripts', 'templates', 'vendor', 'README.md'];
 fs.rmSync(DEST, { recursive: true, force: true });
 fs.mkdirSync(DEST, { recursive: true });
 for (const entry of INCLUDE) {
