@@ -240,10 +240,15 @@ switch (cmd) {
       // Close the change in git history. A live run reached done with release.md, retro.md and
       // the last conductor-log lines never committed, so the record of the change was incomplete.
       const dirRel = path.relative(root, L.changeDir(root, id)).split(path.sep).join('/');
-      L.git(root, ['add', '--', dirRel]);
+      // The retro's instinct files live at .workhorse/instincts/, outside the change folder,
+      // because they accumulate across changes. A live run left them untracked; they are the
+      // record of what the pipeline learned, so the close commit carries them too.
+      const paths = [dirRel];
+      if (fs.existsSync(path.join(root, '.workhorse', 'instincts'))) paths.push('.workhorse/instincts');
+      L.git(root, ['add', '--', ...paths]);
       // Exits non-zero when nothing is staged; then there is nothing left to record.
-      L.git(root, ['commit', '-q', '-m', `chore(sdlc): close ${id}`, '--', dirRel]);
-      committed = L.git(root, ['log', '-1', '--format=%h', '--', dirRel]) || null;
+      L.git(root, ['commit', '-q', '-m', `chore(sdlc): close ${id}`, '--', ...paths]);
+      committed = L.git(root, ['log', '-1', '--format=%h', '--', ...paths]) || null;
     }
     out(committed ? { phase: p, committed } : { phase: p });
     break;
