@@ -306,6 +306,46 @@ console.log('conductor log');
   check('log refuses an empty message', wh(repo, 'log').code !== 0);
 }
 
+console.log('plugin structure');
+{
+  const AG = path.join(PLUGIN, 'agents');
+  const SK = path.join(PLUGIN, 'skills');
+  const agentFiles = fs.readdirSync(AG).filter((f) => f.endsWith('.md'));
+  const front = (f) => (fs.readFileSync(path.join(AG, f), 'utf8').match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
+  const field = (fm, k) => ((fm.match(new RegExp(`^${k}:\\s*(.*)$`, 'm')) || [])[1] || '').trim();
+
+  const misnamed = agentFiles.filter((f) => field(front(f), 'name') !== f.replace(/\.md$/, ''));
+  check('every agent file name matches its frontmatter name', misnamed.length === 0, misnamed.join(', '));
+
+  // A typo in a skills: list silently drops that skill from the agent, so check every reference.
+  const skillDirs = new Set(fs.readdirSync(SK));
+  const missing = [];
+  for (const f of agentFiles) {
+    const list = field(front(f), 'skills').replace(/^\[|\]$/g, '').split(',').map((s) => s.trim()).filter(Boolean);
+    for (const s of list) if (!skillDirs.has(s)) missing.push(`${f}: ${s}`);
+  }
+  check('every skill an agent preloads exists', missing.length === 0, missing.join('; '));
+
+  const noDefense = agentFiles.filter((f) => !/Prompt defense baseline/i.test(fs.readFileSync(path.join(AG, f), 'utf8')));
+  check('every agent carries the prompt defense baseline', noDefense.length === 0, noDefense.join(', '));
+
+  const verifierTools = field(front('wh-verifier.md'), 'tools');
+  check('verifier cannot spawn agents (least privilege: Bash without Agent)', !/\bAgent\b/.test(verifierTools), verifierTools);
+
+  const ecc = agentFiles.filter((f) => f.startsWith('ecc-'));
+  check('nine ECC agents vendored', ecc.length === 9, ecc.join(', '));
+  const noAdapter = ecc.filter((f) => !fs.readFileSync(path.join(AG, f), 'utf8').includes('## WorkHorse adapter'));
+  check('every vendored ECC agent has the WorkHorse adapter', noAdapter.length === 0, noAdapter.join(', '));
+  check('vendored ECC licence and manifest present',
+    fs.existsSync(path.join(PLUGIN, 'vendor', 'ecc', 'LICENSE')) && fs.existsSync(path.join(PLUGIN, 'vendor', 'ecc', 'VENDORED.md')));
+  const rulesFor = ['common', 'typescript', 'python', 'react', 'web'].filter((r) => !fs.existsSync(path.join(PLUGIN, 'vendor', 'ecc', 'rules', r)));
+  check('every rules folder wh-language-standards names is vendored', rulesFor.length === 0, rulesFor.join(', '));
+
+  const conductor = fs.readFileSync(path.join(AG, 'wh-conductor.md'), 'utf8');
+  const undispatchable = ecc.filter((f) => !conductor.includes(`workhorse:${f.replace(/\.md$/, '')}`));
+  check('the conductor can name every vendored ECC agent', undispatchable.length === 0, undispatchable.join(', '));
+}
+
 console.log('phase done');
 {
   // A live run reached done with release.md, retro.md and the log never committed.
