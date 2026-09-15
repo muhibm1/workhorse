@@ -152,7 +152,11 @@ real cap for the rest of this run and say so in your report.
 ## Verify
 
 1. `WH phase verify`. Dispatch `wh-eval-runner` first; it writes the Evals section of
-   `verification.md`. Then dispatch `wh-verifier` with the eval runner's report. The verifier
+   `verification.md`. Then dispatch `wh-verifier` with the eval runner's report. Every
+   verification starts here, including a re-verification after a Review-phase fix: never pass
+   the verifier an earlier eval report, since a fix can change what the evals exercise. (A live
+   run re-verified after a review fix without the eval runner, and the verifier had to carry
+   old eval results forward as unverified.) The verifier
    runs every check, writes `verification.md`, and reports green or red. (The verifier cannot
    spawn agents, so the eval runner is always yours to dispatch.)
 2. If red: `WH mode fix`. Route each failure by kind: build, typecheck, and compile failures
