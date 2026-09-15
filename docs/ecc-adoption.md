@@ -67,6 +67,31 @@ AgentShield after this change, same flags: **0 critical, 1 high, 10 medium** (fr
    confidence-scored, evidence-backed instinct files under `.workhorse/instincts/`, and only
    instincts at 0.7 or higher are promoted into `CLAUDE.md`.
 
+## Measured: three reviewers on the same commit
+
+To test whether the ECC specialists earn their place, three reviewers independently reviewed
+the same real change: commit `4f25dd3`, 603 lines of TypeScript adding Paddock's auto-resume,
+stall watchdog, and phone notifications. The ECC agents ran headless through the installed
+plugin, the same path the conductor uses, which also proved they are dispatchable. Every
+finding was checked against the code before it was fixed.
+
+| Reviewer | Model | Findings | Found only by this reviewer |
+|---|---|---|---|
+| `wh-bug-reviewer` | opus | 6 (1 high, 2 medium, 3 low) | an auto-resumed run showed as stopped with no Stop button; a gate presented again after a rejection never re-notified (root cause in the `wh.js` digest); a clock-change night put the resume an hour off |
+| `ecc-typescript-reviewer` | sonnet | 3 (1 medium, 2 low) | removing a repo left its auto-resume timer armed |
+| `ecc-silent-failure-hunter` | sonnet | 6 (2 high, 3 medium, 1 low) | a timer send to a destroyed window could crash main; the push had no timeout; a guessed resume time looked identical to a real one in the log; the event pump had no guard around autopilot |
+
+Found by more than one reviewer: an unbounded retry loop when the reset time cannot be parsed,
+a failed push that nobody hears about, and any https host being accepted for notifications.
+
+That makes 11 distinct real issues. `wh-bug-reviewer` alone found 6 of them, the two ECC
+specialists together found 8, and all three together found all 11. One more ECC finding was
+theoretical (it only fails with a driver that does not exist yet); the assumption behind it is
+now written down in the code. The cheaper specialists do not replace the WorkHorse reviewer (it
+alone found the high-severity renderer bug, proving it with a probe), and it does not replace
+them. That is the empirical case for composing rather than replacing, and why the conductor now
+runs them together at tier 1 and above.
+
 ## What was left, and why
 
 | Left out | Why |

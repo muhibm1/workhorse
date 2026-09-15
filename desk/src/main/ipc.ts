@@ -33,9 +33,18 @@ export interface DialogLike {
     win: unknown,
     options: { properties: string[] },
   ): Promise<{ canceled: boolean; filePaths: string[] }>;
+  /** Optional so test fakes can omit it; when absent, anything that needs a confirmation is refused. */
+  showMessageBox?(
+    win: unknown,
+    options: { type: string; buttons: string[]; defaultId: number; cancelId: number; message: string; detail: string },
+  ): Promise<{ response: number }>;
 }
+
+/** Hosts gate notifications may go to without a confirmation dialog. */
+const TRUSTED_NOTIFY_HOSTS = new Set(['ntfy.sh', 'localhost', '127.0.0.1']);
 export interface WinLike {
-  webContents: { send(channel: string, payload: unknown): void };
+  webContents: { send(channel: string, payload: unknown): void; isDestroyed?(): boolean };
+  isDestroyed?(): boolean;
 }
 
 export interface IpcDeps {
@@ -172,11 +181,26 @@ export function registerIpc(deps: IpcDeps): void {
   /** Last run id per repo, so autopilot notices land on the run the renderer is showing. */
   const lastRunId = new Map<string, string>();
 
+  /**
+   * Every send to the renderer goes through here. Timers (the stall watchdog, auto-resume) now
+   * send with no user action, possibly after the window is gone (on macOS the app outlives its
+   * window), and `send` on a destroyed webContents throws inside a bare timer callback, which
+   * would crash main. Found by ecc-silent-failure-hunter.
+   */
+  function safeSend(channel: string, payload: unknown): void {
+    if (win.isDestroyed?.() || win.webContents.isDestroyed?.()) return;
+    try {
+      win.webContents.send(channel, payload);
+    } catch (err) {
+      console.warn(`paddock: could not send ${channel} to the window: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   function sendNotice(repoId: string, text: string): void {
     const runId = lastRunId.get(repoId);
     if (!runId) return;
     const envelope: RunEnvelope = { runId, repoId, event: { t: 'notice', text, at: Date.now() } };
-    win.webContents.send(IPC.runEvent, envelope);
+    safeSend(IPC.runEvent, envelope);
   }
 
   const autoResume = createAutoResume({
@@ -195,8 +219,13 @@ export function registerIpc(deps: IpcDeps): void {
       for await (const event of handle.events) {
         stall.poke();
         const envelope: RunEnvelope = { runId: handle.id, repoId, event };
-        win.webContents.send(IPC.runEvent, envelope);
-        autoResume.onEvent(repoId, event);
+        safeSend(IPC.runEvent, envelope);
+        try {
+          autoResume.onEvent(repoId, event);
+        } catch (err) {
+          // Autopilot is best-effort; it must never stop this run's events reaching the window.
+          console.error(`paddock: auto-resume failed on a ${event.t} event: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     } finally {
       stall.stop();
@@ -239,6 +268,9 @@ export function registerIpc(deps: IpcDeps): void {
   });
 
   ipcMain.handle(IPC.reposRemove, (_e, id: string) => {
+    // A removed repo must not wake up later: drop any scheduled auto-resume and its run id.
+    autoResume.cancel(id);
+    lastRunId.delete(id);
     watcher.unwatch(id);
     registry.remove(id);
   });
@@ -298,7 +330,38 @@ export function registerIpc(deps: IpcDeps): void {
 
   // -- settings ----------------------------------------------------------
   ipcMain.handle(IPC.settingsGet, () => settings.get());
-  ipcMain.handle(IPC.settingsSet, (_e, patch: Partial<Settings>) => settings.set(patch));
+  ipcMain.handle(IPC.settingsSet, async (_e, patch: Partial<Settings>) => {
+    // A notify host other than ntfy.sh or loopback is confirmed in a main-process dialog, which
+    // renderer script cannot answer. Without it, script in a compromised renderer could point
+    // gate notifications at its own server and get around the renderer's connect-src 'none'.
+    // Flagged independently by wh-bug-reviewer and ecc-typescript-reviewer.
+    const url = patch && typeof patch.notifyUrl === 'string' ? patch.notifyUrl.trim() : '';
+    if (url && url !== settings.get().notifyUrl) {
+      let host = '';
+      try {
+        host = new URL(url).hostname;
+      } catch {
+        // Not a URL: the settings sanitiser drops it, so there is nothing to confirm.
+      }
+      if (host && !TRUSTED_NOTIFY_HOSTS.has(host)) {
+        const answer = dialog.showMessageBox
+          ? await dialog.showMessageBox(win, {
+              type: 'question',
+              buttons: ['Allow', 'Cancel'],
+              defaultId: 1,
+              cancelId: 1,
+              message: `Send gate notifications to ${host}?`,
+              detail: 'Paddock will POST the repository name, change title, tier, and phase to this server whenever a gate is waiting on you.',
+            })
+          : { response: 1 };
+        if (answer.response !== 0) {
+          const { notifyUrl: _refused, ...rest } = patch;
+          return settings.set(rest);
+        }
+      }
+    }
+    return settings.set(patch);
+  });
   ipcMain.handle(IPC.settingsSetKey, (_e, key: string) => {
     settings.setApiKey(key);
   });
@@ -321,7 +384,7 @@ export function registerIpc(deps: IpcDeps): void {
 
   watcher.on((e) => {
     const repo = registry.get(e.repoId);
-    win.webContents.send(IPC.watchDigest, { ...e, onboarded: repo ? isOnboarded(repo.path) : false });
+    safeSend(IPC.watchDigest, { ...e, onboarded: repo ? isOnboarded(repo.path) : false });
     gateNotifier.onDigests(e.repoId, repo?.name ?? e.repoId, e.digests);
   });
 }
