@@ -29,7 +29,8 @@ Eval summary: golden {{g}}/{{gt}}, edge {{e}}/{{et}}, failure {{f}}/{{ft}}, adve
 
 ## 4. Review findings
 
-Merged from the bug, conformance, security, and adoption reviewers. Blocking findings must be
+Merged from the bug, conformance, security, and adoption reviewers, plus every ECC specialist
+the conductor dispatched (`ecc-*`), each named in the Reviewer column. Blocking findings must be
 resolved or explicitly accepted below.
 
 | Severity | Reviewer | File:line | Finding | Resolution |
