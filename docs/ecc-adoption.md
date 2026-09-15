@@ -92,6 +92,26 @@ alone found the high-severity renderer bug, proving it with a probe), and it doe
 them. That is the empirical case for composing rather than replacing, and why the conductor now
 runs them together at tier 1 and above.
 
+## Confirmed in a live run (plugin 0.2.10)
+
+A real change ("GET /version returns the package.json version as JSON") ran through the
+pipeline headless on the demo repository, the way Paddock drives it, with a human at each
+gate. What the run showed, from the stream and the artifacts:
+
+| Check | Result |
+|---|---|
+| Review specialists | The conductor dispatched `ecc-typescript-reviewer` (matched the JavaScript stack) and `ecc-silent-failure-hunter` (every tier 1+ change) in the same parallel message as the four WorkHorse reviewers. |
+| Their value | Each ECC specialist independently confirmed one of the two real test bugs fixed before G4 (a stdout race on `exit` vs `close`; cleanup before the child exited, which breaks on Windows), and the TypeScript reviewer added two more findings of its own. The packet names all six reviewers. |
+| AgentShield | Ran inside the security reviewer because the diff touched `CLAUDE.md`, and surfaced pre-existing findings as a decision instead of blocking a nine-line feature. |
+| Models | Builders ran on sonnet (`model=sonnet` on the dispatch, tier 1); the spec architect and planner on fable. |
+| Size | Spec 248 lines and 3 ADRs (535 and 5 on the previous run); plan 3 tasks in 2 waves (7 sequential); one polish pass over the whole change. Build took 21 minutes (over an hour before). |
+| Verify order | The eval runner ran before the verifier, as the least-privilege change requires. |
+
+The run also exposed three gaps, each fixed: the risk classifier treated reading a sensitive
+file as touching it (rated the change tier 2; the human overrode to 1 at G1); the intent was
+270 lines despite a 150-line rule, now enforced by the `artifact-size` hook; and a
+re-verification after a review fix skipped the eval runner, now forbidden.
+
 ## What was left, and why
 
 | Left out | Why |
