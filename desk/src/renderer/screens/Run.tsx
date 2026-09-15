@@ -391,12 +391,20 @@ export function Run({ repoId }: RunProps) {
               </Button>
             ) : starting ? (
               <form className="run-start-form" onSubmit={handleStart}>
-                <input
+                <textarea
                   className="run-start-input mono"
                   autoFocus
+                  rows={5}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="problem -> outcome"
+                  onKeyDown={(e) => {
+                    // Enter sends, Shift+Enter makes a new line: the chat convention.
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      e.currentTarget.form?.requestSubmit();
+                    }
+                  }}
+                  placeholder={'problem -> outcome\n\nDescribe the problem in your own words, then the outcome you want. Shift+Enter for a new line.'}
                 />
                 <Button type="submit" tone="primary" disabled={!prompt.trim()}>
                   Start

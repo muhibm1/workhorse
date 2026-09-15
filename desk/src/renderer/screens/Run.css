@@ -128,12 +128,17 @@
 .run-start-form {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-end;
+  width: min(640px, 100%);
 }
 
 .run-start-input {
-  width: 320px;
-  padding: 8px 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 7.5em; /* five lines visible while typing */
+  resize: vertical;
+  line-height: 1.45;
+  padding: 10px 12px;
   border-radius: 4px;
   border: 1px solid var(--hairline);
   background: var(--panel-2);
