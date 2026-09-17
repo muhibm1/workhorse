@@ -170,8 +170,17 @@ export interface PaddockApi {
     repos(): Promise<StudbookRepo[]>;
     search(question: string, scope?: StudbookScope, topK?: number): Promise<StudbookPassage[]>;
     /** `history` is the thread so far, oldest first; omit it (or pass none) for a fresh thread,
-     *  which behaves exactly as a single question always has. */
-    ask(question: string, scope?: StudbookScope, topK?: number, history?: StudbookHistoryTurn[]): Promise<StudbookAnswer>;
+     *  which behaves exactly as a single question always has. `askId` tags the answer's chunks on
+     *  `onAnswerChunk`, so a caller can show the answer arriving; it resolves complete either way. */
+    ask(
+      question: string,
+      scope?: StudbookScope,
+      topK?: number,
+      history?: StudbookHistoryTurn[],
+      askId?: string,
+    ): Promise<StudbookAnswer>;
+    /** Text deltas for an in-flight `ask`, tagged with the `askId` that asked for them. */
+    onAnswerChunk(cb: (e: { askId: string; delta: string; snapshot: string }) => void): () => void;
     /** The Postgres connection string; stored encrypted in main and never readable back over IPC. */
     setConninfo(conninfo: string): Promise<void>;
     hasConninfo(): Promise<boolean>;
@@ -204,4 +213,5 @@ export const IPC = {
   studbookClearConninfo: 'studbook:clearConninfo',
   studbookSetIngestConninfo: 'studbook:setIngestConninfo', studbookHasIngestConninfo: 'studbook:hasIngestConninfo',
   studbookClearIngestConninfo: 'studbook:clearIngestConninfo', studbookSync: 'studbook:sync',
+  studbookAnswerChunk: 'studbook:answerChunk',
 } as const;

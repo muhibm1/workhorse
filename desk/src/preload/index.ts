@@ -65,7 +65,14 @@ const api: PaddockApi = {
     check: () => ipcRenderer.invoke(IPC.studbookCheck),
     repos: () => ipcRenderer.invoke(IPC.studbookRepos),
     search: (question, scope, topK) => ipcRenderer.invoke(IPC.studbookSearch, question, scope, topK),
-    ask: (question, scope, topK, history) => ipcRenderer.invoke(IPC.studbookAsk, question, scope, topK, history),
+    ask: (question, scope, topK, history, askId) =>
+      ipcRenderer.invoke(IPC.studbookAsk, question, scope, topK, history, askId),
+    onAnswerChunk: (cb) => {
+      const listener = (_event: IpcRendererEvent, payload: { askId: string; delta: string; snapshot: string }): void =>
+        cb(payload);
+      ipcRenderer.on(IPC.studbookAnswerChunk, listener);
+      return () => ipcRenderer.removeListener(IPC.studbookAnswerChunk, listener);
+    },
     setConninfo: (conninfo) => ipcRenderer.invoke(IPC.studbookSetConninfo, conninfo),
     hasConninfo: () => ipcRenderer.invoke(IPC.studbookHasConninfo),
     clearConninfo: () => ipcRenderer.invoke(IPC.studbookClearConninfo),

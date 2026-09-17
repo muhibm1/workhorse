@@ -135,6 +135,30 @@
   opacity: 0.75;
 }
 
+/* While the answer is arriving its chips are inert -- the passages they open land with it. */
+.studbook-answer-streaming .studbook-cite {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.studbook-answer-streaming::after {
+  content: '▍';
+  color: var(--accent);
+  animation: studbook-caret 1s steps(2) infinite;
+}
+
+@keyframes studbook-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studbook-answer-streaming::after {
+    animation: none;
+  }
+}
+
 .studbook-turn-pending .studbook-question {
   font-weight: 500;
 }

@@ -14,6 +14,25 @@ function passage(id: string, body = `body of ${id}`): Passage {
   return { chunkId: id, documentId: 'd', headingPath: `H ${id}`, body, repo: 'workhorse', docType: 'spec' };
 }
 
+/** The shape generateAnswer uses from the SDK's MessageStream: `on('text')` and `finalMessage()`.
+ *  `deltas` lets a test choose how the text arrives; by default it arrives in one piece. */
+function fakeStream(text: string, opts: { deltas?: string[]; usage?: { input_tokens: number; output_tokens: number } } = {}) {
+  const usage = opts.usage ?? { input_tokens: 10, output_tokens: 5 };
+  return {
+    on(event: string, cb: (delta: string, snapshot: string) => void) {
+      if (event === 'text') {
+        let snapshot = '';
+        for (const delta of opts.deltas ?? [text]) {
+          snapshot += delta;
+          cb(delta, snapshot);
+        }
+      }
+      return this;
+    },
+    finalMessage: async () => ({ content: [{ type: 'text', text }], usage }),
+  };
+}
+
 // ---------------------------------------------------------------- conninfo
 
 describe('studbook conninfo', () => {
@@ -127,21 +146,39 @@ describe('studbook answer', () => {
   });
 
   it('no passages means a refusal without an API call', async () => {
-    const create = vi.fn();
-    const a = await generateAnswer('q?', [], { apiKey: 'k', client: { messages: { create } as never } });
+    const stream = vi.fn();
+    const a = await generateAnswer('q?', [], { apiKey: 'k', client: { messages: { stream } as never } });
     expect(a.refused).toBe(true);
-    expect(create).not.toHaveBeenCalled();
+    expect(stream).not.toHaveBeenCalled();
   });
 
   it('pins temperature 0 and maps citations to passages', async () => {
-    const create = vi.fn(async (params: { temperature?: number }) => {
+    const stream = vi.fn((params: { temperature?: number }) => {
       expect(params.temperature).toBe(0);
-      return { content: [{ type: 'text', text: 'It moved to the common dir [2].' }], usage: { input_tokens: 10, output_tokens: 5 } };
+      return fakeStream('It moved to the common dir [2].');
     });
-    const a = await generateAnswer('q?', [passage('a'), passage('b')], { apiKey: 'k', client: { messages: { create } as never } });
+    const a = await generateAnswer('q?', [passage('a'), passage('b')], { apiKey: 'k', client: { messages: { stream } as never } });
     expect(a.refused).toBe(false);
     expect(a.citations).toEqual([{ number: 2, chunkId: 'b', headingPath: 'H b', repo: 'workhorse', docType: 'spec' }]);
     expect(a.inputTokens).toBe(10);
+  });
+
+  it('streams the answer as it is written, and still resolves with the whole thing', async () => {
+    // One path: the app always streams, so the tests exercise what the app runs. A caller that
+    // passes no onDelta gets the same complete answer, which is what the CLI and the eval do.
+    const deltas = ['It moved ', 'to the common dir ', '[2].'];
+    const stream = vi.fn(() => fakeStream('It moved to the common dir [2].', { deltas }));
+    const seen: { delta: string; snapshot: string }[] = [];
+    const a = await generateAnswer('q?', [passage('a'), passage('b')], {
+      apiKey: 'k',
+      onDelta: (delta, snapshot) => seen.push({ delta, snapshot }),
+      client: { messages: { stream } as never },
+    });
+    expect(seen.map((s) => s.delta)).toEqual(deltas);
+    // The snapshot is the whole answer so far, so a renderer can assign it rather than append.
+    expect(seen[seen.length - 1].snapshot).toBe('It moved to the common dir [2].');
+    expect(a.text).toBe('It moved to the common dir [2].');
+    expect(a.citations).toHaveLength(1);
   });
 
   it('with no history the request is byte-identical to the single question it always sent', () => {
@@ -166,29 +203,29 @@ describe('studbook answer', () => {
   });
 
   it('the thread reaches the model', async () => {
-    const create = vi.fn(async (params: { messages: { role: string }[] }) => {
+    const stream = vi.fn((params: { messages: { role: string }[] }) => {
       expect(params.messages).toHaveLength(3);
-      return { content: [{ type: 'text', text: 'ok [1]' }], usage: { input_tokens: 1, output_tokens: 1 } };
+      return fakeStream('ok [1]');
     });
     await generateAnswer('q?', [passage('a')], {
       apiKey: 'k',
       history: [{ question: 'earlier?', answer: 'earlier answer.' }],
-      client: { messages: { create } as never },
+      client: { messages: { stream } as never },
     });
-    expect(create).toHaveBeenCalledOnce();
+    expect(stream).toHaveBeenCalledOnce();
   });
 
   it('a model that rejects temperature is retried once without it', async () => {
     let calls = 0;
-    const create = vi.fn(async (params: { temperature?: number }) => {
+    const stream = vi.fn((params: { temperature?: number }) => {
       calls += 1;
       if (params.temperature !== undefined) {
-        const err = Object.assign(new Error('`temperature` is deprecated for this model.'), { status: 400 });
-        throw err;
+        // The 400 arrives from finalMessage(), not from stream() itself.
+        return { on: () => undefined, finalMessage: async () => { throw Object.assign(new Error('`temperature` is deprecated for this model.'), { status: 400 }); } };
       }
-      return { content: [{ type: 'text', text: 'ok [1]' }], usage: { input_tokens: 1, output_tokens: 1 } };
+      return fakeStream('ok [1]');
     });
-    const a = await generateAnswer('q?', [passage('a')], { apiKey: 'k', model: 'rejects-temp', client: { messages: { create } as never } });
+    const a = await generateAnswer('q?', [passage('a')], { apiKey: 'k', model: 'rejects-temp', client: { messages: { stream } as never } });
     expect(calls).toBe(2);
     expect(a.text).toBe('ok [1]');
   });
@@ -398,8 +435,32 @@ describe('studbook over IPC', () => {
     expect(ask).not.toHaveBeenCalled();
     // Absent history is an empty thread, which is the single-question path. (An absent scope is
     // an empty object, not two explicit nulls: `checkScope` only names what was actually given.)
+    // No askId, so nothing to stream to and onDelta is undefined; the answer still resolves whole.
     await ipc.invoke(IPC.studbookAsk, 'q');
-    expect(ask).toHaveBeenCalledWith('q', {}, undefined, []);
+    expect(ask).toHaveBeenCalledWith('q', {}, undefined, [], undefined);
+  });
+
+  it('chunks are tagged with the renderer\'s own askId, and a missing tag just means no streaming', async () => {
+    const ipc = fakeIpc();
+    const sent: { channel: string; payload: unknown }[] = [];
+    const win = { webContents: { send: (channel: string, payload: unknown) => sent.push({ channel, payload }) } };
+    const ask = vi.fn(async (_q, _s, _k, _h, onDelta?: (d: string, s: string) => void) => {
+      onDelta?.('hello ', 'hello ');
+      onDelta?.('world', 'hello world');
+      return { question: 'q', answer: { text: 'hello world', citations: [], refused: false, model: 'm', inputTokens: 0, outputTokens: 0 }, passages: [] };
+    });
+    const studbook = { status: () => ({}) as never, check: async () => ({}) as never, repos: async () => [], search: vi.fn(), ask, sync: vi.fn() } as never;
+    registerIpc(deps({ ipcMain: ipc.ipcMain, studbook, win }).deps);
+
+    await ipc.invoke(IPC.studbookAsk, 'q', {}, 5, [], 'ask-1');
+    expect(sent).toEqual([
+      { channel: IPC.studbookAnswerChunk, payload: { askId: 'ask-1', delta: 'hello ', snapshot: 'hello ' } },
+      { channel: IPC.studbookAnswerChunk, payload: { askId: 'ask-1', delta: 'world', snapshot: 'hello world' } },
+    ]);
+
+    sent.length = 0;
+    await ipc.invoke(IPC.studbookAsk, 'q', {}, 5, [], 'x'.repeat(65)); // over the tag length cap
+    expect(sent).toEqual([]);
   });
 
   it('sync runs over the registry, keyed by lowercased folder name, never a renderer path', async () => {

@@ -147,7 +147,14 @@ export interface GenerateDeps {
   model?: string;
   /** The thread so far, oldest first. Empty (the default) is a fresh question. */
   history?: HistoryTurn[];
-  /** Test seam: a fake `messages.create`. */
+  /**
+   * Called with each text delta and the whole answer so far, as it is written. The answer is
+   * still returned complete and unchanged when the call resolves -- this only lets a caller show
+   * it arriving. `/ask` takes several seconds (embed, rerank, generate) and, without this, spends
+   * all of them showing nothing.
+   */
+  onDelta?: (delta: string, snapshot: string) => void;
+  /** Test seam: a fake `messages.stream`. */
   client?: Pick<Anthropic, 'messages'>;
 }
 
@@ -172,11 +179,18 @@ export async function generateAnswer(question: string, passages: Passage[], deps
     messages: buildMessages(question, passages, deps.history ?? []),
   };
 
+  /**
+   * Always streams, even when nobody is watching the deltas: one path means the path the app
+   * takes is the path the tests cover. `finalMessage()` returns the same complete message
+   * `create` would have, so everything downstream of here is unchanged.
+   */
   async function create(withTemperature: boolean) {
     // `temperature` may be absent from the SDK's typed params (it left the Python SDK's in
     // 1.6.0); the API still honours it on Haiku 4.5, verified live with three identical samples.
     const params = withTemperature ? { ...base, temperature: 0 } : base;
-    return client.messages.create(params as Parameters<Anthropic['messages']['create']>[0]);
+    const stream = client.messages.stream(params as Parameters<Anthropic['messages']['stream']>[0]);
+    if (deps.onDelta) stream.on('text', (delta, snapshot) => deps.onDelta?.(delta, snapshot));
+    return stream.finalMessage();
   }
 
   let response;
