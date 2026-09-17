@@ -166,6 +166,10 @@ export function Studbook() {
   const clearTurns = usePaddockStore((s) => s.studbookClearTurns);
   /** The question in flight, shown at the foot of the transcript while it is answered. */
   const [pending, setPending] = useState<string | null>(null);
+  /** The in-flight answer as it is written. Its `askId` is this tab's own tag, so a chunk from
+   *  an ask we are no longer waiting on (a New thread mid-answer) is ignored rather than shown. */
+  const [streaming, setStreaming] = useState<string>('');
+  const askIdRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Which receipt is open, keyed `<turn index>:<passage number>` so turns do not fight. */
   const [openPassage, setOpenPassage] = useState<string | null>(null);
@@ -202,6 +206,14 @@ export function Studbook() {
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
+
+  useEffect(
+    () =>
+      window.paddock.studbook.onAnswerChunk((e) => {
+        if (e.askId === askIdRef.current) setStreaming(e.snapshot);
+      }),
+    [],
+  );
 
   // The scope filter needs the database; only fetch it once a connection string is stored.
   useEffect(() => {
@@ -242,14 +254,17 @@ export function Studbook() {
     const q = question.trim();
     if (!q || phase === 'asking') return;
     const scope = { repo: repo || null, changeId: changeId || null };
+    const askId = crypto.randomUUID();
+    askIdRef.current = askId;
     setPhase('asking');
     setError(null);
     setPending(q);
+    setStreaming('');
     setQuestion('');
     try {
       // Only the text of each turn goes back, not its passages: a follow-up is retrieved afresh.
       const history = turns.map((t) => ({ question: t.answer.question, answer: t.answer.answer }));
-      const answer = await window.paddock.studbook.ask(q, scope, undefined, history);
+      const answer = await window.paddock.studbook.ask(q, scope, undefined, history, askId);
       addTurn({ answer, scope, at: Date.now() });
       setPhase(answer.refused ? 'refused' : 'answered');
     } catch (err) {
@@ -257,7 +272,9 @@ export function Studbook() {
       setQuestion(q); // hand the question back rather than losing it to a failed call
       setPhase('error');
     } finally {
+      askIdRef.current = null;
       setPending(null);
+      setStreaming('');
       void refreshStatus();
     }
   }
@@ -447,8 +464,18 @@ export function Studbook() {
             ))}
             {pending && (
               <Panel className="studbook-turn studbook-turn-pending">
-                <p className="studbook-question">{pending}</p>
-                <p className="studbook-hint">Reading the record…</p>
+                <div className="studbook-question-row">
+                  <p className="studbook-question">{pending}</p>
+                </div>
+                {streaming ? (
+                  // The citation chips are inert until the answer lands: the passages they open
+                  // arrive with it, so a chip clicked mid-stream would have nothing to open.
+                  <div className="studbook-answer-text studbook-answer-streaming">
+                    <AnswerText text={streaming} onCite={() => undefined} />
+                  </div>
+                ) : (
+                  <p className="studbook-hint">Reading the record…</p>
+                )}
               </Panel>
             )}
           </>

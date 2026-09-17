@@ -111,8 +111,15 @@ export interface Studbook {
   check(): Promise<StudbookStatus>;
   repos(): Promise<RepoScope[]>;
   search(question: string, scope?: Scope, topK?: number): Promise<Passage[]>;
-  /** `history` is the thread so far, oldest first; empty is a fresh question. */
-  ask(question: string, scope?: Scope, topK?: number, history?: HistoryTurn[]): Promise<AskResult>;
+  /** `history` is the thread so far, oldest first; empty is a fresh question. `onDelta` sees the
+   *  answer as it is written; the result resolves complete whether or not anyone is watching. */
+  ask(
+    question: string,
+    scope?: Scope,
+    topK?: number,
+    history?: HistoryTurn[],
+    onDelta?: (delta: string, snapshot: string) => void,
+  ): Promise<AskResult>;
   /** Re-ingests each target repository through the ingest role. One at a time; refuses to overlap. */
   sync(targets: SyncTarget[]): Promise<SyncStats[]>;
 }
@@ -230,13 +237,15 @@ export function createStudbook(deps: StudbookDeps): Studbook {
       return remember(() => withDb((db) => retrieve(db, question, scope, topK)));
     },
 
-    ask(question, scope = {}, topK = DEFAULT_TOP_K, history = []) {
+    ask(question, scope = {}, topK = DEFAULT_TOP_K, history = [], onDelta) {
       return remember(async () => {
         const apiKey = deps.readApiKey();
         if (!apiKey) throw new Error('studbook: no Anthropic API key is stored (Settings > Backend > API key)');
         const query = retrievalQuery(question, history);
         const passages = await withDb((db) => retrieve(db, question, scope, topK, query));
-        const answer = await generateAnswer(question, passages, { apiKey, model: deps.generatorModel, history });
+        const answer = await generateAnswer(question, passages, {
+          apiKey, model: deps.generatorModel, history, onDelta,
+        });
         return { question, answer, passages };
       });
     },

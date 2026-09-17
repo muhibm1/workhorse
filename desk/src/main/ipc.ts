@@ -465,9 +465,16 @@ export function registerIpc(deps: IpcDeps): void {
     const passages = await requireStudbook().search(checkQuestion(question), checkScope(scope), checkTopK(topK));
     return passages.map((p, i) => ({ number: i + 1, ...p }));
   });
-  ipcMain.handle(IPC.studbookAsk, async (_e, question: unknown, scope?: unknown, topK?: unknown, history?: unknown) => {
+  ipcMain.handle(IPC.studbookAsk, async (_e, question: unknown, scope?: unknown, topK?: unknown, history?: unknown, askId?: unknown) => {
+    // The renderer tags its own ask so it can ignore chunks from one it is no longer waiting on;
+    // main only echoes the tag back. A missing or malformed tag means "do not stream", not an
+    // error -- the answer still resolves complete.
+    const tag = typeof askId === 'string' && askId.length > 0 && askId.length <= 64 ? askId : null;
+    const onDelta = tag
+      ? (delta: string, snapshot: string) => safeSend(IPC.studbookAnswerChunk, { askId: tag, delta, snapshot })
+      : undefined;
     const result = await requireStudbook().ask(
-      checkQuestion(question), checkScope(scope), checkTopK(topK), checkHistory(history),
+      checkQuestion(question), checkScope(scope), checkTopK(topK), checkHistory(history), onDelta,
     );
     return {
       question: result.question,
