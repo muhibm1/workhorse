@@ -98,11 +98,65 @@
 
 /* ---------------------------------------------------------------------- Answer */
 
-.studbook-answer > .panel-body,
+.studbook-turn > .panel-body,
 .studbook-empty > .panel-body {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* The transcript: each turn is its own card, the question above its answer. */
+.studbook-question-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.studbook-question {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.studbook-scope-tag {
+  color: var(--ink-faint);
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.studbook-turn-pending {
+  opacity: 0.75;
+}
+
+.studbook-turn-pending .studbook-question {
+  font-weight: 500;
+}
+
+/* Older turns keep their receipts folded away; the newest opens with them showing. */
+.studbook-receipts-wrap {
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
+}
+
+.studbook-receipts-wrap > summary {
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 10px;
+}
+
+.studbook-receipts-wrap > summary::-webkit-details-marker {
+  display: none;
+}
+
+.studbook-receipts-wrap > summary:hover {
+  color: var(--ink-soft);
 }
 
 .studbook-answer-text {
@@ -155,12 +209,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--hairline);
-}
-
-.studbook-receipts h2 {
-  margin: 0 0 4px;
 }
 
 .studbook-receipt {

@@ -18,6 +18,7 @@ import type {
   RepoRef,
   RunEnvelope,
   Settings,
+  StudbookTurn,
   SysCheck,
 } from '@shared/types';
 import type { RingTone } from '@/lib/orbState';
@@ -47,6 +48,13 @@ export interface PaddockState {
   repos: RepoRef[];
   digests: Record<string, ChangeDigest[]>;
   runs: Record<string, RunState>;
+  /**
+   * The Studbook tab's thread, oldest first. It lives here rather than in the screen so leaving
+   * the tab and coming back does not lose it, and deliberately nowhere else: the corpus is
+   * client-shaped material, and a transcript written to disk would be a new copy of it at rest
+   * that nothing else in Paddock keeps. It dies with the window.
+   */
+  studbookTurns: StudbookTurn[];
   screen: Screen;
 
   boot(): Promise<void>;
@@ -64,6 +72,9 @@ export interface PaddockState {
   /** Replaces `digests[repoId]`, newest `updated_at` first (see `activeDigest`). */
   applyDigest(repoId: string, digests: ChangeDigest[]): void;
   setOnboarded(repoId: string, onboarded: boolean): void;
+  studbookAddTurn(turn: StudbookTurn): void;
+  /** "New thread": the next question is asked with no history, as a fresh one. */
+  studbookClearTurns(): void;
   /** The newest digest for a repo by `updated_at`, or `null` when none has arrived yet. */
   activeDigest(repoId: string): ChangeDigest | null;
 }
@@ -224,6 +235,7 @@ export const usePaddockStore = create<PaddockState>()((set, get) => ({
   repos: [],
   digests: {},
   runs: {},
+  studbookTurns: [],
   screen: { name: 'setup' },
 
   async boot() {
@@ -256,6 +268,14 @@ export const usePaddockStore = create<PaddockState>()((set, get) => ({
 
   go(screen) {
     set({ screen });
+  },
+
+  studbookAddTurn(turn) {
+    set((s) => ({ studbookTurns: [...s.studbookTurns, turn] }));
+  },
+
+  studbookClearTurns() {
+    set({ studbookTurns: [] });
   },
 
   setOnboarded(repoId, onboarded) {

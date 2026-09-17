@@ -431,6 +431,26 @@ export function registerIpc(deps: IpcDeps): void {
       changeId: typeof s.changeId === 'string' && s.changeId ? s.changeId : null,
     };
   }
+  // A thread the renderer sends back. Bounded on both axes: an unbounded history would grow the
+  // prompt (and its cost) without limit, and each turn is capped at the same length a question is.
+  const MAX_HISTORY_TURNS = 12;
+  function checkHistory(history: unknown): { question: string; answer: string }[] {
+    if (history === undefined || history === null) return [];
+    if (!Array.isArray(history)) throw new Error('history must be an array of turns');
+    if (history.length > MAX_HISTORY_TURNS) throw new Error(`history is limited to ${MAX_HISTORY_TURNS} turns`);
+    return history.map((turn) => {
+      const t = turn as Record<string, unknown>;
+      if (typeof t?.question !== 'string' || typeof t?.answer !== 'string') {
+        throw new Error('each history turn needs a question and an answer');
+      }
+      if (t.question.length > MAX_QUESTION_LENGTH || t.answer.length > MAX_ANSWER_LENGTH) {
+        throw new Error('a history turn is too long');
+      }
+      return { question: t.question, answer: t.answer };
+    });
+  }
+  const MAX_ANSWER_LENGTH = 8000;
+
   function checkTopK(topK: unknown): number | undefined {
     if (topK === undefined || topK === null) return undefined;
     const n = Number(topK);
@@ -445,8 +465,10 @@ export function registerIpc(deps: IpcDeps): void {
     const passages = await requireStudbook().search(checkQuestion(question), checkScope(scope), checkTopK(topK));
     return passages.map((p, i) => ({ number: i + 1, ...p }));
   });
-  ipcMain.handle(IPC.studbookAsk, async (_e, question: unknown, scope?: unknown, topK?: unknown) => {
-    const result = await requireStudbook().ask(checkQuestion(question), checkScope(scope), checkTopK(topK));
+  ipcMain.handle(IPC.studbookAsk, async (_e, question: unknown, scope?: unknown, topK?: unknown, history?: unknown) => {
+    const result = await requireStudbook().ask(
+      checkQuestion(question), checkScope(scope), checkTopK(topK), checkHistory(history),
+    );
     return {
       question: result.question,
       answer: result.answer.text,

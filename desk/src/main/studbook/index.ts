@@ -16,7 +16,7 @@
  */
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
-import { generateAnswer, type Answer } from './answer';
+import { generateAnswer, type Answer, type HistoryTurn } from './answer';
 import { parseConninfo } from './conninfo';
 import { createModels, type ModelProgress, type Models } from './models';
 import { retrieveHybrid, type Passage, type Scope } from './retrieval';
@@ -24,6 +24,28 @@ import { syncRepo, type SyncProgress, type SyncStats } from './sync';
 
 export const RERANK_CANDIDATES = 20;
 export const DEFAULT_TOP_K = 5;
+/** How many earlier questions join a follow-up's retrieval query (see `retrievalQuery`). */
+export const HISTORY_RETRIEVAL_TURNS = 2;
+
+/**
+ * What the retrieval arms actually search for.
+ *
+ * With no history this is the question, unchanged -- so a fresh question retrieves exactly what
+ * it always has, which is what the eval measures and what the parity gate holds to the published
+ * numbers. A follow-up is the problem case: "what broke because of it?" embeds to nothing useful
+ * and shares no lexeme with the passages that answer it, because the subject is in the previous
+ * turn. Prepending the last couple of questions puts the subject back.
+ *
+ * It is a heuristic and it is unmeasured: the gold set is single-turn, so there is no multi-turn
+ * split to score this against, and building one is its own piece of work. Its failure mode is
+ * named rather than hidden -- a follow-up on an unrelated subject retrieves with the previous
+ * question's words as noise -- and the tab's "New thread" is the control that clears it.
+ */
+export function retrievalQuery(question: string, history: HistoryTurn[] = []): string {
+  if (history.length === 0) return question;
+  const recent = history.slice(-HISTORY_RETRIEVAL_TURNS).map((t) => t.question);
+  return [...recent, question].join(' ');
+}
 
 export interface StudbookDeps {
   /** Decrypts the stored conninfo, or null when none is stored. Main-only. */
@@ -89,7 +111,8 @@ export interface Studbook {
   check(): Promise<StudbookStatus>;
   repos(): Promise<RepoScope[]>;
   search(question: string, scope?: Scope, topK?: number): Promise<Passage[]>;
-  ask(question: string, scope?: Scope, topK?: number): Promise<AskResult>;
+  /** `history` is the thread so far, oldest first; empty is a fresh question. */
+  ask(question: string, scope?: Scope, topK?: number, history?: HistoryTurn[]): Promise<AskResult>;
   /** Re-ingests each target repository through the ingest role. One at a time; refuses to overlap. */
   sync(targets: SyncTarget[]): Promise<SyncStats[]>;
 }
@@ -150,9 +173,11 @@ export function createStudbook(deps: StudbookDeps): Studbook {
     }
   }
 
-  async function retrieve(db: DbClient, question: string, scope: Scope, topK: number): Promise<Passage[]> {
-    const [embedding] = await models.embed([question]);
-    const candidates = await retrieveHybrid(db, question, embedding, RERANK_CANDIDATES, scope);
+  /** `query` is what the arms search for (see `retrievalQuery`); `question` is what the
+   *  cross-encoder re-scores against, since that is the thing actually being answered. */
+  async function retrieve(db: DbClient, question: string, scope: Scope, topK: number, query = question): Promise<Passage[]> {
+    const [embedding] = await models.embed([query]);
+    const candidates = await retrieveHybrid(db, query, embedding, RERANK_CANDIDATES, scope);
     return models.rerank(question, candidates, topK);
   }
 
@@ -205,12 +230,13 @@ export function createStudbook(deps: StudbookDeps): Studbook {
       return remember(() => withDb((db) => retrieve(db, question, scope, topK)));
     },
 
-    ask(question, scope = {}, topK = DEFAULT_TOP_K) {
+    ask(question, scope = {}, topK = DEFAULT_TOP_K, history = []) {
       return remember(async () => {
         const apiKey = deps.readApiKey();
         if (!apiKey) throw new Error('studbook: no Anthropic API key is stored (Settings > Backend > API key)');
-        const passages = await withDb((db) => retrieve(db, question, scope, topK));
-        const answer = await generateAnswer(question, passages, { apiKey, model: deps.generatorModel });
+        const query = retrievalQuery(question, history);
+        const passages = await withDb((db) => retrieve(db, question, scope, topK, query));
+        const answer = await generateAnswer(question, passages, { apiKey, model: deps.generatorModel, history });
         return { question, answer, passages };
       });
     },
