@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { looksLikeConninfo, parseConninfo } from '../src/main/studbook/conninfo';
 import { reciprocalRankFusion, retrieveVector, retrieveFulltext, type Passage, type Queryable } from '../src/main/studbook/retrieval';
-import { buildContext, cleanRefusal, generateAnswer, parseCitedNumbers, SYSTEM_PROMPT } from '../src/main/studbook/answer';
-import { createStudbook, type DbClient } from '../src/main/studbook';
+import { buildContext, buildMessages, buildUserPrompt, cleanRefusal, FOLLOW_UP_NOTE, generateAnswer, parseCitedNumbers, SYSTEM_PROMPT } from '../src/main/studbook/answer';
+import { createStudbook, retrievalQuery, type DbClient } from '../src/main/studbook';
 import type { Models } from '../src/main/studbook/models';
 import { IPC } from '@shared/types';
 import { registerIpc, type IpcDeps, type IpcMainLike } from '../src/main/ipc';
@@ -144,6 +144,40 @@ describe('studbook answer', () => {
     expect(a.inputTokens).toBe(10);
   });
 
+  it('with no history the request is byte-identical to the single question it always sent', () => {
+    // The property the whole feature rests on: adding threads must not change what a fresh
+    // question asks, because that is what the eval measures and the parity gate pins.
+    const passages = [passage('a'), passage('b')];
+    expect(buildMessages('q?', passages)).toEqual([{ role: 'user', content: buildUserPrompt('q?', passages) }]);
+    expect(buildMessages('q?', passages, [])).toEqual([{ role: 'user', content: buildUserPrompt('q?', passages) }]);
+  });
+
+  it('a follow-up sends the thread as messages and warns that earlier passages are gone', () => {
+    const passages = [passage('a')];
+    const history = [{ question: 'first?', answer: 'first answer [1].' }, { question: 'second?', answer: 'second answer.' }];
+    const messages = buildMessages('third?', passages, history);
+    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant', 'user']);
+    expect(messages[0].content).toBe('first?');
+    expect(messages[3].content).toBe('second answer.');
+    // The note is in the follow-up's own message, never in the tuned system prompt.
+    expect(messages[4].content.startsWith(FOLLOW_UP_NOTE)).toBe(true);
+    expect(messages[4].content).toContain('Question: third?');
+    expect(SYSTEM_PROMPT).not.toContain(FOLLOW_UP_NOTE);
+  });
+
+  it('the thread reaches the model', async () => {
+    const create = vi.fn(async (params: { messages: { role: string }[] }) => {
+      expect(params.messages).toHaveLength(3);
+      return { content: [{ type: 'text', text: 'ok [1]' }], usage: { input_tokens: 1, output_tokens: 1 } };
+    });
+    await generateAnswer('q?', [passage('a')], {
+      apiKey: 'k',
+      history: [{ question: 'earlier?', answer: 'earlier answer.' }],
+      client: { messages: { create } as never },
+    });
+    expect(create).toHaveBeenCalledOnce();
+  });
+
   it('a model that rejects temperature is retried once without it', async () => {
     let calls = 0;
     const create = vi.fn(async (params: { temperature?: number }) => {
@@ -233,6 +267,19 @@ describe('createStudbook', () => {
     expect(passages.map((p) => p.chunkId)).toEqual(['k1']);
     expect(fake.ended()).toBe(true);
     expect(receivedCa).toContain('BEGIN CERTIFICATE');
+  });
+
+  it('a fresh question retrieves on itself; a follow-up carries the last two questions', () => {
+    expect(retrievalQuery('why?')).toBe('why?');
+    expect(retrievalQuery('why?', [])).toBe('why?');
+    const history = [
+      { question: 'one?', answer: 'a' },
+      { question: 'two?', answer: 'b' },
+      { question: 'three?', answer: 'c' },
+    ];
+    // "what broke because of it?" alone embeds to nothing useful and shares no lexeme with the
+    // passages that answer it; the subject is in the previous turn.
+    expect(retrievalQuery('what broke?', history)).toBe('two? three? what broke?');
   });
 
   it('ask needs an API key even when search works', async () => {
@@ -337,6 +384,22 @@ describe('studbook over IPC', () => {
     const result = (await ipc.invoke(IPC.studbookSearch, ' q ', { repo: 'workhorse', changeId: 7 }, 3)) as { number: number }[];
     expect(search).toHaveBeenCalledWith('q', { repo: 'workhorse', changeId: null }, 3);
     expect(result[0].number).toBe(1);
+  });
+
+  it('history is validated and bounded before it becomes a prompt', async () => {
+    const ipc = fakeIpc();
+    const ask = vi.fn(async () => ({ question: 'q', answer: { text: '', citations: [], refused: false, model: 'm', inputTokens: 0, outputTokens: 0 }, passages: [] }));
+    const studbook = { status: () => ({}) as never, check: async () => ({}) as never, repos: async () => [], search: vi.fn(), ask, sync: vi.fn() } as never;
+    registerIpc(deps({ ipcMain: ipc.ipcMain, studbook }).deps);
+    await expect(ipc.invoke(IPC.studbookAsk, 'q', {}, 5, 'not an array')).rejects.toThrow(/array/);
+    await expect(ipc.invoke(IPC.studbookAsk, 'q', {}, 5, [{ question: 'a' }])).rejects.toThrow(/question and an answer/);
+    await expect(ipc.invoke(IPC.studbookAsk, 'q', {}, 5, Array(13).fill({ question: 'a', answer: 'b' }))).rejects.toThrow(/12 turns/);
+    await expect(ipc.invoke(IPC.studbookAsk, 'q', {}, 5, [{ question: 'a', answer: 'x'.repeat(8001) }])).rejects.toThrow(/too long/);
+    expect(ask).not.toHaveBeenCalled();
+    // Absent history is an empty thread, which is the single-question path. (An absent scope is
+    // an empty object, not two explicit nulls: `checkScope` only names what was actually given.)
+    await ipc.invoke(IPC.studbookAsk, 'q');
+    expect(ask).toHaveBeenCalledWith('q', {}, undefined, []);
   });
 
   it('sync runs over the registry, keyed by lowercased folder name, never a renderer path', async () => {

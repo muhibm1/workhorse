@@ -13,7 +13,7 @@
  *   answer "this change", and the model correctly refuses unless told which.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { StudbookAnswer, StudbookPassage, StudbookRepo, StudbookStatus } from '@shared/types';
+import type { StudbookPassage, StudbookRepo, StudbookStatus, StudbookTurn } from '@shared/types';
 import { usePaddockStore } from '@/store';
 import { Panel } from '@/components/Panel';
 import { Badge } from '@/components/Badge';
@@ -69,6 +69,78 @@ function AnswerText({ text, onCite }: { text: string; onCite: (n: number) => voi
   );
 }
 
+/** One exchange: the question asked, the answer, and the passages behind it. */
+function TurnView({
+  turn,
+  index,
+  latest,
+  openPassage,
+  setOpenPassage,
+  onCite,
+}: {
+  turn: StudbookTurn;
+  index: number;
+  latest: boolean;
+  openPassage: string | null;
+  setOpenPassage: (key: string | null) => void;
+  onCite: (turnIndex: number, n: number) => void;
+}) {
+  const { answer, scope } = turn;
+  const cited = new Set(answer.citations.map((c) => c.number));
+  const passages = [...answer.passages].sort(
+    (a, b) => Number(cited.has(b.number)) - Number(cited.has(a.number)) || a.number - b.number,
+  );
+  const scopeLabel = [scope.repo, scope.changeId].filter(Boolean).join(' / ');
+
+  return (
+    <Panel className="studbook-turn" active={latest && !answer.refused}>
+      <div className="studbook-question-row">
+        <p className="studbook-question">{answer.question}</p>
+        {scopeLabel && <span className="studbook-scope-tag mono">{scopeLabel}</span>}
+      </div>
+      {answer.refused && <Badge tone="amber">not in the record</Badge>}
+      <div className="studbook-answer-text">
+        <AnswerText text={answer.answer} onCite={(n) => onCite(index, n)} />
+      </div>
+
+      <details className="studbook-receipts-wrap" open={latest}>
+        <summary className="label">
+          {answer.citations.length > 0 ? `Receipts (${answer.citations.length} cited)` : 'Passages retrieved'}
+        </summary>
+        <div className="studbook-receipts">
+          {passages.map((p: StudbookPassage) => {
+            const key = `${index}:${p.number}`;
+            return (
+              <details
+                key={p.number}
+                className="studbook-receipt"
+                data-passage={key}
+                open={openPassage === key}
+                onToggle={(e) => {
+                  if ((e.currentTarget as HTMLDetailsElement).open) setOpenPassage(key);
+                  else if (openPassage === key) setOpenPassage(null);
+                }}
+              >
+                <summary>
+                  <span className="studbook-receipt-n">{p.number}</span>
+                  <span className="studbook-receipt-where">
+                    {p.repo} / {p.docType} — {p.headingPath}
+                  </span>
+                </summary>
+                <pre className="studbook-chunk">{p.body}</pre>
+              </details>
+            );
+          })}
+        </div>
+      </details>
+
+      <p className="studbook-meta mono tnum">
+        {answer.model} · {answer.inputTokens} in / {answer.outputTokens} out
+      </p>
+    </Panel>
+  );
+}
+
 function progressLine(status: StudbookStatus | null): string | null {
   if (!status) return null;
   if (status.models === 'ready') return null;
@@ -89,9 +161,14 @@ export function Studbook() {
   const [repo, setRepo] = useState('');
   const [changeId, setChangeId] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
-  const [result, setResult] = useState<StudbookAnswer | null>(null);
+  const turns = usePaddockStore((s) => s.studbookTurns);
+  const addTurn = usePaddockStore((s) => s.studbookAddTurn);
+  const clearTurns = usePaddockStore((s) => s.studbookClearTurns);
+  /** The question in flight, shown at the foot of the transcript while it is answered. */
+  const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [openPassage, setOpenPassage] = useState<number | null>(null);
+  /** Which receipt is open, keyed `<turn index>:<passage number>` so turns do not fight. */
+  const [openPassage, setOpenPassage] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<StudbookStatus['lastSync']>(null);
   const receiptsRef = useRef<HTMLDivElement>(null);
@@ -164,27 +241,40 @@ export function Studbook() {
   async function ask() {
     const q = question.trim();
     if (!q || phase === 'asking') return;
+    const scope = { repo: repo || null, changeId: changeId || null };
     setPhase('asking');
     setError(null);
-    setResult(null);
-    setOpenPassage(null);
+    setPending(q);
+    setQuestion('');
     try {
-      const answer = await window.paddock.studbook.ask(q, { repo: repo || null, changeId: changeId || null });
-      setResult(answer);
+      // Only the text of each turn goes back, not its passages: a follow-up is retrieved afresh.
+      const history = turns.map((t) => ({ question: t.answer.question, answer: t.answer.answer }));
+      const answer = await window.paddock.studbook.ask(q, scope, undefined, history);
+      addTurn({ answer, scope, at: Date.now() });
       setPhase(answer.refused ? 'refused' : 'answered');
     } catch (err) {
       setError(errorMessage(err));
+      setQuestion(q); // hand the question back rather than losing it to a failed call
       setPhase('error');
     } finally {
+      setPending(null);
       void refreshStatus();
     }
   }
 
-  function openCite(n: number) {
-    setOpenPassage(n);
+  function newThread() {
+    clearTurns();
+    setOpenPassage(null);
+    setError(null);
+    setPhase('idle');
+  }
+
+  function openCite(turnIndex: number, n: number) {
+    const key = `${turnIndex}:${n}`;
+    setOpenPassage(key);
     // Let the <details> open before scrolling to it.
     window.setTimeout(() => {
-      receiptsRef.current?.querySelector<HTMLElement>(`[data-passage="${n}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      receiptsRef.current?.querySelector<HTMLElement>(`[data-passage="${key}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }, 0);
   }
 
@@ -243,7 +333,11 @@ export function Studbook() {
           <textarea
             id="studbook-question"
             className="composer-input"
-            placeholder="Why did control state move into the git common dir?"
+            placeholder={
+              turns.length > 0
+                ? 'Follow up — “why?”, “what broke because of it?”'
+                : 'Why did control state move into the git common dir?'
+            }
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             disabled={phase === 'asking'}
@@ -289,9 +383,14 @@ export function Studbook() {
               </select>
             </div>
             <div className="composer-actions">
+              {turns.length > 0 && (
+                <Button tone="ghost" size="sm" onClick={newThread} disabled={phase === 'asking'}>
+                  New thread
+                </Button>
+              )}
               <span className="composer-hint">Ctrl+Enter</span>
               <Button tone="primary" size="sm" type="submit" disabled={!canAsk}>
-                {phase === 'asking' ? 'Asking…' : 'Ask'}
+                {phase === 'asking' ? 'Asking…' : turns.length > 0 ? 'Follow up' : 'Ask'}
               </Button>
             </div>
           </div>
@@ -323,59 +422,36 @@ export function Studbook() {
         )}
       </div>
 
-      <div className="studbook-right">
-        {result ? (
-          <Panel className="studbook-answer" active={phase === 'answered'}>
-            {result.refused && <Badge tone="amber">not in the record</Badge>}
-            <div className="studbook-answer-text">
-              <AnswerText text={result.answer} onCite={openCite} />
-            </div>
-
-            <div className="studbook-receipts" ref={receiptsRef}>
-              <h2 className="label">
-                {result.citations.length > 0
-                  ? `Receipts (${result.citations.length} cited)`
-                  : 'Passages retrieved'}
-              </h2>
-              {[...result.passages]
-                .sort((a, b) => {
-                  const cited = new Set(result.citations.map((c) => c.number));
-                  return Number(cited.has(b.number)) - Number(cited.has(a.number)) || a.number - b.number;
-                })
-                .map((p: StudbookPassage) => (
-                  <details
-                    key={p.number}
-                    className="studbook-receipt"
-                    data-passage={p.number}
-                    open={openPassage === p.number}
-                    onToggle={(e) => {
-                      if ((e.currentTarget as HTMLDetailsElement).open) setOpenPassage(p.number);
-                      else if (openPassage === p.number) setOpenPassage(null);
-                    }}
-                  >
-                    <summary>
-                      <span className="studbook-receipt-n">{p.number}</span>
-                      <span className="studbook-receipt-where">
-                        {p.repo} / {p.docType} — {p.headingPath}
-                      </span>
-                    </summary>
-                    <pre className="studbook-chunk">{p.body}</pre>
-                  </details>
-                ))}
-            </div>
-
-            <p className="studbook-meta mono tnum">
-              {result.model} · {result.inputTokens} in / {result.outputTokens} out
-            </p>
-          </Panel>
-        ) : (
+      <div className="studbook-right" ref={receiptsRef}>
+        {turns.length === 0 && !pending ? (
           <Panel className="studbook-empty">
             <p className="studbook-hint">
               Every claim cites the document it came from — click a{' '}
               <span className="studbook-cite studbook-cite-inert">1</span> to read the exact passage. If the
-              record can't answer, it says so, and shows what it did find.
+              record can't answer, it says so, and shows what it did find. Ask again to follow up: a
+              question in the same thread can say “it” or “that change”.
             </p>
           </Panel>
+        ) : (
+          <>
+            {turns.map((turn, i) => (
+              <TurnView
+                key={turn.at}
+                turn={turn}
+                index={i}
+                latest={i === turns.length - 1 && phase !== 'asking'}
+                openPassage={openPassage}
+                setOpenPassage={setOpenPassage}
+                onCite={openCite}
+              />
+            ))}
+            {pending && (
+              <Panel className="studbook-turn studbook-turn-pending">
+                <p className="studbook-question">{pending}</p>
+                <p className="studbook-hint">Reading the record…</p>
+              </Panel>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -75,6 +75,51 @@ export function buildUserPrompt(question: string, passages: Passage[]): string {
   return `Context passages:\n\n${buildContext(passages)}\n\nQuestion: ${question}`;
 }
 
+/** One prior exchange in the thread. Only the text travels: a follow-up is retrieved afresh. */
+export interface HistoryTurn {
+  question: string;
+  answer: string;
+}
+
+/**
+ * Said once, in the follow-up's own user message rather than in the system prompt.
+ *
+ * The system prompt is the one tuned on Studbook's dev split and is asserted verbatim by a test;
+ * every word of it applies to a single question and editing it would be an unmeasured change to
+ * a measured thing. What a follow-up adds is a hazard that single-turn answering does not have:
+ * the earlier turns' passages are gone from the context, so a claim the model remembers from one
+ * of them would be uncited by construction -- the exact failure the citation contract exists to
+ * prevent. This puts that where it applies and nowhere else.
+ */
+export const FOLLOW_UP_NOTE =
+  'This is a follow-up in the same thread. The earlier turns are shown for reference only -- ' +
+  'their passages are no longer in front of you, so every claim in this answer must cite the ' +
+  'numbered passages above, and anything you remember from an earlier turn but cannot cite here ' +
+  'is not in the record for this answer.';
+
+export function buildFollowUpPrompt(question: string, passages: Passage[]): string {
+  return `${FOLLOW_UP_NOTE}\n\nContext passages:\n\n${buildContext(passages)}\n\nQuestion: ${question}`;
+}
+
+/** The conversation sent to the model: prior turns as messages, then this question with its
+ *  passages. With no history this is exactly the single message the tab has always sent. */
+export function buildMessages(
+  question: string,
+  passages: Passage[],
+  history: HistoryTurn[] = [],
+): { role: 'user' | 'assistant'; content: string }[] {
+  if (history.length === 0) {
+    return [{ role: 'user', content: buildUserPrompt(question, passages) }];
+  }
+  const messages: { role: 'user' | 'assistant'; content: string }[] = [];
+  for (const turn of history) {
+    messages.push({ role: 'user', content: turn.question });
+    messages.push({ role: 'assistant', content: turn.answer });
+  }
+  messages.push({ role: 'user', content: buildFollowUpPrompt(question, passages) });
+  return messages;
+}
+
 /** Unique citation numbers in first-appearance order, dropping any outside 1..n. */
 export function parseCitedNumbers(text: string, n: number): number[] {
   const seen: number[] = [];
@@ -100,6 +145,8 @@ const temperatureUnsupported = new Set<string>();
 export interface GenerateDeps {
   apiKey: string;
   model?: string;
+  /** The thread so far, oldest first. Empty (the default) is a fresh question. */
+  history?: HistoryTurn[];
   /** Test seam: a fake `messages.create`. */
   client?: Pick<Anthropic, 'messages'>;
 }
@@ -122,7 +169,7 @@ export async function generateAnswer(question: string, passages: Passage[], deps
     model,
     max_tokens: MAX_OUTPUT_TOKENS,
     system: SYSTEM_PROMPT,
-    messages: [{ role: 'user' as const, content: buildUserPrompt(question, passages) }],
+    messages: buildMessages(question, passages, deps.history ?? []),
   };
 
   async function create(withTemperature: boolean) {

@@ -93,6 +93,13 @@ export interface StudbookAnswer {
 
 export interface StudbookScope { repo?: string | null; changeId?: string | null; }
 
+/** One prior exchange, as the tab sends it back so a follow-up can resolve "it" or "that change". */
+export interface StudbookHistoryTurn { question: string; answer: string; }
+
+/** A turn in the tab's transcript: the answer (which carries its own question, citations and
+ *  passages) plus the scope it was asked under, so the transcript shows what each answer saw. */
+export interface StudbookTurn { answer: StudbookAnswer; scope: StudbookScope; at: number; }
+
 export interface StudbookRepo { repo: string; changes: { changeId: string; documents: number }[]; }
 
 export interface StudbookSyncProgress {
@@ -162,7 +169,9 @@ export interface PaddockApi {
     check(): Promise<StudbookStatus>;
     repos(): Promise<StudbookRepo[]>;
     search(question: string, scope?: StudbookScope, topK?: number): Promise<StudbookPassage[]>;
-    ask(question: string, scope?: StudbookScope, topK?: number): Promise<StudbookAnswer>;
+    /** `history` is the thread so far, oldest first; omit it (or pass none) for a fresh thread,
+     *  which behaves exactly as a single question always has. */
+    ask(question: string, scope?: StudbookScope, topK?: number, history?: StudbookHistoryTurn[]): Promise<StudbookAnswer>;
     /** The Postgres connection string; stored encrypted in main and never readable back over IPC. */
     setConninfo(conninfo: string): Promise<void>;
     hasConninfo(): Promise<boolean>;
