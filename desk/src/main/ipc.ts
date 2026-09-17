@@ -18,6 +18,8 @@ import type { createSettings } from './settings';
 import type { Watcher } from './watcher';
 import type { RunDriver, RunHandle } from './drivers';
 import type { WhResult } from './wh';
+import type { Studbook } from './studbook';
+import { looksLikeConninfo } from './studbook/conninfo';
 import { createAutoResume, createGateNotifier, createStallTimer, postNotification } from './autopilot';
 
 /**
@@ -61,6 +63,8 @@ export interface IpcDeps {
   runWh: (pluginPath: string, repoPath: string, args: string[]) => Promise<WhResult>;
   /** Decrypts the stored API key; never exposed over IPC itself (see settings.ts). */
   safe: { readApiKey(): string | null };
+  /** Studbook's query path (main/studbook). Optional so tests of the other channels need no models. */
+  studbook?: Studbook;
 }
 
 /** Falls back to this list when `settings.allowedTools[repoId]` has no entry (plan Task 10). */
@@ -368,6 +372,72 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(IPC.settingsHasKey, () => settings.hasApiKey());
   ipcMain.handle(IPC.settingsClearKey, () => {
     settings.clearApiKey();
+  });
+
+  // -- studbook ----------------------------------------------------------
+  // The connection string is the one input a renderer supplies that main will use to open a
+  // network connection. It is validated for shape, stored encrypted, and never read back over
+  // IPC; the connection itself is always made with the pinned CA (main/studbook/index.ts), so a
+  // renderer-supplied string cannot pick where the TLS trust comes from.
+  const MAX_CONNINFO_LENGTH = 4096;
+  ipcMain.handle(IPC.studbookSetConninfo, (_e, conninfo: unknown) => {
+    if (typeof conninfo !== 'string' || !conninfo.trim() || conninfo.length > MAX_CONNINFO_LENGTH) {
+      throw new Error('a connection string is required');
+    }
+    if (!looksLikeConninfo(conninfo)) {
+      throw new Error('not a Postgres connection string: expected `host=... user=... password=... dbname=...` or postgres://...');
+    }
+    settings.setStudbookConninfo(conninfo.trim());
+  });
+  ipcMain.handle(IPC.studbookHasConninfo, () => settings.hasStudbookConninfo());
+  ipcMain.handle(IPC.studbookClearConninfo, () => {
+    settings.clearStudbookConninfo();
+  });
+
+  const MAX_QUESTION_LENGTH = 2000;
+  function requireStudbook(): Studbook {
+    if (!deps.studbook) throw new Error('Studbook is not available in this build');
+    return deps.studbook;
+  }
+  function checkQuestion(question: unknown): string {
+    if (typeof question !== 'string' || !question.trim()) throw new Error('a question is required');
+    if (question.length > MAX_QUESTION_LENGTH) throw new Error(`questions are limited to ${MAX_QUESTION_LENGTH} characters`);
+    return question.trim();
+  }
+  function checkScope(scope: unknown): { repo?: string | null; changeId?: string | null } {
+    if (!scope || typeof scope !== 'object') return {};
+    const s = scope as Record<string, unknown>;
+    return {
+      repo: typeof s.repo === 'string' && s.repo ? s.repo : null,
+      changeId: typeof s.changeId === 'string' && s.changeId ? s.changeId : null,
+    };
+  }
+  function checkTopK(topK: unknown): number | undefined {
+    if (topK === undefined || topK === null) return undefined;
+    const n = Number(topK);
+    if (!Number.isInteger(n) || n < 1 || n > 20) throw new Error('topK must be an integer from 1 to 20');
+    return n;
+  }
+
+  ipcMain.handle(IPC.studbookStatus, () => requireStudbook().status());
+  ipcMain.handle(IPC.studbookCheck, () => requireStudbook().check());
+  ipcMain.handle(IPC.studbookRepos, () => requireStudbook().repos());
+  ipcMain.handle(IPC.studbookSearch, async (_e, question: unknown, scope?: unknown, topK?: unknown) => {
+    const passages = await requireStudbook().search(checkQuestion(question), checkScope(scope), checkTopK(topK));
+    return passages.map((p, i) => ({ number: i + 1, ...p }));
+  });
+  ipcMain.handle(IPC.studbookAsk, async (_e, question: unknown, scope?: unknown, topK?: unknown) => {
+    const result = await requireStudbook().ask(checkQuestion(question), checkScope(scope), checkTopK(topK));
+    return {
+      question: result.question,
+      answer: result.answer.text,
+      refused: result.answer.refused,
+      citations: result.answer.citations,
+      passages: result.passages.map((p, i) => ({ number: i + 1, ...p })),
+      model: result.answer.model,
+      inputTokens: result.answer.inputTokens,
+      outputTokens: result.answer.outputTokens,
+    };
   });
 
   // -- watch -------------------------------------------------------------

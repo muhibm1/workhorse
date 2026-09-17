@@ -8,6 +8,17 @@ import { syscheck } from './syscheck';
 import { digest, runWh } from './wh';
 import { createWatcher } from './watcher';
 import { driverFor } from './drivers';
+import { createStudbook } from './studbook';
+
+/**
+ * Supabase's root certificate, which every Studbook database connection is verified against.
+ * Ships as an extra resource next to the plugin and fonts (electron-builder.yml); in dev it is
+ * read from the project's own `resources/studbook`, resolved the same way `resolvePluginPath` is.
+ */
+function resolveStudbookCaPath(): string {
+  const base = app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources');
+  return join(base, 'studbook', 'supabase-ca.pem');
+}
 
 /** Renderer CSP (spec section 7). Keep identical to the meta tag in src/renderer/index.html. */
 const CSP =
@@ -125,6 +136,15 @@ void app.whenReady().then(() => {
 
   preregisterE2eRepo(registry);
 
+  // Models load on first use, not here: ~500 MB resident and a 1.5 GB first download is
+  // Studbook's cost, not every launch's. Cached under userData so they live with the app's data.
+  const studbook = createStudbook({
+    readConninfo: () => settings.readStudbookConninfo(),
+    readApiKey: () => settings.readApiKey(),
+    caPath: resolveStudbookCaPath(),
+    modelCacheDir: join(userDataDir, 'studbook-models'),
+  });
+
   registerIpc({
     ipcMain,
     dialog,
@@ -138,6 +158,7 @@ void app.whenReady().then(() => {
     digest,
     runWh,
     safe: { readApiKey: () => settings.readApiKey() },
+    studbook,
   });
 
   // Start watching every already-registered repo (including one PADDOCK_E2E_ADD_REPO just

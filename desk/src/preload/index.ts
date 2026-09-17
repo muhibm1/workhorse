@@ -59,6 +59,17 @@ const api: PaddockApi = {
       return () => ipcRenderer.removeListener(IPC.watchDigest, listener);
     },
   },
+
+  studbook: {
+    status: () => ipcRenderer.invoke(IPC.studbookStatus),
+    check: () => ipcRenderer.invoke(IPC.studbookCheck),
+    repos: () => ipcRenderer.invoke(IPC.studbookRepos),
+    search: (question, scope, topK) => ipcRenderer.invoke(IPC.studbookSearch, question, scope, topK),
+    ask: (question, scope, topK) => ipcRenderer.invoke(IPC.studbookAsk, question, scope, topK),
+    setConninfo: (conninfo) => ipcRenderer.invoke(IPC.studbookSetConninfo, conninfo),
+    hasConninfo: () => ipcRenderer.invoke(IPC.studbookHasConninfo),
+    clearConninfo: () => ipcRenderer.invoke(IPC.studbookClearConninfo),
+  },
 };
 
 contextBridge.exposeInMainWorld('paddock', api);

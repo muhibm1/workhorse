@@ -37,7 +37,8 @@ export type Screen =
   | { name: 'fleet' }
   | { name: 'run'; repoId: string }
   | { name: 'gate'; repoId: string; gate: Gate; artifact?: string }
-  | { name: 'settings' };
+  | { name: 'settings' }
+  | { name: 'studbook' };
 
 export interface PaddockState {
   sys: SysCheck | null;

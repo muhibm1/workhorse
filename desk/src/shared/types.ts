@@ -65,6 +65,47 @@ export interface Settings {
 
 export interface ApproveResult { gate: Gate; status: 'approved' | 'rejected'; who: string; at: string; committed: string | boolean; }
 
+// ---------------------------------------------------------------- Studbook (main/studbook)
+
+/** One retrieved passage: the receipt an answer's `[n]` chip opens. */
+export interface StudbookPassage {
+  number: number;
+  chunkId: string;
+  headingPath: string;
+  repo: string;
+  docType: string;
+  body: string;
+}
+
+export interface StudbookCitation { number: number; chunkId: string; headingPath: string; repo: string; docType: string; }
+
+export interface StudbookAnswer {
+  question: string;
+  answer: string;
+  /** The answer is "Not in the record: ..." — retrieved passages are still listed, so it is checkable. */
+  refused: boolean;
+  citations: StudbookCitation[];
+  passages: StudbookPassage[];
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface StudbookScope { repo?: string | null; changeId?: string | null; }
+
+export interface StudbookRepo { repo: string; changes: { changeId: string; documents: number }[]; }
+
+export interface StudbookStatus {
+  /** A database connection string is stored (Settings > Studbook). */
+  configured: boolean;
+  /** An Anthropic key is stored; asking needs it, searching does not. */
+  hasApiKey: boolean;
+  models: 'cold' | 'loading' | 'ready';
+  progress: { stage: 'downloading' | 'loading' | 'ready'; file?: string; percent?: number } | null;
+  corpus: { documents: number; chunks: number } | null;
+  lastError: string | null;
+}
+
 export interface PaddockApi {
   system: { check(): Promise<SysCheck> };
   repos: {
@@ -93,6 +134,18 @@ export interface PaddockApi {
     clearApiKey(): Promise<void>;
   };
   watch: { onDigest(cb: (e: { repoId: string; digests: ChangeDigest[]; onboarded: boolean }) => void): () => void };
+  studbook: {
+    status(): Promise<StudbookStatus>;
+    /** Connects, counts the corpus, disconnects: proves the stored connection string works. */
+    check(): Promise<StudbookStatus>;
+    repos(): Promise<StudbookRepo[]>;
+    search(question: string, scope?: StudbookScope, topK?: number): Promise<StudbookPassage[]>;
+    ask(question: string, scope?: StudbookScope, topK?: number): Promise<StudbookAnswer>;
+    /** The Postgres connection string; stored encrypted in main and never readable back over IPC. */
+    setConninfo(conninfo: string): Promise<void>;
+    hasConninfo(): Promise<boolean>;
+    clearConninfo(): Promise<void>;
+  };
 }
 
 declare global { interface Window { paddock: PaddockApi } }
@@ -108,4 +161,8 @@ export const IPC = {
   settingsGet: 'settings:get', settingsSet: 'settings:set', settingsSetKey: 'settings:setKey',
   settingsHasKey: 'settings:hasKey', settingsClearKey: 'settings:clearKey',
   watchDigest: 'watch:digest',
+  studbookStatus: 'studbook:status', studbookCheck: 'studbook:check', studbookRepos: 'studbook:repos',
+  studbookSearch: 'studbook:search', studbookAsk: 'studbook:ask',
+  studbookSetConninfo: 'studbook:setConninfo', studbookHasConninfo: 'studbook:hasConninfo',
+  studbookClearConninfo: 'studbook:clearConninfo',
 } as const;

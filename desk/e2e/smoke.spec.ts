@@ -40,16 +40,26 @@ test.describe('Paddock smoke', () => {
   });
 
   test('Fleet renders with the pre-registered repo not onboarded', async () => {
-    // The Fleet toolbar's own "Fleet" label, scoped past the left nav's identically-labelled
-    // button (App.tsx renders both once the app is ready) so this assertion stays single-match.
-    await expect(window.locator('.fleet-toolbar').getByText('Fleet', { exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // The Fleet screen's own heading (Fleet.tsx renders "Repositories" once at least one repo is
+    // registered), scoped to the screen so the rail's "Fleet" button never makes this ambiguous.
+    // Was `.fleet-toolbar` until the Dracula redesign removed it; this spec was not re-run then.
+    await expect(window.locator('.fleet-title')).toHaveText('Repositories', { timeout: 20_000 });
     await expect(window.getByText('Not onboarded')).toBeVisible({ timeout: 20_000 });
   });
 
+  test('Studbook opens from the rail with its composer, whether or not a store is connected', async () => {
+    await window.getByRole('button', { name: 'Studbook' }).click();
+    await expect(window.locator('.app-crumb-current')).toHaveText('Studbook', { timeout: 20_000 });
+    // The question box is always present; the Connect panel only until a connection string is
+    // stored, which a developer's own profile may already have -- so that is not asserted.
+    await expect(window.locator('#studbook-question')).toBeVisible({ timeout: 20_000 });
+    await expect(window.locator('.studbook-orb canvas')).toBeVisible();
+  });
+
   test('Settings shows a real node version in Prerequisites', async () => {
-    await window.getByRole('button', { name: 'Settings' }).click();
+    // Exact: the Studbook screen (visited by the test above) offers an "Open Settings" button,
+    // which a substring match would also resolve to.
+    await window.getByRole('button', { name: 'Settings', exact: true }).click();
     const nodeRow = window.locator('.settings-prereq-row', { hasText: 'node' });
     await expect(nodeRow).toBeVisible({ timeout: 20_000 });
     await expect(nodeRow.locator('.tnum')).toHaveText(/^v\d+\.\d+\.\d+/);

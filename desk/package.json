@@ -17,7 +17,10 @@
     "dist:win": "node scripts/predist-check.js && npm run build && electron-builder --win portable"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.126.0",
+    "@huggingface/transformers": "3.7.1",
     "chokidar": "5.0.0",
+    "pg": "8.16.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-markdown": "10.1.0",
@@ -31,6 +34,7 @@
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "@types/node": "22.15.0",
+    "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.0.0",
