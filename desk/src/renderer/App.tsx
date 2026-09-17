@@ -21,7 +21,8 @@ import { Run } from './screens/Run';
 import { Gate } from './screens/Gate';
 import { Settings } from './screens/Settings';
 import { Setup } from './screens/Setup';
-import { ChevronRight, FleetIcon, LogoMark, RunIcon, SettingsIcon } from './components/Icons';
+import { Studbook } from './screens/Studbook';
+import { ChevronRight, FleetIcon, LogoMark, RunIcon, SettingsIcon, StudbookIcon } from './components/Icons';
 import './App.css';
 
 /** `navigator.userAgentData`/`platform` both work here; either is fine for a Ctrl-vs-Cmd choice. */
@@ -137,6 +138,9 @@ export default function App() {
           >
             <RunIcon />
           </RailButton>
+          <RailButton label="Studbook" active={screen.name === 'studbook'} onClick={() => go({ name: 'studbook' })}>
+            <StudbookIcon />
+          </RailButton>
           <RailButton label="Settings" active={showingSettings} onClick={() => go({ name: 'settings' })}>
             <SettingsIcon />
           </RailButton>
@@ -148,6 +152,8 @@ export default function App() {
             <nav className="app-crumbs" aria-label="Breadcrumb">
               {showingSettings ? (
                 <span className="app-crumb-current">Settings</span>
+              ) : screen.name === 'studbook' ? (
+                <span className="app-crumb-current">Studbook</span>
               ) : currentRepo ? (
                 <>
                   <button type="button" className="app-crumb" onClick={() => go({ name: 'fleet' })}>
@@ -187,6 +193,8 @@ export default function App() {
         <div className="app-content">
           {showingSettings ? (
             <Settings />
+          ) : screen.name === 'studbook' ? (
+            <Studbook />
           ) : screen.name === 'run' ? (
             <Run repoId={screen.repoId} />
           ) : screen.name === 'gate' ? (

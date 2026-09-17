@@ -60,6 +60,17 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+/** A studbook: the open register, spine down the middle. */
+export function StudbookIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 6.5c-1.6-1.4-3.7-2-6.5-2H4v13h1.5c2.8 0 4.9.6 6.5 2 1.6-1.4 3.7-2 6.5-2H20v-13h-1.5c-2.8 0-4.9.6-6.5 2z" />
+      <path d="M12 6.5v13" />
+      <path d="M7.5 9.5h1.5M7.5 12.5h1.5M15 9.5h1.5M15 12.5h1.5" />
+    </Icon>
+  );
+}
+
 export function ChevronRight(props: IconProps) {
   return (
     <Icon size={14} strokeWidth={2.2} {...props}>

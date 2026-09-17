@@ -66,11 +66,34 @@ Both backends normalise the run's `stream-json`/SDK messages through the same pu
 (`src/main/drivers/normalise.ts`), so the orb, log rail and station ring behave identically either
 way.
 
+## Studbook
+
+The Studbook tab asks WorkHorse's own engineering record a question — gate packets, ADRs, specs,
+evidence tables, retros, commit messages — and answers with a passage cited for every claim, or
+says "not in the record" and shows what it did find. It is the query path of the
+[studbook](https://github.com/muhibm1/studbook) project running inside Paddock's main process:
+the two retrieval models through their ONNX ports (`@huggingface/transformers`, loaded on first
+use, ~500 MB resident, a 1.5 GB one-time download cached under user data), the same SQL over the
+same pgvector store, and Claude Haiku for the answer. No Python, no service, no port.
+
+It needs two secrets, both kept the way the API key is: the store's Postgres connection string
+(Settings > Studbook, encrypted into `studbook.conninfo.bin`, never returned to the renderer) and
+the Anthropic API key from the Backend panel. Every database connection is verified against
+Supabase's root certificate, which ships in `resources/studbook/` — an unverifiable server is
+refused, never trusted.
+
+The port is held to the Python pipeline by a parity gate rather than by hope:
+`tests/studbook.gate.test.ts` runs Studbook's dev split through this code and asserts the
+published retrieval numbers to four places (`STUDBOOK_DATABASE_URL` and `STUDBOOK_DEV_JSONL` turn
+it on; it says loudly when it is skipped). What that gate caught before the port was written is
+recorded in the studbook repo's `docs/paddock-gate.md`.
+
 ## Where user data lives
 
 Paddock writes only its own registry (`registry.json`: the list of repos you've added),
-`settings.json`, and the encrypted `settings.key.bin` — plus, through the bundled `wh.js`, to
-`docs/sdlc/` inside a registered repository, exactly as running WorkHorse from a terminal would.
+`settings.json`, the encrypted `settings.key.bin` and `studbook.conninfo.bin`, and Studbook's
+model cache (`studbook-models/`) — plus, through the bundled `wh.js`, to `docs/sdlc/` inside a
+registered repository, exactly as running WorkHorse from a terminal would.
 
 - **Normal (installed) run:** Electron's per-app user data directory — `%APPDATA%\Paddock` on
   Windows.

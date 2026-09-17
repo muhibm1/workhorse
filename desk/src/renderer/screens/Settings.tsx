@@ -109,6 +109,52 @@ export function Settings() {
     }
   }
 
+  // Studbook's database connection string: stored encrypted in main like the API key, so this
+  // screen only ever learns whether one exists, never its value.
+  const [hasConninfo, setHasConninfo] = useState<boolean | null>(null);
+  const [conninfoInput, setConninfoInput] = useState('');
+  const [conninfoBusy, setConninfoBusy] = useState(false);
+  const [conninfoError, setConninfoError] = useState<string | null>(null);
+  const [conninfoCheck, setConninfoCheck] = useState<string | null>(null);
+  useEffect(() => {
+    window.paddock.studbook
+      .hasConninfo()
+      .then(setHasConninfo)
+      .catch(() => setHasConninfo(false));
+  }, []);
+
+  async function onSaveConninfo() {
+    if (!conninfoInput.trim()) return;
+    setConninfoBusy(true);
+    setConninfoError(null);
+    setConninfoCheck(null);
+    try {
+      await window.paddock.studbook.setConninfo(conninfoInput);
+      setConninfoInput('');
+      setHasConninfo(await window.paddock.studbook.hasConninfo());
+      const status = await window.paddock.studbook.check();
+      setConninfoCheck(
+        status.corpus ? `Connected: ${status.corpus.documents} documents, ${status.corpus.chunks} passages.` : 'Connected.',
+      );
+    } catch (err) {
+      setConninfoError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setConninfoBusy(false);
+    }
+  }
+
+  async function onClearConninfo() {
+    setConninfoBusy(true);
+    setConninfoError(null);
+    setConninfoCheck(null);
+    try {
+      await window.paddock.studbook.clearConninfo();
+      setHasConninfo(await window.paddock.studbook.hasConninfo());
+    } finally {
+      setConninfoBusy(false);
+    }
+  }
+
   async function onSaveTools() {
     if (!selectedRepoId || !settings) return;
     const updated = await window.paddock.settings.set({
@@ -258,6 +304,41 @@ export function Settings() {
           {notifySaved && <Badge tone="mint">Saved</Badge>}
         </div>
         {notifyError && <p className="settings-error">{notifyError}</p>}
+      </Panel>
+
+      <Panel title="Studbook" className="settings-panel">
+        <p className="settings-hint">
+          The Postgres connection string for Studbook's store, in libpq form
+          (host=… port=… user=… password=… dbname=…) or as a postgres:// URL. Kept encrypted; every
+          connection is verified against Supabase's pinned root certificate. Asking also needs the
+          API key above.
+        </p>
+        {hasConninfo ? (
+          <div className="settings-key-row">
+            <Badge tone="mint">Stored</Badge>
+            <Button tone="ghost" size="sm" onClick={onClearConninfo} disabled={conninfoBusy}>
+              Clear
+            </Button>
+          </div>
+        ) : (
+          <div className="settings-key-row">
+            <input
+              id="studbook-conninfo"
+              type="password"
+              className="settings-input"
+              placeholder="host=… user=… password=… dbname=…"
+              value={conninfoInput}
+              onChange={(e) => setConninfoInput(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <Button tone="primary" size="sm" onClick={onSaveConninfo} disabled={conninfoBusy || !conninfoInput.trim()}>
+              {conninfoBusy ? 'Connecting…' : 'Save & test'}
+            </Button>
+          </div>
+        )}
+        {conninfoCheck && <p className="settings-hint">{conninfoCheck}</p>}
+        {conninfoError && <p className="settings-error">{conninfoError}</p>}
       </Panel>
 
       <Panel title="Prerequisites" className="settings-panel">

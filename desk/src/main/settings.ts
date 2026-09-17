@@ -91,6 +91,9 @@ function sanitisePatch(patch: unknown): Partial<Settings> {
 export function createSettings(dir: string, crypto: CryptoLike) {
   const settingsFile = join(dir, 'settings.json');
   const keyFile = join(dir, 'settings.key.bin');
+  // Studbook's Postgres connection string: a password-bearing secret, kept exactly like the API
+  // key -- encrypted at rest, decrypted only for main-process callers, never returned over IPC.
+  const conninfoFile = join(dir, 'studbook.conninfo.bin');
 
   function ensureDir(): void {
     mkdirSync(dir, { recursive: true });
@@ -140,6 +143,29 @@ export function createSettings(dir: string, crypto: CryptoLike) {
       if (!existsSync(keyFile)) return null;
       try {
         return crypto.decrypt(readFileSync(keyFile));
+      } catch {
+        return null;
+      }
+    },
+
+    setStudbookConninfo(conninfo: string): void {
+      ensureDir();
+      writeFileSync(conninfoFile, crypto.encrypt(conninfo));
+    },
+
+    hasStudbookConninfo(): boolean {
+      return existsSync(conninfoFile);
+    },
+
+    clearStudbookConninfo(): void {
+      if (existsSync(conninfoFile)) rmSync(conninfoFile);
+    },
+
+    /** Main-only, same rule as `readApiKey`: never part of an IPC return value. */
+    readStudbookConninfo(): string | null {
+      if (!existsSync(conninfoFile)) return null;
+      try {
+        return crypto.decrypt(readFileSync(conninfoFile));
       } catch {
         return null;
       }
