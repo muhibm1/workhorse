@@ -82,11 +82,23 @@ the Anthropic API key from the Backend panel. Every database connection is verif
 Supabase's root certificate, which ships in `resources/studbook/` — an unverifiable server is
 refused, never trusted.
 
-The port is held to the Python pipeline by a parity gate rather than by hope:
+**Refresh the record** re-ingests every repository in Paddock's registry into the store from
+inside the app — parse, chunk, embed only what changed, upsert, delete what is gone, one
+transaction per repository — so the record keeps up with the runs Paddock drives without a
+Python step in between. It needs the store's *ingest* role connection string (a second optional
+secret, Settings > Studbook > Refresh the record), keys each repository by its folder name
+lowercased, and never touches a repository it was not asked about. A registered folder that lives
+inside another repository (`examples/hello-service` does) contributes its files but never the
+enclosing repository's commit history.
+
+Both halves of the port are held to the Python pipeline by parity gates rather than by hope.
 `tests/studbook.gate.test.ts` runs Studbook's dev split through this code and asserts the
 published retrieval numbers to four places (`STUDBOOK_DATABASE_URL` and `STUDBOOK_DEV_JSONL` turn
-it on; it says loudly when it is skipped). What that gate caught before the port was written is
-recorded in the studbook repo's `docs/paddock-gate.md`.
+it on); `tests/studbook.chunks.gate.test.ts` walks the same working trees as Python's parser and
+chunker and asserts identical document and chunk ids, hashes, heading paths, gates and token
+counts (`STUDBOOK_CHUNKS_JSON`, from `studbook/gate/dump_chunks.py`). Both say loudly when
+skipped. What the gates caught before the port was written is recorded in the studbook repo's
+`docs/paddock-gate.md`.
 
 ## Where user data lives
 

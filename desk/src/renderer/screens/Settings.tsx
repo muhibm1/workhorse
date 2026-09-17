@@ -155,6 +155,44 @@ export function Settings() {
     }
   }
 
+  // The ingest role's connection string: only "Refresh the record" uses it, so it is optional.
+  const [hasIngest, setHasIngest] = useState<boolean | null>(null);
+  const [ingestInput, setIngestInput] = useState('');
+  const [ingestBusy, setIngestBusy] = useState(false);
+  const [ingestError, setIngestError] = useState<string | null>(null);
+  useEffect(() => {
+    window.paddock.studbook
+      .hasIngestConninfo()
+      .then(setHasIngest)
+      .catch(() => setHasIngest(false));
+  }, []);
+
+  async function onSaveIngest() {
+    if (!ingestInput.trim()) return;
+    setIngestBusy(true);
+    setIngestError(null);
+    try {
+      await window.paddock.studbook.setIngestConninfo(ingestInput);
+      setIngestInput('');
+      setHasIngest(await window.paddock.studbook.hasIngestConninfo());
+    } catch (err) {
+      setIngestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIngestBusy(false);
+    }
+  }
+
+  async function onClearIngest() {
+    setIngestBusy(true);
+    setIngestError(null);
+    try {
+      await window.paddock.studbook.clearIngestConninfo();
+      setHasIngest(await window.paddock.studbook.hasIngestConninfo());
+    } finally {
+      setIngestBusy(false);
+    }
+  }
+
   async function onSaveTools() {
     if (!selectedRepoId || !settings) return;
     const updated = await window.paddock.settings.set({
@@ -339,6 +377,42 @@ export function Settings() {
         )}
         {conninfoCheck && <p className="settings-hint">{conninfoCheck}</p>}
         {conninfoError && <p className="settings-error">{conninfoError}</p>}
+
+        <div className="settings-field">
+          <label className="label" htmlFor="studbook-ingest-conninfo">
+            Refresh the record (optional)
+          </label>
+          <p className="settings-hint">
+            The <em>ingest</em> role's connection string, so the Studbook tab can re-read every
+            registered repository into the store itself. Without it the record only updates when
+            the studbook repo's Python ingest is run.
+          </p>
+          {hasIngest ? (
+            <div className="settings-key-row">
+              <Badge tone="mint">Stored</Badge>
+              <Button tone="ghost" size="sm" onClick={onClearIngest} disabled={ingestBusy}>
+                Clear
+              </Button>
+            </div>
+          ) : (
+            <div className="settings-key-row">
+              <input
+                id="studbook-ingest-conninfo"
+                type="password"
+                className="settings-input"
+                placeholder="host=… user=studbook_ingest_login.… password=… dbname=…"
+                value={ingestInput}
+                onChange={(e) => setIngestInput(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <Button tone="primary" size="sm" onClick={onSaveIngest} disabled={ingestBusy || !ingestInput.trim()}>
+                Save
+              </Button>
+            </div>
+          )}
+          {ingestError && <p className="settings-error">{ingestError}</p>}
+        </div>
       </Panel>
 
       <Panel title="Prerequisites" className="settings-panel">

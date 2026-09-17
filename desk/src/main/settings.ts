@@ -94,6 +94,7 @@ export function createSettings(dir: string, crypto: CryptoLike) {
   // Studbook's Postgres connection string: a password-bearing secret, kept exactly like the API
   // key -- encrypted at rest, decrypted only for main-process callers, never returned over IPC.
   const conninfoFile = join(dir, 'studbook.conninfo.bin');
+  const ingestConninfoFile = join(dir, 'studbook.ingest.conninfo.bin');
 
   function ensureDir(): void {
     mkdirSync(dir, { recursive: true });
@@ -166,6 +167,30 @@ export function createSettings(dir: string, crypto: CryptoLike) {
       if (!existsSync(conninfoFile)) return null;
       try {
         return crypto.decrypt(readFileSync(conninfoFile));
+      } catch {
+        return null;
+      }
+    },
+
+    // The ingest role's connection (read/write on documents and chunks): a separate secret from
+    // the reader's, held to the same rule, needed only by "Refresh the record".
+    setStudbookIngestConninfo(conninfo: string): void {
+      ensureDir();
+      writeFileSync(ingestConninfoFile, crypto.encrypt(conninfo));
+    },
+
+    hasStudbookIngestConninfo(): boolean {
+      return existsSync(ingestConninfoFile);
+    },
+
+    clearStudbookIngestConninfo(): void {
+      if (existsSync(ingestConninfoFile)) rmSync(ingestConninfoFile);
+    },
+
+    readStudbookIngestConninfo(): string | null {
+      if (!existsSync(ingestConninfoFile)) return null;
+      try {
+        return crypto.decrypt(readFileSync(ingestConninfoFile));
       } catch {
         return null;
       }
