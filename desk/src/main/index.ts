@@ -140,6 +140,7 @@ void app.whenReady().then(() => {
   // Studbook's cost, not every launch's. Cached under userData so they live with the app's data.
   const studbook = createStudbook({
     readConninfo: () => settings.readStudbookConninfo(),
+    readIngestConninfo: () => settings.readStudbookIngestConninfo(),
     readApiKey: () => settings.readApiKey(),
     caPath: resolveStudbookCaPath(),
     modelCacheDir: join(userDataDir, 'studbook-models'),

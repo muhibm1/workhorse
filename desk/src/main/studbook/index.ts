@@ -20,6 +20,7 @@ import { generateAnswer, type Answer } from './answer';
 import { parseConninfo } from './conninfo';
 import { createModels, type ModelProgress, type Models } from './models';
 import { retrieveHybrid, type Passage, type Scope } from './retrieval';
+import { syncRepo, type SyncProgress, type SyncStats } from './sync';
 
 export const RERANK_CANDIDATES = 20;
 export const DEFAULT_TOP_K = 5;
@@ -27,6 +28,8 @@ export const DEFAULT_TOP_K = 5;
 export interface StudbookDeps {
   /** Decrypts the stored conninfo, or null when none is stored. Main-only. */
   readConninfo(): string | null;
+  /** The ingest role's conninfo (read/write on documents and chunks), for `sync`. Main-only. */
+  readIngestConninfo(): string | null;
   /** Decrypts the stored Anthropic key, or null. Main-only. */
   readApiKey(): string | null;
   /** Path to Supabase's root certificate (resources/studbook/supabase-ca.pem). */
@@ -47,14 +50,26 @@ export interface DbClient {
 export interface StudbookStatus {
   /** A conninfo is stored. Says nothing about whether it connects. */
   configured: boolean;
+  /** The ingest role's conninfo is stored; `sync` needs it. */
+  ingestConfigured: boolean;
   /** An Anthropic key is stored; /ask needs it, /search does not. */
   hasApiKey: boolean;
   models: 'cold' | 'loading' | 'ready';
   progress: ModelProgress | null;
   /** Corpus counts from the last successful connection, if any. */
   corpus: { documents: number; chunks: number } | null;
+  /** Non-null while a sync is running. */
+  sync: SyncProgress | null;
+  /** Per-repo results of the last completed sync this session. */
+  lastSync: SyncStats[] | null;
   /** The last error a call raised, so the screen can show it without a second round trip. */
   lastError: string | null;
+}
+
+export interface SyncTarget {
+  /** The store's key for the repository: its folder name, lowercased (parser.ts `repoKeyFor`). */
+  key: string;
+  path: string;
 }
 
 export interface RepoScope {
@@ -75,6 +90,8 @@ export interface Studbook {
   repos(): Promise<RepoScope[]>;
   search(question: string, scope?: Scope, topK?: number): Promise<Passage[]>;
   ask(question: string, scope?: Scope, topK?: number): Promise<AskResult>;
+  /** Re-ingests each target repository through the ingest role. One at a time; refuses to overlap. */
+  sync(targets: SyncTarget[]): Promise<SyncStats[]>;
 }
 
 async function defaultConnect(target: ReturnType<typeof parseConninfo>, ca: string): Promise<DbClient> {
@@ -88,6 +105,8 @@ export function createStudbook(deps: StudbookDeps): Studbook {
   let progress: ModelProgress | null = null;
   let lastError: string | null = null;
   let corpus: StudbookStatus['corpus'] = null;
+  let syncProgress: SyncProgress | null = null;
+  let lastSync: SyncStats[] | null = null;
 
   const models =
     deps.models ??
@@ -141,10 +160,13 @@ export function createStudbook(deps: StudbookDeps): Studbook {
     status() {
       return {
         configured: deps.readConninfo() !== null,
+        ingestConfigured: deps.readIngestConninfo() !== null,
         hasApiKey: deps.readApiKey() !== null,
         models: models.ready() ? 'ready' : progress ? 'loading' : 'cold',
         progress,
         corpus,
+        sync: syncProgress,
+        lastSync,
         lastError,
       };
     },
@@ -190,6 +212,40 @@ export function createStudbook(deps: StudbookDeps): Studbook {
         const passages = await withDb((db) => retrieve(db, question, scope, topK));
         const answer = await generateAnswer(question, passages, { apiKey, model: deps.generatorModel });
         return { question, answer, passages };
+      });
+    },
+
+    sync(targets) {
+      return remember(async () => {
+        if (syncProgress) throw new Error('studbook: a refresh is already running');
+        const conninfo = deps.readIngestConninfo();
+        if (!conninfo) {
+          throw new Error('studbook: no ingest connection string is stored (Settings > Studbook > Refresh)');
+        }
+        const results: SyncStats[] = [];
+        try {
+          for (const target of targets) {
+            syncProgress = { repo: target.key, stage: 'walking' };
+            const db = await (deps.connect ?? defaultConnect)(parseConninfo(conninfo), ca());
+            try {
+              results.push(
+                await syncRepo(db, target.key, target.path, {
+                  models,
+                  onProgress: (p) => {
+                    syncProgress = p;
+                  },
+                }),
+              );
+            } finally {
+              await db.end().catch(() => undefined);
+            }
+          }
+        } finally {
+          syncProgress = null;
+        }
+        lastSync = results;
+        corpus = null; // counts are stale until the next check()
+        return results;
       });
     },
   };

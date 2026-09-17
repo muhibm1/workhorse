@@ -20,6 +20,7 @@ import type { RunDriver, RunHandle } from './drivers';
 import type { WhResult } from './wh';
 import type { Studbook } from './studbook';
 import { looksLikeConninfo } from './studbook/conninfo';
+import { repoKeyFor } from './studbook/parser';
 import { createAutoResume, createGateNotifier, createStallTimer, postNotification } from './autopilot';
 
 /**
@@ -393,6 +394,24 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(IPC.studbookClearConninfo, () => {
     settings.clearStudbookConninfo();
   });
+  ipcMain.handle(IPC.studbookSetIngestConninfo, (_e, conninfo: unknown) => {
+    if (typeof conninfo !== 'string' || !conninfo.trim() || conninfo.length > MAX_CONNINFO_LENGTH) {
+      throw new Error('a connection string is required');
+    }
+    if (!looksLikeConninfo(conninfo)) {
+      throw new Error('not a Postgres connection string: expected `host=... user=... password=... dbname=...` or postgres://...');
+    }
+    settings.setStudbookIngestConninfo(conninfo.trim());
+  });
+  ipcMain.handle(IPC.studbookHasIngestConninfo, () => settings.hasStudbookIngestConninfo());
+  ipcMain.handle(IPC.studbookClearIngestConninfo, () => {
+    settings.clearStudbookIngestConninfo();
+  });
+  // The repositories to refresh are Paddock's own registry -- never a renderer-supplied path --
+  // keyed the way the store names them (folder name, lowercased).
+  ipcMain.handle(IPC.studbookSync, () =>
+    requireStudbook().sync(registry.list().map((r) => ({ key: repoKeyFor(r.path), path: r.path }))),
+  );
 
   const MAX_QUESTION_LENGTH = 2000;
   function requireStudbook(): Studbook {

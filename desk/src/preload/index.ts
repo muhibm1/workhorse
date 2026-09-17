@@ -69,6 +69,10 @@ const api: PaddockApi = {
     setConninfo: (conninfo) => ipcRenderer.invoke(IPC.studbookSetConninfo, conninfo),
     hasConninfo: () => ipcRenderer.invoke(IPC.studbookHasConninfo),
     clearConninfo: () => ipcRenderer.invoke(IPC.studbookClearConninfo),
+    setIngestConninfo: (conninfo) => ipcRenderer.invoke(IPC.studbookSetIngestConninfo, conninfo),
+    hasIngestConninfo: () => ipcRenderer.invoke(IPC.studbookHasIngestConninfo),
+    clearIngestConninfo: () => ipcRenderer.invoke(IPC.studbookClearIngestConninfo),
+    sync: () => ipcRenderer.invoke(IPC.studbookSync),
   },
 };
 

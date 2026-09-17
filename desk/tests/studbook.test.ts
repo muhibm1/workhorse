@@ -188,7 +188,7 @@ describe('createStudbook', () => {
 
   it('refuses to connect when the CA file is missing, rather than connecting unverified', async () => {
     const sb = createStudbook({
-      readConninfo: () => 'host=h',
+      readIngestConninfo: () => null, readConninfo: () => 'host=h',
       readApiKey: () => 'k',
       caPath: join(dir, 'missing.pem'),
       modelCacheDir: dir,
@@ -199,7 +199,7 @@ describe('createStudbook', () => {
   });
 
   it('refuses without a stored conninfo and says where to put one', async () => {
-    const sb = createStudbook({ readConninfo: () => null, readApiKey: () => 'k', caPath, modelCacheDir: dir, models: fakeModels() });
+    const sb = createStudbook({ readIngestConninfo: () => null, readConninfo: () => null, readApiKey: () => 'k', caPath, modelCacheDir: dir, models: fakeModels() });
     await expect(sb.search('q')).rejects.toThrow(/Settings > Studbook/);
     expect(sb.status().configured).toBe(false);
   });
@@ -208,7 +208,7 @@ describe('createStudbook', () => {
     const fake = fakeDb([row]);
     let receivedCa = '';
     const sb = createStudbook({
-      readConninfo: () => 'host=h user=u',
+      readIngestConninfo: () => null, readConninfo: () => 'host=h user=u',
       readApiKey: () => null,
       caPath,
       modelCacheDir: dir,
@@ -226,7 +226,7 @@ describe('createStudbook', () => {
 
   it('ask needs an API key even when search works', async () => {
     const sb = createStudbook({
-      readConninfo: () => 'host=h',
+      readIngestConninfo: () => null, readConninfo: () => 'host=h',
       readApiKey: () => null,
       caPath,
       modelCacheDir: dir,
@@ -239,7 +239,7 @@ describe('createStudbook', () => {
 
   it('check counts the corpus and repos groups change ids per repo', async () => {
     const sb = createStudbook({
-      readConninfo: () => 'host=h',
+      readIngestConninfo: () => null, readConninfo: () => 'host=h',
       readApiKey: () => 'k',
       caPath,
       modelCacheDir: dir,
@@ -326,6 +326,41 @@ describe('studbook over IPC', () => {
     const result = (await ipc.invoke(IPC.studbookSearch, ' q ', { repo: 'workhorse', changeId: 7 }, 3)) as { number: number }[];
     expect(search).toHaveBeenCalledWith('q', { repo: 'workhorse', changeId: null }, 3);
     expect(result[0].number).toBe(1);
+  });
+
+  it('sync runs over the registry, keyed by lowercased folder name, never a renderer path', async () => {
+    const ipc = fakeIpc();
+    const sync = vi.fn(async () => []);
+    const studbook = { status: () => ({}) as never, check: async () => ({}) as never, repos: async () => [], search: vi.fn(), ask: vi.fn(), sync } as never;
+    const registry = {
+      list: () => [{ id: 'a', path: 'C:\\Users\\x\\WorkHorse', name: 'WorkHorse', addedAt: '' }, { id: 'b', path: '/tmp/paddock-demo', name: 'paddock-demo', addedAt: '' }],
+      get: () => undefined, add: () => ({}) as never, remove: () => undefined,
+    } as unknown as IpcDeps['registry'];
+    registerIpc(deps({ ipcMain: ipc.ipcMain, studbook, registry }).deps);
+    await ipc.invoke(IPC.studbookSync, '/anything/the/renderer/says');
+    expect(sync).toHaveBeenCalledWith([
+      { key: 'workhorse', path: 'C:\\Users\\x\\WorkHorse' },
+      { key: 'paddock-demo', path: '/tmp/paddock-demo' },
+    ]);
+  });
+
+  it('the ingest connection string has the same shape check and the same no-read rule', async () => {
+    const ipc = fakeIpc();
+    const stored = { ingest: null as string | null };
+    const settings = {
+      setStudbookIngestConninfo: (c: string) => void (stored.ingest = c),
+      hasStudbookIngestConninfo: () => stored.ingest !== null,
+      clearStudbookIngestConninfo: () => void (stored.ingest = null),
+      readStudbookIngestConninfo: () => stored.ingest,
+      get: () => ({ backend: 'cli', pluginPath: null, allowedTools: {}, theme: 'dark', notifyUrl: null }),
+    } as unknown as IpcDeps['settings'];
+    registerIpc(deps({ ipcMain: ipc.ipcMain, settings }).deps);
+    await expect(ipc.invoke(IPC.studbookSetIngestConninfo, 'nope')).rejects.toThrow(/connection string/);
+    await ipc.invoke(IPC.studbookSetIngestConninfo, 'host=h user=studbook_ingest_login.x password=s dbname=d');
+    expect(await ipc.invoke(IPC.studbookHasIngestConninfo)).toBe(true);
+    expect(Object.values(IPC).some((c) => /ingest/i.test(c) && /get|read/i.test(c))).toBe(false);
+    await ipc.invoke(IPC.studbookClearIngestConninfo);
+    expect(stored.ingest).toBeNull();
   });
 
   it('every studbook channel is refused cleanly when the build has no studbook', async () => {

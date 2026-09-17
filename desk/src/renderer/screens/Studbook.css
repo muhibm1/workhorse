@@ -66,6 +66,19 @@
   font-size: 0.82rem;
 }
 
+.studbook-refresh {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.studbook-refresh-summary {
+  color: var(--ink-faint);
+  font-size: 0.7rem;
+  letter-spacing: 0.03em;
+}
+
 .studbook-composer .composer-foot {
   flex-wrap: wrap;
 }

@@ -31,6 +31,8 @@ const ORB: Record<Phase, OrbSpec> = {
   refused: { state: 'breathing', speed: 1, ring: 'amber', pulse: false },
   error: { state: 'breathing', speed: 1, ring: 'coral', pulse: false },
 };
+/** Re-reading the repositories into the store: the orb works, cyan, no pulse. */
+const ORB_SYNCING: OrbSpec = { state: 'working', speed: 1, ring: 'cyan', pulse: false };
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -90,7 +92,27 @@ export function Studbook() {
   const [result, setResult] = useState<StudbookAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openPassage, setOpenPassage] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<StudbookStatus['lastSync']>(null);
   const receiptsRef = useRef<HTMLDivElement>(null);
+
+  async function refresh() {
+    if (syncing) return;
+    setSyncing(true);
+    setError(null);
+    try {
+      setLastSync(await window.paddock.studbook.sync());
+      // Counts changed; check() re-reads them and the scope filter may have new repos.
+      const next = await window.paddock.studbook.check();
+      setStatus(next);
+      setRepos(await window.paddock.studbook.repos());
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSyncing(false);
+      void refreshStatus();
+    }
+  }
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -124,10 +146,18 @@ export function Studbook() {
   // While a question is in flight the models may be downloading; poll so the line under the orb
   // says what is actually happening instead of "Asking…" for two minutes on first use.
   useEffect(() => {
-    if (phase !== 'asking') return;
+    if (phase !== 'asking' && !syncing) return;
     const id = window.setInterval(() => void refreshStatus(), 1000);
     return () => window.clearInterval(id);
-  }, [phase, refreshStatus]);
+  }, [phase, syncing, refreshStatus]);
+
+  const syncLine = (() => {
+    const s = status?.sync;
+    if (!syncing || !s) return null;
+    if (s.stage === 'embedding' && s.toEmbed) return `${s.repo}: embedding ${s.embedded ?? 0}/${s.toEmbed} changed passages…`;
+    if (s.stage === 'embedding') return `${s.repo}: nothing changed`;
+    return `${s.repo}: ${s.stage}…`;
+  })();
 
   const changes = useMemo(() => repos.find((r) => r.repo === repo)?.changes ?? [], [repos, repo]);
 
@@ -166,9 +196,11 @@ export function Studbook() {
     <div className="studbook-screen">
       <div className="studbook-left">
         <div className="studbook-orb">
-          <Orb spec={ORB[phase]} size={140} />
+          <Orb spec={syncing ? ORB_SYNCING : ORB[phase]} size={140} />
           <p className="studbook-orb-line" aria-live="polite">
-            {phase === 'asking'
+            {syncing
+              ? syncLine ?? 'Refreshing the record…'
+              : phase === 'asking'
               ? progress ?? 'Reading the record…'
               : status?.corpus
                 ? `${status.corpus.documents} documents · ${status.corpus.chunks} passages`
@@ -266,6 +298,29 @@ export function Studbook() {
         </form>
 
         {error && <p className="studbook-error">{error}</p>}
+
+        {configured && (
+          <div className="studbook-refresh">
+            <Button
+              tone="ghost"
+              size="sm"
+              onClick={() => void refresh()}
+              disabled={!status?.ingestConfigured || syncing || phase === 'asking'}
+              title={
+                status?.ingestConfigured
+                  ? 'Re-read every registered repository into the store'
+                  : 'Store the ingest connection string in Settings > Studbook to enable'
+              }
+            >
+              {syncing ? 'Refreshing…' : 'Refresh the record'}
+            </Button>
+            {lastSync && !syncing && (
+              <span className="studbook-refresh-summary mono">
+                {lastSync.map((s) => `${s.repo}: ${s.documents} docs, ${s.chunksEmbedded} re-embedded`).join(' · ')}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="studbook-right">

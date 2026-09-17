@@ -95,14 +95,36 @@ export interface StudbookScope { repo?: string | null; changeId?: string | null;
 
 export interface StudbookRepo { repo: string; changes: { changeId: string; documents: number }[]; }
 
+export interface StudbookSyncProgress {
+  repo: string;
+  stage: 'walking' | 'embedding' | 'writing' | 'done';
+  embedded?: number;
+  toEmbed?: number;
+}
+
+export interface StudbookSyncStats {
+  repo: string;
+  documents: number;
+  documentsDeleted: number;
+  chunksEmbedded: number;
+  chunksUnchanged: number;
+  chunksDeleted: number;
+}
+
 export interface StudbookStatus {
   /** A database connection string is stored (Settings > Studbook). */
   configured: boolean;
+  /** The ingest role's connection string is stored; "Refresh the record" needs it. */
+  ingestConfigured: boolean;
   /** An Anthropic key is stored; asking needs it, searching does not. */
   hasApiKey: boolean;
   models: 'cold' | 'loading' | 'ready';
   progress: { stage: 'downloading' | 'loading' | 'ready'; file?: string; percent?: number } | null;
   corpus: { documents: number; chunks: number } | null;
+  /** Non-null while a refresh is running. */
+  sync: StudbookSyncProgress | null;
+  /** Per-repo results of the last completed refresh, or null if none has run this session. */
+  lastSync: StudbookSyncStats[] | null;
   lastError: string | null;
 }
 
@@ -145,6 +167,12 @@ export interface PaddockApi {
     setConninfo(conninfo: string): Promise<void>;
     hasConninfo(): Promise<boolean>;
     clearConninfo(): Promise<void>;
+    /** The ingest role's connection string, same rules. Needed only by `sync`. */
+    setIngestConninfo(conninfo: string): Promise<void>;
+    hasIngestConninfo(): Promise<boolean>;
+    clearIngestConninfo(): Promise<void>;
+    /** Re-ingests every registered repository into the store; resolves with per-repo results. */
+    sync(): Promise<StudbookSyncStats[]>;
   };
 }
 
@@ -165,4 +193,6 @@ export const IPC = {
   studbookSearch: 'studbook:search', studbookAsk: 'studbook:ask',
   studbookSetConninfo: 'studbook:setConninfo', studbookHasConninfo: 'studbook:hasConninfo',
   studbookClearConninfo: 'studbook:clearConninfo',
+  studbookSetIngestConninfo: 'studbook:setIngestConninfo', studbookHasIngestConninfo: 'studbook:hasIngestConninfo',
+  studbookClearIngestConninfo: 'studbook:clearIngestConninfo', studbookSync: 'studbook:sync',
 } as const;
