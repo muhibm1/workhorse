@@ -31,6 +31,10 @@ export interface Passage {
 export interface Scope {
   repo?: string | null;
   changeId?: string | null;
+  /** The set of repositories a query may see at all. The parity gate passes the eval corpus's
+   *  repositories so a Refresh that adds others cannot move the published numbers; the tab
+   *  leaves it unset and answers over the whole record. */
+  repos?: string[] | null;
 }
 
 export const ARM_K = 20; // what each arm returns before fusion (DEFAULT_K in hybrid.py)
@@ -51,6 +55,11 @@ function scopeSql(scope: Scope, firstIndex: number): { sql: string; values: unkn
   if (scope.changeId) {
     values.push(scope.changeId);
     clauses.push(`d.change_id = $${firstIndex + values.length - 1}`);
+  }
+  if (scope.repos) {
+    // An empty list is a real filter that matches nothing, not the absence of one.
+    values.push(scope.repos);
+    clauses.push(`d.repo = any($${firstIndex + values.length - 1})`);
   }
   return { sql: clauses.length ? ' and ' + clauses.join(' and ') : '', values };
 }

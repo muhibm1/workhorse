@@ -30,6 +30,10 @@ import { RERANK_CANDIDATES } from '../src/main/studbook';
 
 const CONNINFO = process.env['STUDBOOK_DATABASE_URL'];
 const DEV_JSONL = process.env['STUDBOOK_DEV_JSONL'];
+/** The eval corpus's repositories (studbook's corpus.json keys). The store can hold more --
+ *  Refresh the record adds every registered repository -- and the published numbers are over
+ *  exactly these two, so retrieval is scoped to them here as it is in the Python eval. */
+const EVAL_REPOS = (process.env['STUDBOOK_EVAL_REPOS'] ?? 'workhorse,paddock-demo').split(',').map((s) => s.trim());
 const PUBLISHED = { recall5: 0.8235, mrr10: 0.6485, precision5: 0.1824 };
 const TOP_K = 5;
 const MRR_K = 10;
@@ -74,7 +78,7 @@ describeLive('studbook parity gate (live)', () => {
       const misses: string[] = [];
       try {
         for (const [i, q] of questions.entries()) {
-          const candidates = await retrieveHybrid(client, q.question, embeddings[i], RERANK_CANDIDATES);
+          const candidates = await retrieveHybrid(client, q.question, embeddings[i], RERANK_CANDIDATES, { repos: EVAL_REPOS });
           const reranked = await models.rerank(q.question, candidates, MRR_K);
           const hits = reranked.map((p) => q.gold.some((g) => p.body.includes(g.quote)));
           const first = hits.indexOf(true);

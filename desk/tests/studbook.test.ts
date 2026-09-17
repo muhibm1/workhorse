@@ -83,6 +83,17 @@ describe('studbook retrieval', () => {
     expect(calls[0].text).not.toContain('websearch_to_tsquery');
   });
 
+  it('a repos set restricts to exactly those repositories; an empty set matches nothing', async () => {
+    const { client, calls } = capturing();
+    await retrieveVector(client, [1], 5, { repos: ['workhorse', 'paddock-demo'] });
+    expect(calls[0].text).toContain('d.repo = any($3)');
+    expect(calls[0].values).toEqual(['[1]', 5, ['workhorse', 'paddock-demo']]);
+    await retrieveVector(client, [1], 5, { repos: [] });
+    expect(calls[1].text).toContain('d.repo = any($3)');
+    await retrieveVector(client, [1], 5, { repos: null });
+    expect(calls[2].text).not.toContain('any(');
+  });
+
   it('a scope adds parameterised clauses after the ones already used', async () => {
     const { client, calls } = capturing();
     await retrieveVector(client, [1], 5, { repo: 'workhorse', changeId: 'c1' });
