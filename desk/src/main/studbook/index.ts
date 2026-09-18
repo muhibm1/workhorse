@@ -10,7 +10,7 @@
  * Every database connection verifies the server against Supabase's pinned root certificate
  * (`sslmode=verify-full`'s equivalent: `rejectUnauthorized: true` with `ca`). Supabase signs its
  * database certificates with its own root, which no public CA store contains; the Python side
- * connected unverified for months before a Node client refused the chain and made it visible
+ * connected unverified from its first commit until a Node client refused the chain and made it visible
  * (studbook/docs/paddock-gate.md). A missing CA file is a hard error, never an unverified
  * connection.
  */
