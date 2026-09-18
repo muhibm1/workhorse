@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { looksLikeConninfo, parseConninfo } from '../src/main/studbook/conninfo';
 import { reciprocalRankFusion, retrieveVector, retrieveFulltext, type Passage, type Queryable } from '../src/main/studbook/retrieval';
 import { buildContext, buildMessages, buildUserPrompt, cleanRefusal, FOLLOW_UP_NOTE, generateAnswer, parseCitedNumbers, SYSTEM_PROMPT } from '../src/main/studbook/answer';
-import { createStudbook, type DbClient } from '../src/main/studbook';
+import { createStudbook, SESSION_SETUP, type DbClient } from '../src/main/studbook';
 import type { Models } from '../src/main/studbook/models';
 import { IPC } from '@shared/types';
 import { registerIpc, type IpcDeps, type IpcMainLike } from '../src/main/ipc';
@@ -393,6 +393,12 @@ describe('createStudbook', () => {
     });
     await expect(sb.ask('q')).rejects.toThrow(/API key/);
     expect(sb.status().lastError).toMatch(/API key/);
+  });
+
+  it('every connection sets the schema and the pgvector iterative scan, as studbook does', () => {
+    // Byte-identical to studbook's store/connect.py READER_SESSION: the second half is what keeps a
+    // scoped vector search from coming back empty once the planner starts using the HNSW index.
+    expect(SESSION_SETUP).toBe('set search_path to studbook, extensions; set hnsw.iterative_scan = strict_order');
   });
 
   it('check counts the corpus and repos groups change ids per repo', async () => {
