@@ -47,9 +47,17 @@ it is something you ran and read.
 4. Write `verification.md` from the template. Every defined check has a row with command, exit
    code, log path, and `confirmed`. Every undefined check has a row saying `no check defined`
    and does not count as a pass. Manual eval cases go under "Not verified".
-5. Status: `green` only if every defined check exited 0 and every eval category met its
+5. Write the "What was measured" section: one plain sentence per defined check, with the counts
+   read from its log (tests run, passed, failed, skipped; errors and warnings) and the command in
+   backticks. Find the previous change's `verification.md` (the most recent other directory under
+   `docs/sdlc/` that has one) and compare with it: "Up from 27 tests at the previous change,
+   `<its id>`." If there is none, say "No previous change to compare with." Every number comes
+   from a log you read, never from the plan's expected count. This section is the one people and
+   search tools find the result by later: "how big was the test suite?" must be answerable from
+   its words, not only from an exit-code table or a raw log excerpt.
+6. Status: `green` only if every defined check exited 0 and every eval category met its
    target. Otherwise `red`. If any check timed out or could not run, `red` with the reason.
-6. Write `Status: <green|red>` in the header exactly so the wh CLI can read it.
+7. Write `Status: <green|red>` in the header exactly so the wh CLI can read it.
 
 ## Rules
 

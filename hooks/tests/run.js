@@ -361,6 +361,15 @@ console.log('plugin structure');
   const verifierTools = field(front('wh-verifier.md'), 'tools');
   check('verifier cannot spawn agents (least privilege: Bash without Agent)', !/\bAgent\b/.test(verifierTools), verifierTools);
 
+  // A verification report is read later by people and by retrieval (Studbook), and a table of exit
+  // codes answers "how big was the test suite?" for neither: Studbook's cross-doc eval could not
+  // find a suite's size because the record said it only as "# pass 47" in a log excerpt.
+  const vTemplate = fs.readFileSync(path.join(PLUGIN, 'templates', 'verification.md'), 'utf8');
+  check('verification template has a plain-words "What was measured" section', /^## What was measured$/m.test(vTemplate));
+  const verifier = fs.readFileSync(path.join(AG, 'wh-verifier.md'), 'utf8');
+  check('verifier is told to fill "What was measured" from the logs, compared with the previous change',
+    /What was measured/.test(verifier) && /previous change/i.test(verifier));
+
   const ecc = agentFiles.filter((f) => f.startsWith('ecc-'));
   check('nine ECC agents vendored', ecc.length === 9, ecc.join(', '));
   const noAdapter = ecc.filter((f) => !fs.readFileSync(path.join(AG, f), 'utf8').includes('## WorkHorse adapter'));
