@@ -63,6 +63,11 @@ jobs:
           test "${passed:-0}" -ge 240
       - name: Build
         run: npm run build
+      - name: Install the claude CLI Paddock requires
+        # Paddock's Setup screen blocks every other screen until `claude --version` answers (it
+        # checks the binary exists; no login, no API call). Without it the smoke test sees only
+        # Setup -- which is the app behaving correctly, so the runner is fixed, not the app.
+        run: npm install -g @anthropic-ai/claude-code@2.1.277 && claude --version
       - name: End-to-end smoke (Electron under a virtual display)
         # xvfb-run's default screen is 640x480, small enough to collapse the layout: the first
         # Linux run could not see Fleet's heading or click the rail. A desktop-sized screen.
