@@ -8,6 +8,17 @@ Commit: `{{commit}}`
 Status is green only when every defined check exited 0 and every eval category met its target.
 "No check defined" rows do not count as passes; they are listed so the gap is visible.
 
+## What was measured
+
+One plain sentence per defined check, in the words someone would use to ask about it later, with
+the numbers read from its log. Compare with the previous change's verification.md when there is
+one, and name it. For example:
+
+- Test suite: 47 tests, 47 passed, 0 failed (`npm test`). Up from 27 tests at the previous change,
+  `add-get-health-endpoint-returning-uptime`.
+- Type check: 0 errors (`npx tsc --noEmit`).
+- Lint: 0 errors, 3 warnings (`npm run lint`); the linter checks syntax only.
+
 ## Checks
 
 | Check | Command | Exit code | Output | Status |
