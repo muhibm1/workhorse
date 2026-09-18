@@ -138,10 +138,20 @@ export interface Studbook {
   sync(targets: SyncTarget[]): Promise<SyncStats[]>;
 }
 
+/**
+ * Run on every connection, the same statement as studbook's store/connect.py READER_SESSION. The
+ * second setting matters at scale: pgvector's HNSW index returns ef_search candidates (40) and the
+ * scope filters them afterwards, so a scoped search -- one repository, one change -- can keep none.
+ * Forced onto the index path it returned 0 of 20 without this and 20 of 20 with it (2026-09-18).
+ * At today's corpus size the planner sorts instead and never hits it; as the corpus grows it would
+ * surface silently. strict_order keeps exact distance order, which fusion and the reranker rely on.
+ */
+export const SESSION_SETUP = 'set search_path to studbook, extensions; set hnsw.iterative_scan = strict_order';
+
 async function defaultConnect(target: ReturnType<typeof parseConninfo>, ca: string): Promise<DbClient> {
   const client = new pg.Client({ ...target, ssl: { rejectUnauthorized: true, ca } });
   await client.connect();
-  await client.query('set search_path to studbook, extensions');
+  await client.query(SESSION_SETUP);
   return client;
 }
 
