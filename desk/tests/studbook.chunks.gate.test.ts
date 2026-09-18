@@ -1,3 +1,12 @@
+/** The same two facts gate/dump_chunks.py records, computed now. */
+function treeState(repoPath: string): { head: string; status_sha256: string } {
+  const git = (...args: string[]) => execFileSync('git', ['-C', repoPath, ...args]);
+  return {
+    head: git('rev-parse', 'HEAD').toString().trim(),
+    status_sha256: createHash('sha256').update(git('status', '--porcelain')).digest('hex'),
+  };
+}
+
 /**
  * Chunk parity gate: the TypeScript parser + chunker must produce exactly the documents and
  * chunks Python's `ingest/parser.py` + `ingest/chunker.py` produce over the same working trees --
@@ -11,6 +20,8 @@
  *     STUDBOOK_CHUNKS_JSON=../studbook/gate/python_chunks.json npx vitest run tests/studbook.chunks.gate.test.ts
  */
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { chunkDocument } from '../src/main/studbook/chunker';
@@ -25,6 +36,8 @@ if (!DUMP) {
 interface Dump {
   [repo: string]: {
     path: string;
+    /** What the dump was taken against (gate/dump_chunks.py tree_state). */
+    tree?: { head: string; status_sha256: string };
     documents: { id: string; path: string; doc_type: string; change_id: string | null; tier: number | null; doc_date: string | null; commit_sha: string; content_hash: string }[];
     chunks: { id: string; heading_path: string; gate: string | null; token_count: number; content_hash: string }[];
   };
@@ -36,6 +49,12 @@ describeLive('studbook chunk parity gate (live)', () => {
 
   for (const [repo, expected] of Object.entries(dump)) {
     it(`${repo}: documents and chunks are identical to Python's`, async () => {
+      // A dump taken before a commit or an edit describes a different corpus: commit messages are
+      // documents. That read as a parity failure twice before this check existed; say what it is.
+      if (expected.tree) {
+        const now = treeState(expected.path);
+        expect(now, `STALE DUMP, not a parity failure: ${repo} has changed since gate/dump_chunks.py ran. Re-run it, then this gate.`).toEqual(expected.tree);
+      }
       const docs = await walkRepo(repo, expected.path);
       const chunks = docs.flatMap((d) => chunkDocument(d));
 
