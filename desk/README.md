@@ -22,7 +22,10 @@ Settings.
 
 ## Development
 
-Run these from `desk/` (this directory):
+Developing Paddock needs **Node 22.12+** (`.nvmrc`, `engines`), newer than the Node 18+ it needs
+at runtime: Electron's installer loads an ESM-only dependency with `require()`, which older Node
+cannot do, so `npm install` fails at Electron's postinstall. Run these from `desk/` (this
+directory):
 
 ```
 npm install
