@@ -49,6 +49,7 @@
   "overrides": {
     "app-builder-lib": {
       "@noble/hashes": "1.8.0"
-    }
+    },
+    "sharp": "0.35.4"
   }
 }
