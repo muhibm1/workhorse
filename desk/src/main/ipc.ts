@@ -29,6 +29,9 @@ import { createAutoResume, createGateNotifier, createStallTimer, postNotificatio
  * `dialog` and a `BrowserWindow` instance satisfy these shapes as-is when T15 wires the app.
  */
 export interface IpcMainLike {
+  // any[] mirrors Electron's own IpcMain.handle signature, which the real ipcMain must satisfy;
+  // unknown[] and never[] both make the real object unassignable. Handlers validate every argument.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handle(channel: string, listener: (event: unknown, ...args: any[]) => unknown): void;
 }
 export interface DialogLike {

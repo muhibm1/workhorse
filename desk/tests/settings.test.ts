@@ -95,9 +95,14 @@ describe('settings.set patch validation (security review finding)', () => {
 
   it('still accepts the legitimate values the Settings screen sends', () => {
     const s = createSettings(dir, fakeCrypto());
-    const out = s.set({ backend: 'sdk', pluginPath: 'C:\plugins\workhorse' });
+    // A real Windows path. This was written 'C:\plugins\workhorse', which JavaScript reads as
+    // "C:pluginsworkhorse" -- so for its whole life the test never passed a backslash at all.
+    // ESLint's no-useless-escape found it.
+    const windowsPath = String.raw`C:\plugins\workhorse`;
+    expect(windowsPath).toContain('\\');
+    const out = s.set({ backend: 'sdk', pluginPath: windowsPath });
     expect(out.backend).toBe('sdk');
-    expect(out.pluginPath).toBe('C:\plugins\workhorse');
+    expect(out.pluginPath).toBe(windowsPath);
   });
 
   it('survives a non-object patch without throwing', () => {

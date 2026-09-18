@@ -35,9 +35,11 @@ export function Settings() {
   const repos = usePaddockStore((s) => s.repos);
 
   const [backend, setBackend] = useState<Backend>(settings?.backend ?? 'cli');
+  // Depends on exactly what it reads, so a later edit that reads more cannot go stale unseen.
+  const savedBackend = settings?.backend;
   useEffect(() => {
-    if (settings) setBackend(settings.backend);
-  }, [settings?.backend]);
+    if (savedBackend) setBackend(savedBackend);
+  }, [savedBackend]);
 
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiKeyBusy, setApiKeyBusy] = useState(false);

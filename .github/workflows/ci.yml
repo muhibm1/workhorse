@@ -50,8 +50,9 @@ jobs:
       - name: Dependency audit
         run: npm audit
       - name: Typecheck
-        # Paddock has no ESLint configuration; strict TypeScript is the static check for now.
         run: npm run typecheck
+      - name: Lint (hooks rules and typescript-eslint recommended; eslint.config.mjs)
+        run: npm run lint
       - name: Unit tests
         env:
           NO_COLOR: "1"

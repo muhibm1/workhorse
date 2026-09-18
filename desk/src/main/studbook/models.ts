@@ -108,6 +108,7 @@ export function createModels(options: ModelsOptions = {}): Models {
         } catch (err) {
           throw new Error(
             `studbook: @huggingface/transformers is not installed (${err instanceof Error ? err.message : String(err)})`,
+            { cause: err },
           );
         }
         if (options.cacheDir) tf.env.cacheDir = options.cacheDir;
