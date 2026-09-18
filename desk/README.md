@@ -149,3 +149,11 @@ dependencies, and the build signs and packages cleanly. Confirmed 2026-09-11 on 
 
 Remove the override once `app-builder-lib` imports `@noble/hashes` as ESM, or once the Node
 floor for building is 22.12 or later.
+
+## Before pushing
+
+GitHub needs Pro for branch protection on a private repository, so a local pre-push hook stands
+in for it: `.githooks/pre-push` runs the plugin tests and Paddock's typecheck, lint and unit tests,
+and refuses a failing push. Enable it once per clone with `git config core.hooksPath .githooks`.
+It guards only a machine that has done that and leaves no record on GitHub; CI still runs
+everything on every push, including the build and the Electron smoke test.
