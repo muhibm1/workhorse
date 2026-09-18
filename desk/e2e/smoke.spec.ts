@@ -21,6 +21,22 @@ const APP_ROOT = resolve(__dirname, '..');
  *  fixture repo with no `.workhorse/profile.yml` (see `preregisterE2eRepo` in main/index.ts). */
 const E2E_REPO = '../examples/hello-service';
 
+/**
+ * The class names other checks hang off. A rename that misses one of these used to be silent in
+ * the worst way: a verifier counting `.studbook-answer .badge` reported "not a refusal" for an
+ * answer that plainly was one, because the selector matched nothing and a count of zero reads
+ * exactly like a real negative. Same shape as a blocked UPDATE matching zero rows and reporting
+ * success -- a check that cannot tell "absent" from "false" is not a check.
+ *
+ * So: assert the containers exist, here, once, loudly. Anything that later reads state out of one
+ * of them can then trust that a zero means zero.
+ */
+const SCREEN_ROOTS: { screen: string; selector: string }[] = [
+  { screen: 'Fleet', selector: '.fleet-title' },
+  { screen: 'Studbook', selector: '.studbook-screen' },
+  { screen: 'Settings', selector: '.settings-screen' },
+];
+
 test.describe('Paddock smoke', () => {
   let app: ElectronApplication;
   let window: Page;
@@ -54,6 +70,24 @@ test.describe('Paddock smoke', () => {
     // stored, which a developer's own profile may already have -- so that is not asserted.
     await expect(window.locator('#studbook-question')).toBeVisible({ timeout: 20_000 });
     await expect(window.locator('.studbook-orb canvas')).toBeVisible();
+  });
+
+  test('every screen still renders the root class other checks select on', async () => {
+    for (const { screen, selector } of SCREEN_ROOTS) {
+      await window.getByRole('button', { name: screen, exact: true }).click();
+      await expect(window.locator(selector), `${screen}: ${selector} is gone — a rename here makes
+        selector-based checks report false instead of failing`).toBeVisible({ timeout: 20_000 });
+    }
+  });
+
+  test('a refusal is distinguishable from a missing badge', async () => {
+    // The specific conflation that bit: `.studbook-turn .badge` counting zero has to mean "this
+    // answer was not a refusal", which is only true while that container exists.
+    await window.getByRole('button', { name: 'Studbook', exact: true }).click();
+    await expect(window.locator('.studbook-screen')).toBeVisible({ timeout: 20_000 });
+    // No turns yet, so no badges -- but the transcript column must be there to have counted them.
+    await expect(window.locator('.studbook-right')).toBeVisible();
+    expect(await window.locator('.studbook-turn .badge').count()).toBe(0);
   });
 
   test('Settings shows a real node version in Prerequisites', async () => {
