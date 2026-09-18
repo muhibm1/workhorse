@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { looksLikeConninfo, parseConninfo } from '../src/main/studbook/conninfo';
@@ -130,6 +131,13 @@ describe('studbook answer', () => {
     expect(SYSTEM_PROMPT).toContain('Respond with exactly the phrase "Not in the record: "');
     expect(SYSTEM_PROMPT).toContain('write [1][2], never [1, 2]');
     expect(SYSTEM_PROMPT).toContain('A passage that positively records that something does not exist');
+  });
+
+  it('the system prompt and follow-up note are byte-identical to studbook\'s', () => {
+    // The same hashes studbook/tests/test_prompts.py pins; an edit on one side only fails a test.
+    const sha = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
+    expect(sha(SYSTEM_PROMPT)).toBe('b51fefa85f5b85e3bec346c37044979a17751c6d8719f500cf925faf4a2a8658');
+    expect(sha(FOLLOW_UP_NOTE)).toBe('6bf13313380c5b91c5a69816437e4eb74f9101c4da989433d27868bc76e47417');
   });
 
   it('numbers passages from one and names their source', () => {
