@@ -20,6 +20,7 @@ import { generateAnswer, type Answer, type HistoryTurn } from './answer';
 import { parseConninfo } from './conninfo';
 import { createModels, type ModelProgress, type Models } from './models';
 import { retrieveHybrid, type Passage, type Scope } from './retrieval';
+import { rewriteQuery, type Rewrite } from './rewrite';
 import { syncRepo, type SyncProgress, type SyncStats } from './sync';
 
 /**
@@ -32,40 +33,28 @@ import { syncRepo, type SyncProgress, type SyncStats } from './sync';
  */
 export const RERANK_CANDIDATES = 10;
 export const DEFAULT_TOP_K = 5;
-/** How many earlier questions join a follow-up's retrieval query (see `retrievalQuery`). */
-export const HISTORY_RETRIEVAL_TURNS = 2;
-
 /**
- * What the retrieval arms actually search for.
+ * A follow-up is searched for as a rewritten, standalone question (rewrite.ts); a fresh question
+ * is searched for as itself, so it retrieves exactly what the eval measures and the parity gate
+ * holds to the published numbers.
  *
- * With no history this is the question, unchanged -- so a fresh question retrieves exactly what
- * it always has, which is what the eval measures and what the parity gate holds to the published
- * numbers. A follow-up is the problem case: "what broke because of it?" embeds to nothing useful
- * and shares no lexeme with the passages that answer it, because the subject is in the previous
- * turn. Prepending the last couple of questions puts the subject back.
+ * Measured on two sets (studbook/docs/follow-ups.md, `eval/rewrite.py`), recall@5 of the passage
+ * the question needs:
  *
- * Measured after the fact, on twelve follow-up pairs written to be answered by the same passage
- * as their first question (studbook/docs/follow-ups.md, `eval/threads.py`): a bare follow-up finds
- * that passage 2/12 of the time, carrying the question takes it to 8/12, and the fully-specified
- * original question manages 11/12. So it does the thing it was written to do and closes about two
- * thirds of the gap. Where it still fails, the follow-up is short and nearly contentless -- the
- * concatenation is then mostly the previous question, and retrieval lands back where the previous
- * turn already looked. That is what a query rewrite would fix and a concatenation cannot.
+ *                                     alone   previous + question   rewrite
+ *   genuine follow-ups (n=12)          2/12          8/12             11/12
+ *   a change of subject (n=34)        29/34         20/34             30/34
  *
- * Its other failure mode is measured too, and it is not small: a question that changes subject
- * retrieves with the previous question's words as noise. Pairing each dev gold question with an
- * unrelated one as its "previous turn" (`eval/unrelated.py`) drops recall@5 from 29/34 to 20/34.
- * So this is a bet that the next question follows on, paying about two to one; "New thread" is the
- * control for when it does not. Fusing the bare and carried queries' rankings splits the
- * difference (7/12 and 25/34) and was not adopted, because which side wins depends on how often a
- * turn really is a follow-up, which nothing here measures. A query rewrite is the fix that could
- * win both ways.
+ * The concatenation this replaced was a bet that the next question follows on; the rewrite does
+ * not have to bet, because it can see whether the question names its own subject. 11/12 is also
+ * what the fully-specified original questions manage, so on that set it is at the ceiling.
+ *
+ * Retrieval AND the rerank use the rewrite: the cross-encoder scoring against a self-contained
+ * question beat scoring against the follow-up as typed (11/12 against 10/12), and that is the
+ * configuration that was measured. The answer itself is still generated for the question the user
+ * asked, with the thread as prior messages.
  */
-export function retrievalQuery(question: string, history: HistoryTurn[] = []): string {
-  if (history.length === 0) return question;
-  const recent = history.slice(-HISTORY_RETRIEVAL_TURNS).map((t) => t.question);
-  return [...recent, question].join(' ');
-}
+export type { Rewrite } from './rewrite';
 
 export interface StudbookDeps {
   /** Decrypts the stored conninfo, or null when none is stored. Main-only. */
@@ -82,6 +71,8 @@ export interface StudbookDeps {
   /** Test seam for the database. */
   connect?: (target: ReturnType<typeof parseConninfo>, ca: string) => Promise<DbClient>;
   generatorModel?: string;
+  /** Test seam for the follow-up rewrite. */
+  rewrite?: typeof rewriteQuery;
 }
 
 export interface DbClient {
@@ -123,6 +114,9 @@ export interface AskResult {
   question: string;
   answer: Answer;
   passages: Passage[];
+  /** What retrieval searched for, and how it got there -- shown with the answer, because a
+   *  rewritten search is part of the receipt. */
+  search: Rewrite;
 }
 
 export interface Studbook {
@@ -200,8 +194,8 @@ export function createStudbook(deps: StudbookDeps): Studbook {
     }
   }
 
-  /** `query` is what the arms search for (see `retrievalQuery`); `question` is what the
-   *  cross-encoder re-scores against, since that is the thing actually being answered. */
+  /** `query` is what the arms search for; `question` is what the cross-encoder re-scores against.
+   *  For a follow-up both are the rewrite (see the note on `Rewrite` above). */
   async function retrieve(db: DbClient, question: string, scope: Scope, topK: number, query = question): Promise<Passage[]> {
     const [embedding] = await models.embed([query]);
     const candidates = await retrieveHybrid(db, query, embedding, RERANK_CANDIDATES, scope);
@@ -261,12 +255,12 @@ export function createStudbook(deps: StudbookDeps): Studbook {
       return remember(async () => {
         const apiKey = deps.readApiKey();
         if (!apiKey) throw new Error('studbook: no Anthropic API key is stored (Settings > Backend > API key)');
-        const query = retrievalQuery(question, history);
-        const passages = await withDb((db) => retrieve(db, question, scope, topK, query));
+        const search = await (deps.rewrite ?? rewriteQuery)(question, history.map((t) => t.question), { apiKey });
+        const passages = await withDb((db) => retrieve(db, search.query, scope, topK, search.query));
         const answer = await generateAnswer(question, passages, {
           apiKey, model: deps.generatorModel, history, onDelta,
         });
-        return { question, answer, passages };
+        return { question, answer, passages, search };
       });
     },
 

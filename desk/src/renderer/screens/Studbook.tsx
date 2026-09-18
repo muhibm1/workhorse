@@ -13,7 +13,7 @@
  *   answer "this change", and the model correctly refuses unless told which.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { StudbookPassage, StudbookRepo, StudbookStatus, StudbookTurn } from '@shared/types';
+import type { StudbookPassage, StudbookRepo, StudbookSearch, StudbookStatus, StudbookTurn } from '@shared/types';
 import { usePaddockStore } from '@/store';
 import { Panel } from '@/components/Panel';
 import { Badge } from '@/components/Badge';
@@ -69,6 +69,27 @@ function AnswerText({ text, onCite }: { text: string; onCite: (n: number) => voi
   );
 }
 
+/**
+ * What a follow-up was searched for, when that differs from what was typed. A rewrite decides
+ * which passages the answer could see, so it belongs on the receipt: if the rewrite picked the
+ * wrong subject, this is where the reader can tell. Nothing for a fresh or unchanged question.
+ */
+function SearchedFor({ search }: { search: StudbookSearch }) {
+  if (search.method === 'fresh' || search.method === 'unchanged') return null;
+  const note =
+    search.method === 'rewritten'
+      ? null
+      : search.method === 'fallback-guard'
+        ? 'the rewrite added words not in this thread, so the thread’s questions were searched instead'
+        : 'the rewrite failed, so the thread’s questions were searched instead';
+  return (
+    <p className="studbook-searched" title={search.rejected ? `Rejected rewrite: ${search.rejected}` : undefined}>
+      <span className="label">Searched for</span> <span className="studbook-searched-query">{search.query}</span>
+      {note && <span className="studbook-searched-note"> — {note}</span>}
+    </p>
+  );
+}
+
 /** One exchange: the question asked, the answer, and the passages behind it. */
 function TurnView({
   turn,
@@ -98,6 +119,7 @@ function TurnView({
         <p className="studbook-question">{answer.question}</p>
         {scopeLabel && <span className="studbook-scope-tag mono">{scopeLabel}</span>}
       </div>
+      <SearchedFor search={answer.search} />
       {answer.refused && <Badge tone="amber">not in the record</Badge>}
       <div className="studbook-answer-text">
         <AnswerText text={answer.answer} onCite={(n) => onCite(index, n)} />

@@ -294,3 +294,20 @@
   color: var(--ink-faint);
   font-size: 0.72rem;
 }
+
+/* A follow-up's rewritten search, on the receipt: small, but always legible. */
+.studbook-searched {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+.studbook-searched .label {
+  margin-right: 6px;
+}
+.studbook-searched-query {
+  font-style: italic;
+}
+.studbook-searched-note {
+  color: var(--ink-faint);
+}

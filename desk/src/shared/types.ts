@@ -89,6 +89,17 @@ export interface StudbookAnswer {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  /** What retrieval searched for. A fresh question searches for itself; a follow-up is rewritten
+   *  into a standalone question, or falls back to the thread's questions joined together when the
+   *  rewrite added words the thread does not contain (`rejected` is that rewrite) or the call
+   *  failed. */
+  search: StudbookSearch;
+}
+
+export interface StudbookSearch {
+  query: string;
+  method: 'fresh' | 'rewritten' | 'unchanged' | 'fallback-guard' | 'fallback-error';
+  rejected?: string;
 }
 
 export interface StudbookScope { repo?: string | null; changeId?: string | null; }
