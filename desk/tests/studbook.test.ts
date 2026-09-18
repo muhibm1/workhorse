@@ -152,6 +152,34 @@ describe('studbook answer', () => {
     expect(stream).not.toHaveBeenCalled();
   });
 
+  it('a refusal with a cited paragraph after it is kept whole, as generate.py keeps it', async () => {
+    // The citation rule reads the whole reply, so a cited trailing paragraph makes this an answer
+    // and nothing is cut: the reader sees the contradiction with its receipt rather than a
+    // refusal with the evidence silently removed.
+    const stream = vi.fn(() => fakeStream('Not in the record: nothing covers this.\n\nBut [1] says…'));
+    const a = await generateAnswer('q?', [passage('a')], { apiKey: 'k', client: { messages: { stream } as never } });
+    expect(a.refused).toBe(false);
+    expect(a.citations.map((c) => c.number)).toEqual([1]);
+  });
+
+  it('a hedged answer opening with the refusal phrase keeps its text and citations', async () => {
+    // The shape the prompt asks for when the passages cover part of a question. generate.py's
+    // rule: a refusal is the phrase AND no citations. The port once used the prefix alone.
+    const text = "Not in the record: the passages don't give the reason, but they show it landed in 0.2.12 [1].";
+    const stream = vi.fn(() => fakeStream(text));
+    const a = await generateAnswer('q?', [passage('a')], { apiKey: 'k', client: { messages: { stream } as never } });
+    expect(a.refused).toBe(false);
+    expect(a.text).toBe(text);
+    expect(a.citations.map((c) => c.number)).toEqual([1]);
+  });
+
+  it('an uncited refusal is a refusal', async () => {
+    const stream = vi.fn(() => fakeStream('Not in the record: the passages do not cover this.'));
+    const a = await generateAnswer('q?', [passage('a')], { apiKey: 'k', client: { messages: { stream } as never } });
+    expect(a.refused).toBe(true);
+    expect(a.citations).toEqual([]);
+  });
+
   it('pins temperature 0 and maps citations to passages', async () => {
     const stream = vi.fn((params: { temperature?: number }) => {
       expect(params.temperature).toBe(0);

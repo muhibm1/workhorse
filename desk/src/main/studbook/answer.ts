@@ -212,9 +212,15 @@ export async function generateAnswer(question: string, passages: Passage[], deps
     .map((block) => ('text' in block ? block.text : ''))
     .join('')
     .trim();
-  const refused = raw.startsWith(REFUSAL_PREFIX);
+  // A refusal is the phrase AND no citations, as in generate.py. The prefix alone misreads a
+  // hedged partial answer -- "Not in the record: the passages don't give the reason, but they show
+  // X [1]" -- as a refusal, cuts it to its first sentence and drops its citations. The prompt
+  // actively asks for that shape; Studbook's held-out run caught three of them misfiled this way
+  // (studbook/docs/m4-evaluation-and-scale.md), and the port had kept the old rule.
+  const cited = parseCitedNumbers(raw, passages.length);
+  const refused = raw.startsWith(REFUSAL_PREFIX) && cited.length === 0;
   const text = refused ? cleanRefusal(raw) : raw;
-  const numbers = refused ? [] : parseCitedNumbers(text, passages.length);
+  const numbers = refused ? [] : cited;
   const usage = 'usage' in response ? response.usage : { input_tokens: 0, output_tokens: 0 };
 
   return {
