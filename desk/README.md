@@ -87,6 +87,12 @@ machine the answer starts appearing at ~8s and finishes at ~10s. The answer stre
 written, and the tab keeps a thread — ask a follow-up and it can say "it" or "that change",
 which a single question cannot. **New thread** clears it; nothing is written to disk.
 
+A follow-up is searched for as a standalone question: Claude rewrites "what does it do instead?"
+into one that names its subject, using only words already in the thread, and the answer shows what
+was searched for ("Searched for …") so a wrong reading of "it" is visible. A question that changes
+subject is searched for as typed. Measured in studbook/docs/follow-ups.md: follow-ups find the
+passage they need 11/12 of the time (8/12 before), and a change of subject 30/34 (20/34 before).
+
 **Refresh the record** re-ingests every repository in Paddock's registry into the store from
 inside the app — parse, chunk, embed only what changed, upsert, delete what is gone, one
 transaction per repository — so the record keeps up with the runs Paddock drives without a
