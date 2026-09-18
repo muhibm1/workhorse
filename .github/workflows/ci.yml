@@ -69,8 +69,9 @@ jobs:
         # Setup -- which is the app behaving correctly, so the runner is fixed, not the app.
         run: npm install -g @anthropic-ai/claude-code@2.1.277 && claude --version
       - name: End-to-end smoke (Electron under a virtual display)
-        # xvfb-run's default screen is 640x480, small enough to collapse the layout: the first
-        # Linux run could not see Fleet's heading or click the rail. A desktop-sized screen.
+        # A desktop-sized virtual screen rather than xvfb-run's 640x480 default. (Suspected first
+        # when the smoke test failed on Linux; the uploaded trace showed the real cause was the
+        # missing claude CLI above. The size stays because it is what users run.)
         run: xvfb-run -a --server-args="-screen 0 1440x900x24" npx playwright test
       - name: Keep Playwright's traces when the smoke test fails
         if: failure()
