@@ -44,10 +44,17 @@ export const HISTORY_RETRIEVAL_TURNS = 2;
  * and shares no lexeme with the passages that answer it, because the subject is in the previous
  * turn. Prepending the last couple of questions puts the subject back.
  *
- * It is a heuristic and it is unmeasured: the gold set is single-turn, so there is no multi-turn
- * split to score this against, and building one is its own piece of work. Its failure mode is
- * named rather than hidden -- a follow-up on an unrelated subject retrieves with the previous
- * question's words as noise -- and the tab's "New thread" is the control that clears it.
+ * Measured after the fact, on twelve follow-up pairs written to be answered by the same passage
+ * as their first question (studbook/docs/follow-ups.md, `eval/threads.py`): a bare follow-up finds
+ * that passage 2/12 of the time, carrying the question takes it to 8/12, and the fully-specified
+ * original question manages 11/12. So it does the thing it was written to do and closes about two
+ * thirds of the gap. Where it still fails, the follow-up is short and nearly contentless -- the
+ * concatenation is then mostly the previous question, and retrieval lands back where the previous
+ * turn already looked. That is what a query rewrite would fix and a concatenation cannot.
+ *
+ * Its other failure mode has no measurement and is named rather than hidden: a follow-up that
+ * changes subject retrieves with the previous question's words as noise. "New thread" is the
+ * control for that, and every pair in the set is a genuine follow-up, so none of them test it.
  */
 export function retrievalQuery(question: string, history: HistoryTurn[] = []): string {
   if (history.length === 0) return question;
