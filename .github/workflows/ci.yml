@@ -64,4 +64,13 @@ jobs:
       - name: Build
         run: npm run build
       - name: End-to-end smoke (Electron under a virtual display)
-        run: xvfb-run -a npx playwright test
+        # xvfb-run's default screen is 640x480, small enough to collapse the layout: the first
+        # Linux run could not see Fleet's heading or click the rail. A desktop-sized screen.
+        run: xvfb-run -a --server-args="-screen 0 1440x900x24" npx playwright test
+      - name: Keep Playwright's traces when the smoke test fails
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: playwright-results
+          path: desk/test-results/
+          retention-days: 7
