@@ -67,6 +67,11 @@ export function stem(word: string): string {
       break;
     }
   }
+  // Undouble a final consonant, always: "pinning" meets "pin", "stopping" meets "stop" (both were
+  // guard false positives in studbook's eval before this existed).
+  if (word.length >= 3 && word.at(-1) === word.at(-2) && !'aeiou'.includes(word.at(-1)!)) {
+    word = word.slice(0, -1);
+  }
   return word.slice(0, STEM_CHARS);
 }
 

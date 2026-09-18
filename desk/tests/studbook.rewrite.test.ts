@@ -1,14 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import {
-  buildRewriteRequest, carried, clean, FUNCTION_WORDS, REWRITE_PROMPT, rewriteQuery, STEM_CHARS, SUFFIXES,
+  buildRewriteRequest, carried, clean, FUNCTION_WORDS, REWRITE_PROMPT, rewriteQuery, stem, STEM_CHARS, SUFFIXES,
   unsupportedWords,
 } from '../src/main/studbook/rewrite';
 
 // The same two hashes studbook/tests/test_rewrite.py pins. A change to the prompt or the guard on
 // one side that is not made on the other fails here or there; update both constants together.
 const PROMPT_SHA256 = '962806d476602ccc58d71002603f69487eec0b2d047cbed7634f2e5286fde077';
-const GUARD_SHA256 = '6a07c919192eca14785416a223f8bd40d4c7c2890263fdb6d2230b76a7457320';
+const GUARD_SHA256 = '345d0ee05a7e0beb235389e352309a6b8b06e27633fffc917795c708bfb321ca';
+// The guard is data (the word lists) and logic (the stemmer); the probe pins the logic, since two
+// stemmers can share every list and still disagree on "pinning".
+const PROBE = 'pinning pin stopping stop moved move broken broke deploying deployed uses use access accessed passes all tree running added';
 
 const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
 const FIRST = 'Why did control state move into the git common dir?';
@@ -27,7 +30,8 @@ describe('studbook rewrite: pinned to the Python reference', () => {
   });
 
   it('has the same guard', () => {
-    expect(sha256([...FUNCTION_WORDS].sort().join(' ') + `|${STEM_CHARS}|` + SUFFIXES.join(' '))).toBe(GUARD_SHA256);
+    const spec = [...FUNCTION_WORDS].sort().join(' ') + `|${STEM_CHARS}|` + SUFFIXES.join(' ') + '|' + PROBE.split(' ').map(stem).join(' ');
+    expect(sha256(spec)).toBe(GUARD_SHA256);
   });
 });
 
@@ -37,7 +41,7 @@ describe('studbook rewrite: the guard', () => {
   });
 
   it('matches inflections of typed words', () => {
-    for (const [typed, written] of [['move', 'moved'], ['broke', 'broken'], ['deploying', 'deployed'], ['uses', 'use']]) {
+    for (const [typed, written] of [['move', 'moved'], ['broke', 'broken'], ['deploying', 'deployed'], ['uses', 'use'], ['pin', 'pinning'], ['stop', 'stopping']]) {
       expect(unsupportedWords(written, [typed]), `${typed} -> ${written}`).toEqual([]);
     }
   });
