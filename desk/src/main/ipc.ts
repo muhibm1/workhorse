@@ -485,6 +485,7 @@ export function registerIpc(deps: IpcDeps): void {
       model: result.answer.model,
       inputTokens: result.answer.inputTokens,
       outputTokens: result.answer.outputTokens,
+      search: result.search,
     };
   });
 

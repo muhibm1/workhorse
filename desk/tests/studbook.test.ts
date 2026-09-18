@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { looksLikeConninfo, parseConninfo } from '../src/main/studbook/conninfo';
 import { reciprocalRankFusion, retrieveVector, retrieveFulltext, type Passage, type Queryable } from '../src/main/studbook/retrieval';
 import { buildContext, buildMessages, buildUserPrompt, cleanRefusal, FOLLOW_UP_NOTE, generateAnswer, parseCitedNumbers, SYSTEM_PROMPT } from '../src/main/studbook/answer';
-import { createStudbook, retrievalQuery, type DbClient } from '../src/main/studbook';
+import { createStudbook, type DbClient } from '../src/main/studbook';
 import type { Models } from '../src/main/studbook/models';
 import { IPC } from '@shared/types';
 import { registerIpc, type IpcDeps, type IpcMainLike } from '../src/main/ipc';
@@ -334,17 +334,44 @@ describe('createStudbook', () => {
     expect(receivedCa).toContain('BEGIN CERTIFICATE');
   });
 
-  it('a fresh question retrieves on itself; a follow-up carries the last two questions', () => {
-    expect(retrievalQuery('why?')).toBe('why?');
-    expect(retrievalQuery('why?', [])).toBe('why?');
-    const history = [
-      { question: 'one?', answer: 'a' },
-      { question: 'two?', answer: 'b' },
-      { question: 'three?', answer: 'c' },
-    ];
-    // "what broke because of it?" alone embeds to nothing useful and shares no lexeme with the
-    // passages that answer it; the subject is in the previous turn.
-    expect(retrievalQuery('what broke?', history)).toBe('two? three? what broke?');
+  describe('what ask searches for', () => {
+    // An empty store: retrieval returns nothing, so generation refuses without an API call and
+    // these tests see only what the search path did.
+    function setup() {
+      const models = fakeModels();
+      const embed = vi.spyOn(models, 'embed');
+      const rerank = vi.spyOn(models, 'rerank');
+      const rewrite = vi.fn(async (question: string, history: string[]) =>
+        history.length === 0
+          ? { query: question, method: 'fresh' as const }
+          : { query: `standalone: ${question}`, method: 'rewritten' as const });
+      const sb = createStudbook({
+        readIngestConninfo: () => null, readConninfo: () => 'host=h', readApiKey: () => 'k',
+        caPath, modelCacheDir: dir, models, rewrite,
+        connect: async () => fakeDb([]).db,
+      });
+      return { sb, embed, rerank, rewrite };
+    }
+
+    it('a fresh question searches for itself', async () => {
+      const { sb, embed, rewrite } = setup();
+      const result = await sb.ask('why?');
+      expect(rewrite).toHaveBeenCalledWith('why?', [], { apiKey: 'k' });
+      expect(embed).toHaveBeenCalledWith(['why?']);
+      expect(result.search).toEqual({ query: 'why?', method: 'fresh' });
+    });
+
+    it('a follow-up is retrieved and reranked with its rewrite, from the questions alone', async () => {
+      const { sb, embed, rerank, rewrite } = setup();
+      const history = [{ question: 'one?', answer: 'an answer that must not reach the rewriter' }];
+      const result = await sb.ask('what broke?', {}, 5, history);
+      expect(rewrite).toHaveBeenCalledWith('what broke?', ['one?'], { apiKey: 'k' });
+      expect(embed).toHaveBeenCalledWith(['standalone: what broke?']);
+      expect(rerank.mock.calls[0][0]).toBe('standalone: what broke?');
+      expect(result.search.method).toBe('rewritten');
+      // The answer is still to the question the user asked.
+      expect(result.question).toBe('what broke?');
+    });
   });
 
   it('ask needs an API key even when search works', async () => {
