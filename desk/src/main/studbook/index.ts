@@ -52,9 +52,14 @@ export const HISTORY_RETRIEVAL_TURNS = 2;
  * concatenation is then mostly the previous question, and retrieval lands back where the previous
  * turn already looked. That is what a query rewrite would fix and a concatenation cannot.
  *
- * Its other failure mode has no measurement and is named rather than hidden: a follow-up that
- * changes subject retrieves with the previous question's words as noise. "New thread" is the
- * control for that, and every pair in the set is a genuine follow-up, so none of them test it.
+ * Its other failure mode is measured too, and it is not small: a question that changes subject
+ * retrieves with the previous question's words as noise. Pairing each dev gold question with an
+ * unrelated one as its "previous turn" (`eval/unrelated.py`) drops recall@5 from 29/34 to 20/34.
+ * So this is a bet that the next question follows on, paying about two to one; "New thread" is the
+ * control for when it does not. Fusing the bare and carried queries' rankings splits the
+ * difference (7/12 and 25/34) and was not adopted, because which side wins depends on how often a
+ * turn really is a follow-up, which nothing here measures. A query rewrite is the fix that could
+ * win both ways.
  */
 export function retrievalQuery(question: string, history: HistoryTurn[] = []): string {
   if (history.length === 0) return question;
