@@ -82,6 +82,11 @@ the Anthropic API key from the Backend panel. Every database connection is verif
 Supabase's root certificate, which ships in `resources/studbook/` — an unverifiable server is
 refused, never trusted.
 
+A question takes about ten seconds, most of it the local models rather than Claude: on this
+machine the answer starts appearing at ~8s and finishes at ~10s. The answer streams as it is
+written, and the tab keeps a thread — ask a follow-up and it can say "it" or "that change",
+which a single question cannot. **New thread** clears it; nothing is written to disk.
+
 **Refresh the record** re-ingests every repository in Paddock's registry into the store from
 inside the app — parse, chunk, embed only what changed, upsert, delete what is gone, one
 transaction per repository — so the record keeps up with the runs Paddock drives without a
