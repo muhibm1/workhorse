@@ -22,7 +22,15 @@ import { createModels, type ModelProgress, type Models } from './models';
 import { retrieveHybrid, type Passage, type Scope } from './retrieval';
 import { syncRepo, type SyncProgress, type SyncStats } from './sync';
 
-export const RERANK_CANDIDATES = 20;
+/**
+ * How many fused candidates the cross-encoder re-scores. It is the dominant cost of a query --
+ * reranking is the slow step, not generation -- and 10 was measured against 20 on dev: recall@5
+ * 0.8529 against 0.8235, precision 0.1882 against 0.1824, MRR 0.6385 against 0.6485, and end-to-end
+ * answer quality a wash (correctness 1.513 against 1.500, three questions better and five worse,
+ * which is noise at n=34). The wall clock is not a wash: 147s against 320s over the same 34
+ * questions. Changed for the latency, not on a quality claim (studbook/docs/retrieval-ceiling.md).
+ */
+export const RERANK_CANDIDATES = 10;
 export const DEFAULT_TOP_K = 5;
 /** How many earlier questions join a follow-up's retrieval query (see `retrievalQuery`). */
 export const HISTORY_RETRIEVAL_TURNS = 2;

@@ -34,7 +34,12 @@ const DEV_JSONL = process.env['STUDBOOK_DEV_JSONL'];
  *  Refresh the record adds every registered repository -- and the published numbers are over
  *  exactly these two, so retrieval is scoped to them here as it is in the Python eval. */
 const EVAL_REPOS = (process.env['STUDBOOK_EVAL_REPOS'] ?? 'workhorse,paddock-demo').split(',').map((s) => s.trim());
-const PUBLISHED = { recall5: 0.8235, mrr10: 0.6485, precision5: 0.1824 };
+/**
+ * The published dev numbers for the production configuration. Re-baselined 2026-09-18 when the
+ * rerank pool went from 20 to 10 (0.8235 / 0.6485 / 0.1824 was the pool-20 triple); the Python
+ * eval at the same pool produces these, and this asserts Paddock reproduces them.
+ */
+const PUBLISHED = { recall5: 0.8529, mrr10: 0.6385, precision5: 0.1882 };
 const TOP_K = 5;
 const MRR_K = 10;
 
