@@ -1,0 +1,19 @@
+# Keeps pins current for Paddock (desk/) and CI's actions; npm audit in CI catches known
+# advisories, this proposes the bumps. @huggingface/transformers is grouped with sharp because
+# Paddock overrides sharp for a security fix (package.json overrides) and the two move together;
+# any transformers.js bump must pass the Studbook parity gates locally before merging, since
+# they need a live database CI does not have (studbook/docs/paddock-gate.md).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /desk
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      model-runtime:
+        patterns: ["@huggingface/transformers", "sharp", "onnxruntime-node"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
