@@ -204,7 +204,7 @@ export async function generateAnswer(question: string, passages: Passage[], deps
       console.warn(`studbook: ${model} does not accept a temperature; its answers are not reproducible`);
       response = await create(false);
     } else {
-      throw new Error(`studbook: Claude API error while answering: ${message}`);
+      throw new Error(`studbook: Claude API error while answering: ${message}`, { cause: err });
     }
   }
 

@@ -87,8 +87,8 @@ export async function syncRepo(client: SyncClient, repo: string, repoPath: strin
 
   progress({ repo, stage: 'writing' });
   await client.query('begin');
-  let chunksDeleted = 0;
-  let documentsDeleted = 0;
+  let chunksDeleted: number;
+  let documentsDeleted: number;
   try {
     for (const doc of docs) {
       await client.query(UPSERT_DOCUMENT, [
