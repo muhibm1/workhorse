@@ -53,9 +53,12 @@ jobs:
         # Paddock has no ESLint configuration; strict TypeScript is the static check for now.
         run: npm run typecheck
       - name: Unit tests
+        env:
+          NO_COLOR: "1"
         run: |
           npx vitest run 2>&1 | tee vitest.log
-          passed=$(grep -oP 'Tests\s+\K[0-9]+(?= passed)' vitest.log | tail -1)
+          # vitest colours its summary even in CI: NO_COLOR above, and strip any escape codes left.
+          passed=$(sed -E 's/\x1B\[[0-9;]*m//g' vitest.log | grep -oP 'Tests\s+\K[0-9]+(?= passed)' | tail -1)
           echo "passed: $passed"
           test "${passed:-0}" -ge 240
       - name: Build
