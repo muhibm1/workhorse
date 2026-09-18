@@ -26,7 +26,7 @@ import pg from 'pg';
 import { parseConninfo } from '../src/main/studbook/conninfo';
 import { createModels } from '../src/main/studbook/models';
 import { retrieveHybrid } from '../src/main/studbook/retrieval';
-import { RERANK_CANDIDATES } from '../src/main/studbook';
+import { RERANK_CANDIDATES, SESSION_SETUP } from '../src/main/studbook';
 
 const CONNINFO = process.env['STUDBOOK_DATABASE_URL'];
 const DEV_JSONL = process.env['STUDBOOK_DEV_JSONL'];
@@ -72,7 +72,7 @@ describeLive('studbook parity gate (live)', () => {
       const ca = readFileSync(resolve(__dirname, '..', 'resources', 'studbook', 'supabase-ca.pem'), 'utf8');
       const client = new pg.Client({ ...parseConninfo(CONNINFO as string), ssl: { rejectUnauthorized: true, ca } });
       await client.connect();
-      await client.query('set search_path to studbook, extensions');
+      await client.query(SESSION_SETUP); // exactly what production connections run
 
       const models = createModels({ cacheDir: join(tmpdir(), 'paddock-studbook-gate-models') });
       const embeddings = await models.embed(questions.map((q) => q.question));
