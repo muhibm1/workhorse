@@ -384,6 +384,22 @@ console.log('plugin structure');
   check('the conductor can name every vendored ECC agent', undispatchable.length === 0, undispatchable.join(', '));
 }
 
+console.log('changelog');
+{
+  // Studbook answers release-order questions from CHANGELOG.md. A release that bumps the version
+  // without an entry leaves it answering from a stale record, silently -- so the newest entry must
+  // be the current version, and every entry after the oldest must name the one it follows.
+  const changelog = fs.readFileSync(path.join(PLUGIN, 'CHANGELOG.md'), 'utf8');
+  const version = JSON.parse(fs.readFileSync(path.join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  const versions = [...changelog.matchAll(/^## (\d+\.\d+\.\d+) — \d{4}-\d{2}-\d{2}$/gm)].map((m) => m[1]);
+  check('CHANGELOG.md has an entry for the current plugin version, first', versions[0] === version,
+    `plugin.json says ${version}, newest entry is ${versions[0]}`);
+  const follows = [...changelog.matchAll(/^Follows (\d+\.\d+\.\d+) \(/gm)].map((m) => m[1]);
+  const broken = follows.map((f, i) => (f === versions[i + 1] ? null : `${versions[i]} follows ${f}, not ${versions[i + 1]}`)).filter(Boolean);
+  check('every changelog entry names the release before it, by version and content',
+    follows.length === versions.length - 1 && broken.length === 0, broken.join('; ') || `${follows.length} follows lines`);
+}
+
 console.log('artifact-size');
 {
   // Two live runs wrote intents of 268 and 270 lines against a 150-line rule; prompt guidance
