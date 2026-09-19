@@ -74,7 +74,7 @@ users, no compliance", then `/workhorse:run "there is no way to check the servic
 
 ## What enforces what
 
-Prompts can be argued with. Hooks cannot. `hooks/hooks.json` wires eight Node scripts:
+Prompts can be argued with. Hooks cannot. `hooks/hooks.json` wires nine Node scripts:
 
 | Hook | Refuses |
 |------|---------|
@@ -83,6 +83,7 @@ Prompts can be argued with. Hooks cannot. `hooks/hooks.json` wires eight Node sc
 | worktree-fence | source edits in the main checkout while a change is being built in a worktree |
 | bash-guard | force-push, push to the default branch, destructive resets, profile deny list; asks on the ask list; production deploy without G5; any approval attempted from a subagent |
 | gate-guard | writing the next phase's artifact, pushing, or merging while a required gate is unapproved; direct edits of `state.json` |
+| artifact-size | a phase artifact longer than its tier allows (added in 0.2.11) |
 | format-on-write | nothing; runs the profile's formatter |
 | verify-before-stop | the builder, fixer, or verifier finishing without a green `verification.md` |
 | session-context | nothing; injects profile and change state at session start |
@@ -182,6 +183,7 @@ The full design, including the gate contract, state machine, tier rules, and age
 - Approvals are trusted to come from the human because the approve skill is user-invocable
   only and the bash-guard refuses it from subagents. The main session model could still be
   talked into running it; treat `approvals.md` history in git as the audit source.
-- Tracker sync (Jira, Notion, Linear) is a documented hook point, not implemented.
+- Tracker sync mirrors to Notion only (since 0.2.0); Jira and Linear are documented hook points,
+  not implemented.
 - Worktree paths are whatever the platform gives `isolation: worktree`; the fence hook is
   lenient when the path is unknown.

@@ -48,12 +48,6 @@ Paddock): CI fails otherwise, because Studbook answers release questions from th
   earlier live run surfaced fixes that tests and reviewers had missed. The next real change built
   through Paddock is the measurement.
 
-## Loose ends noticed, not yet fixed
-
-- The root README says "eight Node scripts" in its hooks table; there are nine (artifact-size was
-  added in 0.2.11). Its "Known limits" also still calls tracker sync unimplemented, though the
-  Notion mirror shipped in 0.2.0.
-
 ## Picking it back up
 
 - **Building with Paddock:** run `desk/dist/Paddock-0.4.9-portable.exe`, register a repository,
