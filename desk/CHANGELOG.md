@@ -2,8 +2,16 @@
 
 Releases of Paddock, the WorkHorse desktop app, newest first. Each entry is built from the commits
 it shipped (listed by hash) and names the release it follows and what that release did. Plugin
-releases are in the
-repository's root `CHANGELOG.md`; each Paddock build bundles the plugin version it names.
+releases are in the repository's root `CHANGELOG.md`; each Paddock build bundles the plugin version
+it names.
+
+## 0.4.9 — 2026-09-19
+
+Follows 0.4.8 (transformers.js 4.3.0).
+
+- Refresh the record reads CHANGELOG.md files as documents, as studbook's ingester does. An older
+  build's Refresh deletes any document its parser does not produce, so it would remove the
+  changelogs from the store; use this build or later to refresh.
 
 ## 0.4.8 — 2026-09-18
 
