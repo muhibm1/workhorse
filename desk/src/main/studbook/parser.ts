@@ -64,6 +64,8 @@ export function docTypeFor(relPath: string): string | null {
   const name = parts[parts.length - 1];
   if (parts.includes('verify-logs')) return null;
   if (name === 'README.md' && parts.length === 1) return 'readme';
+  // The root changelog, or a component's (desk/CHANGELOG.md): as studbook's ingest/parser.py.
+  if (name === 'CHANGELOG.md' && parts.length <= 2) return 'changelog';
   const isMd = name.endsWith('.md');
   if (parts.includes('adr') && isMd) return 'adr';
   if (parts[0] === 'docs' && parts[1] === 'superpowers' && isMd) return 'design-doc';
@@ -132,6 +134,11 @@ export async function walkFiles(repo: string, repoPath: string): Promise<ParsedD
   const candidates: string[] = [];
   if (sdlcExists) candidates.push(...markdownFilesUnder(repoPath, sdlcRoot));
   if (existsSync(join(repoPath, 'README.md'))) candidates.push('README.md');
+  if (existsSync(join(repoPath, 'CHANGELOG.md'))) candidates.push('CHANGELOG.md');
+  for (const entry of readdirSync(repoPath, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+    if (existsSync(join(repoPath, entry.name, 'CHANGELOG.md'))) candidates.push(`${entry.name}/CHANGELOG.md`);
+  }
   const designRoot = join(repoPath, 'docs', 'superpowers');
   if (existsSync(designRoot) && statSync(designRoot).isDirectory()) {
     candidates.push(...markdownFilesUnder(repoPath, designRoot));

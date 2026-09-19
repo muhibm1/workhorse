@@ -21,6 +21,9 @@ describe('studbook parser', () => {
     expect(docTypeFor('docs/sdlc/2026-01-01-x/adr/0001-thing.md')).toBe('adr');
     expect(docTypeFor('docs/superpowers/specs/2026-01-01-design.md')).toBe('design-doc');
     expect(docTypeFor('README.md')).toBe('readme');
+    expect(docTypeFor('CHANGELOG.md')).toBe('changelog');
+    expect(docTypeFor('desk/CHANGELOG.md')).toBe('changelog');
+    expect(docTypeFor('desk/node_modules/pkg/CHANGELOG.md')).toBeNull();
     expect(docTypeFor('docs/sdlc/codebase-map.md')).toBe('codebase-map');
   });
 

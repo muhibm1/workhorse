@@ -36,10 +36,12 @@ const DEV_JSONL = process.env['STUDBOOK_DEV_JSONL'];
 const EVAL_REPOS = (process.env['STUDBOOK_EVAL_REPOS'] ?? 'workhorse,paddock-demo').split(',').map((s) => s.trim());
 /**
  * The published dev numbers for the production configuration. Re-baselined 2026-09-18 when the
- * rerank pool went from 20 to 10 (0.8235 / 0.6485 / 0.1824 was the pool-20 triple); the Python
- * eval at the same pool produces these, and this asserts Paddock reproduces them.
+ * rerank pool went from 20 to 10 (0.8235 / 0.6485 / 0.1824 was the pool-20 triple), and again
+ * 2026-09-19 when the record itself grew: WorkHorse's changelogs became documents, and a changelog
+ * entry now outranks a gold passage for some questions (MRR 0.6385 -> 0.6282; recall and precision
+ * unchanged). The Python eval over the same store produces these; this asserts Paddock does too.
  */
-const PUBLISHED = { recall5: 0.8529, mrr10: 0.6385, precision5: 0.1882 };
+const PUBLISHED = { recall5: 0.8529, mrr10: 0.6282, precision5: 0.1882 };
 const TOP_K = 5;
 const MRR_K = 10;
 
