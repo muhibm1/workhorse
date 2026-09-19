@@ -155,8 +155,8 @@ floor for building is 22.12 or later.
 
 ## Before pushing
 
-GitHub needs Pro for branch protection on a private repository, so a local pre-push hook stands
-in for it: `.githooks/pre-push` runs the plugin tests and Paddock's typecheck, lint and unit tests,
-and refuses a failing push. Enable it once per clone with `git config core.hooksPath .githooks`.
-It guards only a machine that has done that and leaves no record on GitHub; CI still runs
-everything on every push, including the build and the Electron smoke test.
+`master` is protected (since 2026-09-18): the `plugin` and `desk` CI checks must pass before a pull
+request merges, force pushes and deletion are refused, and an admin's direct push is allowed but
+recorded by GitHub as a bypass. `.githooks/pre-push` runs the plugin tests and Paddock's
+typecheck, lint and unit tests first, so a red push is caught on the machine instead. Enable it once
+per clone with `git config core.hooksPath .githooks`.
