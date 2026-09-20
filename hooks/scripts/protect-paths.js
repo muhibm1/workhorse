@@ -41,16 +41,26 @@ if (soft) {
 
 L.emit({});
 
-/** The design document (brief.md or plan.md) that names `rel`, when G2 is approved; else null. */
+/** The design document (brief.md or plan.md) that names `rel`, when G2 is approved; else null.
+ *  A builder's worktree may have been cut before the design documents were committed (webapp, run
+ *  3 of 0.3.4), so the main checkout's copy is consulted as well as the worktree's own. */
 function namedInApprovedDesign(relPath) {
   const s = ctx.state;
   if (!ctx.id || !s || !s.gates || s.gates.G2 !== 'approved') return null;
   const fs = require('fs');
-  for (const doc of ['plan.md', 'brief.md']) {
-    const p = path.join(L.changeDir(ctx.root, ctx.id), doc);
-    try {
-      if (fs.readFileSync(p, 'utf8').includes(relPath)) return doc;
-    } catch (e) { /* missing document: not named */ }
+  const roots = [ctx.root];
+  const common = L.gitCommonDir(ctx.root);
+  if (common && path.basename(common) === '.git') {
+    const mainRoot = path.dirname(common);
+    if (path.resolve(mainRoot) !== path.resolve(ctx.root)) roots.push(mainRoot);
+  }
+  for (const root of roots) {
+    for (const doc of ['plan.md', 'brief.md']) {
+      const p = path.join(L.changeDir(root, ctx.id), doc);
+      try {
+        if (fs.readFileSync(p, 'utf8').includes(relPath)) return doc;
+      } catch (e) { /* missing document here: try the next location */ }
+    }
   }
   return null;
 }
