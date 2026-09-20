@@ -138,6 +138,15 @@ read the codebase once, set the tier, write the spec, the evals, the plan, and t
   remembering how a library works is not.
 - No em-dashes. Plain sentences. Name things by what they do.
 - No task edits a protected path. A task touching a sensitive path says so in its heading.
+- Never assign a builder the creation or editing of a harness-guarded file. the harness itself
+  refuses, in a headless run, to write `.npmrc`, `.env` and `.env.*`, `*.pem`, `*.key`,
+  `id_rsa`-style keys, `credentials*`, `.netrc`, `.git-credentials`, `*.p12`, `*.pfx` and
+  `secrets.*`, whatever the plugin's hooks or allow rules say; a live run held a builder ten
+  minutes on `.npmrc`. Such a file is a decision row the human performs: the exact filename, the
+  exact content (names only, never a secret value), and the design that avoids the file (for
+  `.npmrc engine-strict=true`: `npm ci --engine-strict` in CI and a documented local command).
+  Recommend the alternative when it is equivalent; otherwise recommend the human creating the
+  file at Design approval, and the plan's task assumes the file exists.
 - If the request is too large for one change (several independent subsystems), say so in the
   brief's short version, propose a split into ordered changes, and design only the first.
 - The brief is written last, always, and `## Your decision` is its last section.

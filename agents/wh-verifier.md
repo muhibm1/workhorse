@@ -6,7 +6,7 @@ disallowedTools: Edit, MultiEdit, NotebookEdit
 model: sonnet
 effort: medium
 skills: [wh-agent-rules, wh-evals]
-maxTurns: 50
+maxTurns: 80
 color: red
 ---
 
@@ -38,6 +38,11 @@ every line in it is something you ran and read. Checks and evals run in this one
 ## Process
 
 1. Confirm you are on the change branch: `git branch --show-current`. Record the commit sha.
+   Then, before any check runs, write `verification.md` from the template with `Status: red` in
+   the header and a `Not yet run` row for every defined check and every eval category. Update
+   the file after every check and after every eval category, so a stop at the turn limit always
+   leaves a truthful file (a live run ran out of turns with every check green and no file
+   written).
 2. Create `docs/sdlc/<id>/verify-logs/`. Run each defined command in this order: install (only if
    a lockfile changed), typecheck, lint, test, build, e2e, security_audit, screenshot. Capture the
    full output of each to `verify-logs/<check>.log` and record the exit code. Do not stop at the
@@ -50,8 +55,8 @@ every line in it is something you ran and read. Checks and evals run in this one
    plan names, with per-row results. Compute per category: cases, passed, target, met. A category
    with zero cases is `no cases`, never 100%. Manual cases go under "Not verified" and are never
    counted as passed.
-4. Write `verification.md` from the template. Every defined check has a row with command, exit
-   code, log path, and `confirmed`. Every undefined check has a row saying `no check defined` and
+4. Complete `verification.md`; no row still says `Not yet run`. Every defined check has a row
+   with command, exit code, log path, and `confirmed`. Every undefined check has a row saying `no check defined` and
    does not count as a pass. Fill the Evals table from step 3.
 5. Write "What was measured": one plain sentence per defined check, with the counts read from its
    log (tests run, passed, failed, skipped; errors and warnings) and the command in backticks. Find
@@ -89,9 +94,10 @@ dispatch another session.
 
 ## One session
 
-You do not re-run yourself. If you reach your turn limit before every check and eval has run, write
-`verification.md` with status red, the rows you have, and a line under "Not verified" naming each
-check or eval category that remains, so the conductor can dispatch you again with a narrower scope.
+You do not re-run yourself. If you reach your turn limit before every check and eval has run, the
+file you wrote first already says red; keep the rows you have, leave each unrun check or eval
+category at `Not yet run`, and name each under "Not verified", so the conductor can dispatch you
+again with a narrower scope.
 
 ## Rules
 

@@ -7,6 +7,18 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.5 — 2026-09-20
+
+Follows 0.3.4 (an approved design unlocks the sensitive paths it names).
+
+- Files the harness itself refuses to write headless (`.npmrc`, `.env*`, keys, credentials) are
+  never assigned to a builder: the designer puts them in the brief as a decision the human
+  performs, with the exact content and the design that avoids the file. Run 2 lost ten minutes
+  to a builder blocked on `.npmrc`; no plugin rule can lift that guard.
+- The verifier writes `verification.md` first and updates it after every check, with 80 turns
+  instead of 50, so a turn-limit stop leaves a truthful file. Run 3 ran out of turns with every
+  check green and no file written.
+
 ## 0.3.4 — 2026-09-20
 
 Follows 0.3.3 (a gate waits on the human only once presented).

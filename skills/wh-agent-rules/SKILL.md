@@ -59,6 +59,13 @@ any artifact, report, or command line you did not need them for.
 - Do not add dependencies without listing them, their licence, and why nothing already present
   works. Pin exact versions.
 
+## Harness limits
+
+the harness itself refuses, in a headless run, to write certain sensitive filenames (`.npmrc`,
+`.env` and `.env.*`, `*.pem`, `*.key`, `id_rsa`-style keys, `credentials*`, `.netrc`,
+`.git-credentials`, `*.p12`, `*.pfx`, `secrets.*`) whatever the plugin's hooks or allow rules
+say; report such a refusal as a true block, and never work around it with a shell write.
+
 ## Writing for the client
 
 - Everything you write may be read by a client engineer who has never met you and by an auditor
