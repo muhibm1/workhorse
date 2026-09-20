@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const pkg = require('../package.json');
-const dist = path.resolve(__dirname, '..', 'dist');
+const dist = path.resolve(__dirname, '..', '..', '..', 'Paddock-builds'); // electron-builder.yml directories.output
 const targets = [
   path.join(dist, `${pkg.productName}-${pkg.version}-portable.exe`),
   path.join(dist, 'win-unpacked', `${pkg.productName}.exe`),

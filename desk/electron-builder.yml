@@ -1,6 +1,8 @@
 appId: dev.workhorse.paddock
 productName: Paddock
-directories: { output: dist, buildResources: build }
+# Output lives outside the repository: the plugin installer copies the whole plugin folder into
+# ~/.claude/plugins/cache per version, and a dist/ of 250 MB executables filled the disk.
+directories: { output: ../../Paddock-builds, buildResources: build }
 files: [out/**, package.json]
 extraResources:
   - { from: resources/plugin, to: plugin }
