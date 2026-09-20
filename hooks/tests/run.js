@@ -81,15 +81,24 @@ console.log('cli init/new');
   check('new creates change', r.code === 0 && /"change_id"/.test(r.out), r.err);
   const id = JSON.parse(r.out).change_id;
   check('active set', wh(repo, 'active').out === id);
-  check('intent scaffolded', fs.existsSync(path.join(repo, 'docs', 'sdlc', id, 'intent.md')));
-  check('required gates tier 0 = G4', wh(repo, 'required').out.replace(/\s/g, '') === '["G4"]');
+  check('new starts in the design phase', L.loadState(repo, id).phase === 'design');
+  check('approvals scaffolded, brief left to the designer',
+    fs.existsSync(path.join(repo, 'docs', 'sdlc', id, 'approvals.md')) && !fs.existsSync(path.join(repo, 'docs', 'sdlc', id, 'brief.md')));
+  check('new writes the first clock row', /change created: Add health endpoint/.test(fs.readFileSync(path.join(repo, 'docs', 'sdlc', id, 'conductor-log.md'), 'utf8')));
+  // Two human touches: Design (G2) and Ship (G4). Tier 3 adds Deploy (G5). Tier 0 is Ship only.
+  check('required gates tier 0 = Ship', wh(repo, 'required').out.replace(/\s/g, '') === '["G4"]');
   wh(repo, 'state', 'set', 'tier', '2');
-  check('required gates tier 2 = all', JSON.parse(wh(repo, 'required').out).length === 5);
+  check('required gates tier 2 = Design, Ship', wh(repo, 'required').out.replace(/\s/g, '') === '["G2","G4"]');
+  wh(repo, 'state', 'set', 'tier', '3');
+  check('required gates tier 3 = Design, Ship, Deploy', wh(repo, 'required').out.replace(/\s/g, '') === '["G2","G4","G5"]');
+  check('gate names are exposed', JSON.parse(wh(repo, 'status', '--json').out).gate_names.G4 === 'Ship');
   let g = wh(repo, 'gate', 'G4', 'auto');
   check('cannot auto a required gate', g.code !== 0 && /cannot be auto-approved/.test(g.err), g.err);
-  wh(repo, 'state', 'set', 'tier', '0');
   g = wh(repo, 'gate', 'G1', 'auto');
-  check('can auto a non-required gate', g.code === 0, g.err);
+  check('G1 is never required, so it can be auto at any tier', g.code === 0, g.err);
+  g = wh(repo, 'gate', 'G3', 'auto');
+  check('G3 is never required, so it can be auto at any tier', g.code === 0, g.err);
+  wh(repo, 'state', 'set', 'tier', '0');
   const v = wh(repo, 'state', 'set', 'verification.status', 'green');
   check('cannot mark green without verification.md', v.code !== 0, v.out);
 
@@ -161,9 +170,15 @@ console.log('bash-guard');
 
 console.log('gate-guard');
 {
-  check('denies spec write at tier 2 before G1', (() => { wh(repo, 'state', 'set', 'tier', '2'); return decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/spec.md`))) === 'deny'; })());
+  // Everything the designer writes comes before the Design gate, at every tier.
+  wh(repo, 'state', 'set', 'tier', '2');
+  check('allows spec write at tier 2 before Design', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/spec.md`))) === 'none');
+  check('allows brief write at tier 2 before Design', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/brief.md`))) === 'none');
+  check('denies ship.md at tier 2 before Design', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/ship.md`))) === 'deny');
+  check('denies verification.md at tier 2 before Design', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/verification.md`))) === 'deny');
+  check('denies push at tier 2 before Design', decision(hook('gate-guard.js', bash('git push -u origin wh/x'))) === 'deny');
   wh(repo, 'state', 'set', 'tier', '0');
-  check('allows spec write at tier 0', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/spec.md`))) === 'none');
+  check('allows ship.md at tier 0 (no Design gate)', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/ship.md`))) === 'none');
   check('denies state.json direct edit', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/state.json`))) === 'deny');
   check('denies push without green verification', decision(hook('gate-guard.js', bash('git push -u origin wh/x'))) === 'deny');
   fs.writeFileSync(path.join(repo, 'docs', 'sdlc', id, 'verification.md'), '# Verification\n\nStatus: green\n');
@@ -173,8 +188,8 @@ console.log('gate-guard');
   check('denies merge before G4', decision(hook('gate-guard.js', bash('gh pr merge 12'))) === 'deny');
   check('denies release.md before G4', decision(hook('gate-guard.js', edit(`docs/sdlc/${id}/release.md`))) === 'deny');
   // An approval must pin the packet it approves: committed, and hashed.
-  const packetRel = `docs/sdlc/${id}/review-packet.md`;
-  const packetBody = '# Review packet\n\n## 1. TL;DR\n\nPinned by the approval test.\n';
+  const packetRel = `docs/sdlc/${id}/ship.md`;
+  const packetBody = '# Ship\n\n## The short version\n\nPinned by the approval test.\n\n## Your decision\n\nApprove.\n';
   fs.writeFileSync(path.join(repo, packetRel), packetBody);
   const a = wh(repo, 'approve', 'G4', 'looks good');
   check('approve records', a.code === 0 && /approved/.test(a.out), a.err);
@@ -246,27 +261,44 @@ console.log('digest');
   check('digest reads the client name', d().client === 'Fixture Co', d().client);
   check('repo falls back to folder name for a non-hosted remote', d().repo === 'repo');
 
-  fs.writeFileSync(path.join(ddir, 'intent.md'),
-    '# Intent\n\n## Problem\n\nOrders vanish with no trace.\n\n## Outcome\n\nEvery order is logged.\n');
-  check('digest extracts problem', d().problem === 'Orders vanish with no trace.');
-  check('digest extracts outcome', d().outcome === 'Every order is logged.');
-
-  // Intent phase, G2 not yet live: the pipeline is still on the agents, not on the human.
-  check('waiting_on is Agents before a gate packet exists', d().waiting_on === 'Agents');
-  check('blocking_gate is null before a gate packet exists', d().blocking_gate === null);
+  // Problem and outcome live at the top of the brief. A brief without its closing section is
+  // still being written, so it is not yet waiting on anyone.
+  fs.writeFileSync(path.join(ddir, 'brief.md'),
+    '# Brief\n\n## Problem\n\nOrders vanish with no trace.\n\n## Outcome\n\nEvery order is logged.\n');
+  check('digest extracts problem from the brief', d().problem === 'Orders vanish with no trace.');
+  check('digest extracts outcome from the brief', d().outcome === 'Every order is logged.');
+  check('a brief without "## Your decision" is not yet waiting on the human', d().waiting_on === 'Agents' && d().blocking_gate === null);
+  fs.appendFileSync(path.join(ddir, 'brief.md'), '\n## Your decision\n\nApprove.\n');
+  check('a finished brief at tier 1 waits on the human at Design', d().waiting_on === 'You (G2)' && d().blocking_gate === 'G2');
+  const g2 = wh(repo, 'approve', 'G2', 'build it');
+  check('Design approval records', g2.code === 0, g2.err);
 
   wh(repo, 'phase', 'review');
-  check('waiting_on stays Agents while review-packet.md is missing', d().waiting_on === 'Agents');
-  fs.writeFileSync(path.join(ddir, 'review-packet.md'), [
-    '# Review packet', '', '## 1. TL;DR', '',
+  check('waiting_on stays Agents while ship.md is missing', d().waiting_on === 'Agents');
+  const shipDoc = (findingRow) => [
+    '# Ship', '', '## The short version', '',
     'Adds an order audit log. Twelve tests. You are asked to approve the merge.', '',
-    '## 2. Decisions requested', '',
+    '## What the reviewers found', '',
+    '| Severity | Reviewer | File:line | Finding | Resolution |', '|---|---|---|---|---|',
+    findingRow, '',
+    '## Decisions', '',
     '| # | Decision | Recommendation |', '|---|---|---|',
     '| D1 | Retain logs for 7 years | Accept |', '| D2 | Log to Postgres not files | Accept |', '',
-  ].join('\n'));
-  check('waiting_on names the gate once its packet exists', d().waiting_on === 'You (G4)');
+    '## Your decision', '', 'Approve.', '',
+  ].join('\n');
+  fs.writeFileSync(path.join(ddir, 'ship.md'), shipDoc('| high | bug | src/log.ts:12 | Drops the last order | fix before merge |'));
+  // The Ship document is never the human's problem while it carries a blocker.
+  check('a ship.md with red verification is not waiting on the human', d().waiting_on === 'Agents' && d().ship_blockers.some((b) => /verification is none/.test(b)), JSON.stringify(d().ship_blockers));
+  fs.writeFileSync(path.join(ddir, 'verification.md'), '# Verification\n\nStatus: green\n');
+  wh(repo, 'state', 'set', 'verification.status', 'green');
+  check('a ship.md with an unresolved high finding is not waiting on the human',
+    d().blocking_gate === null && d().ship_blockers.length === 1 && /high finding without a resolution/.test(d().ship_blockers[0]), JSON.stringify(d().ship_blockers));
+  const refused = wh(repo, 'approve', 'G4', '--accept-all');
+  check('approve refuses the Ship gate while a blocker stands', refused.code !== 0 && /cannot approve G4/.test(refused.err), refused.err);
+  fs.writeFileSync(path.join(ddir, 'ship.md'), shipDoc('| high | bug | src/log.ts:12 | Drops the last order | fixed in a1b2c3d |'));
+  check('waiting_on names the gate once the ship document is clean', d().waiting_on === 'You (G4)' && d().ship_blockers.length === 0);
   check('blocking_gate is G4', d().blocking_gate === 'G4');
-  check('digest extracts the packet TL;DR', /order audit log/i.test(d().tldr));
+  check('digest extracts the short version as the TL;DR', /order audit log/i.test(d().tldr));
   check('digest extracts decision rows, skipping the header', d().decisions.length === 2, JSON.stringify(d().decisions));
   check('decision row keeps id and text', /^D1 /.test(d().decisions[0]));
 
@@ -281,8 +313,6 @@ console.log('digest');
   check('presenting the gate again puts it back on the human', d().blocking_gate === 'G4');
 
   // Approval flips waiting_on and is parsed back out of approvals.md.
-  fs.writeFileSync(path.join(ddir, 'verification.md'), '# Verification\n\nStatus: green\n');
-  wh(repo, 'state', 'set', 'verification.status', 'green');
   // The packet asks two decisions (D1, D2). An approval must answer both by id: a live G4
   // approval answered one of two, and the retro found the same slip in the change before it.
   const di = d().decision_items;
@@ -307,8 +337,57 @@ console.log('digest');
   const all = JSON.parse(wh(repo, 'digest', '--all').out);
   check('digest --all covers every change', Array.isArray(all) && all.length === 2, `got ${all.length}`);
   check('digest --all includes both ids', all.map((x) => x.change_id).sort().join() === [id, did].sort().join());
+  check('digest carries the clock', typeof d().clock.agent_minutes === 'number' && d().clock.budget_minutes === 30);
 
   wh(repo, 'active', id); // restore the original fixture for later blocks
+}
+
+console.log('clock');
+{
+  // Three real runs took about a hundred hours for under three hours of code-writing, and
+  // nothing could say so. The clock splits wall time from the timestamps the CLI already stamps.
+  const t0 = Date.parse('2026-09-14T10:00:00.000Z');
+  const at = (m) => new Date(t0 + m * 60000).toISOString();
+  const log = [
+    `${at(0)} | design | conductor | change created`,
+    `${at(12)} | design | wh-designer | brief.md written`,          // 12 m agents (design)
+    // 30 m waiting: the approval at 42 closes it
+    `${at(50)} | build | wh-builder | done`,                         // 8 m agents (build)
+    `${at(140)} | build | conductor | resumed after a rate limit kill`, // 90 m dead
+    `${at(146)} | verify | wh-verifier | green`,                     // 6 m agents (build row a)
+    `${at(300)} | review | wh-shipper | ship.md written`,            // 154 m: over the gap limit, unexplained
+  ].join('\n');
+  const approvals = `## G2: approved\n\n- Who: t\n- When: ${at(42)}\n- Notes: ok\n`;
+  const c = L.computeClock({ log, approvals, state: { tier: 1, phase: 'review', gate_opened: { G2: at(30) } }, profile: {}, pending_gate: true, now: t0 + 310 * 60000 });
+  check('agent minutes exclude waiting, dead and gaps', c.agent_minutes === 26, JSON.stringify(c));
+  check('waiting counts up to each approval, and the open gate now', c.waiting_minutes === 40, JSON.stringify(c));
+  check('dead time is the interval ending in a resume row', c.dead_minutes === 90, String(c.dead_minutes));
+  check('an unexplained long gap is reported, not counted', c.gap_minutes === 154 && c.gaps.length === 1, JSON.stringify(c.gaps));
+  check('your time is measured from when Paddock opened the packet', c.human_minutes === 12, String(c.human_minutes));
+  check('tier 1 budget is 30 minutes and 26 is within it', c.budget_minutes === 30 && c.within_budget === true);
+  check('agent minutes are attributed per phase', c.phases.find((p) => p.phase === 'design').agent_minutes === 12 && c.phases.find((p) => p.phase === 'build').agent_minutes === 14, JSON.stringify(c.phases));
+  check('the one-line form reads plainly', /^Clock: agents 26 m of 30 m budget · waiting on you 40 m · dead 1 h 30 m/.test(L.formatClock(c)), L.formatClock(c));
+  const over = L.computeClock({ log, approvals, state: { tier: 0, phase: 'done' }, profile: { budgets: { agent_minutes: { 0: 20 } } }, now: t0 + 310 * 60000 });
+  check('a done change stops at its last event', over.wall_minutes === 300 && over.waiting_minutes === 30, JSON.stringify(over));
+  check('the profile can override a budget, and over-budget is flagged', over.budget_minutes === 20 && over.within_budget === false);
+  // The older table format from the first live runs still parses (UTC assumed when no zone).
+  const old = L.parseConductorLog('| 2026-09-11T02:01 | intent | conductor | created |\n| 2026-09-11T02:05 | intent | wh-intent-writer | intent.md |');
+  check('the legacy table format parses with UTC assumed', old.length === 2 && old[1].t - old[0].t === 4 * 60000, JSON.stringify(old));
+  const cl = wh(repo, 'clock');
+  check('the CLI prints the clock line', cl.code === 0 && /^Clock: /.test(cl.out), cl.err || cl.out);
+  check('the CLI prints the clock as JSON', typeof JSON.parse(wh(repo, 'clock', '--json').out).wall_minutes === 'number');
+}
+
+console.log('known failures');
+{
+  // The same pre-existing failure was derived four separate times in one live run.
+  check('no known failures to start', /No known failures/.test(wh(repo, 'known-failure', 'list').out));
+  const bad = wh(repo, 'known-failure', 'add', 'typecheck');
+  check('add needs command, base and reason', bad.code !== 0 && /usage/.test(bad.err));
+  const ok = wh(repo, 'known-failure', 'add', 'typecheck', '--command', 'npx tsc --noEmit', '--base', 'abc1234', '--reason', 'moderationApi.ts TS2698, fails on main before this change');
+  check('add records the failure', ok.code === 0 && fs.existsSync(path.join(repo, '.workhorse', 'known-failures.md')), ok.err);
+  const rows = JSON.parse(wh(repo, 'known-failure', 'list', '--json').out);
+  check('list returns the row with its base reproduction and the recording change', rows.length === 1 && rows[0].check === 'typecheck' && rows[0].base === 'abc1234' && rows[0].change === id, JSON.stringify(rows));
 }
 
 console.log('status/metrics');
@@ -400,32 +479,47 @@ console.log('changelog');
     follows.length === versions.length - 1 && broken.length === 0, broken.join('; ') || `${follows.length} follows lines`);
 }
 
-console.log('artifact-size');
+console.log('artifact-check');
 {
-  // Two live runs wrote intents of 268 and 270 lines against a 150-line rule; prompt guidance
-  // alone did not hold, so a hook now measures after each write.
+  // Live runs wrote a 2,279-line spec and a 1,124-line eval plan for a personal website; prompt
+  // guidance alone did not hold, so a hook measures after each write.
   const az = path.join(tmp, 'az');
   fs.mkdirSync(az, { recursive: true });
   const g = (...a) => execFileSync('git', a, { cwd: az, encoding: 'utf8' }).trim();
   g('init', '-q'); g('config', 'user.email', 'tester@example.com'); g('config', 'user.name', 'Tester');
   wh(az, 'init');
   const aid = JSON.parse(wh(az, 'new', 'Size me', '--tier', '1').out).change_id;
-  const put = (name, n) => {
-    const rel = `docs/sdlc/${aid}/${name}`;
-    fs.writeFileSync(path.join(az, rel), Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n') + '\n');
+  const putText = (rel, text) => {
+    fs.mkdirSync(path.dirname(path.join(az, rel)), { recursive: true });
+    fs.writeFileSync(path.join(az, rel), text);
     return { session_id: 's', cwd: az, hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(az, rel) } };
   };
-  const res = (input) => hook('artifact-size.js', input);
+  const put = (name, n) => putText(`docs/sdlc/${aid}/${name}`, Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n') + '\n');
+  const res = (input) => hook('artifact-check.js', input);
 
-  const big = res(put('intent.md', 200));
-  check('an intent over 190 lines is sent back to be cut', big.decision === 'block' && /200 lines; the limit for intent\.md is 190/.test(big.reason || ''), JSON.stringify(big));
-  check('an intent within the limit passes silently', res(put('intent.md', 120)).decision === undefined);
-  check('a tier-1 spec over 250 lines is sent back', res(put('spec.md', 300)).decision === 'block');
+  const big = res(put('brief.md', 90));
+  check('a tier-1 brief over 80 lines is sent back to be cut', big.decision === 'block' && /90 lines; the limit for brief\.md at tier 1 is 80/.test(big.reason || ''), JSON.stringify(big));
+  check('a brief within the limit passes silently', res(put('brief.md', 70)).decision === undefined);
+  check('a tier-1 spec over 120 lines is sent back', res(put('spec.md', 130)).decision === 'block');
+  check('a tier-1 ship document over 100 lines is sent back', res(put('ship.md', 110)).decision === 'block');
   wh(az, 'state', 'set', 'tier', '2');
-  check('the same spec passes at tier 2 (limit 500)', res(put('spec.md', 300)).decision === undefined);
+  check('the same spec passes at tier 2 (limit 250)', res(put('spec.md', 130)).decision === undefined);
   wh(az, 'state', 'set', 'tier', '3');
-  check('a tier-3 spec has no size limit', res(put('spec.md', 900)).decision === undefined);
-  check('a plan over 500 lines is sent back', res(put('plan.md', 520)).decision === 'block');
+  check('a tier-3 spec is capped at 400', res(put('spec.md', 401)).decision === 'block');
+  check('a tier-3 plan over 300 lines is sent back', res(put('plan.md', 320)).decision === 'block');
+  wh(az, 'state', 'set', 'tier', '1');
+  // Eval cases are counted, not just lines: every case is a test someone must run.
+  const cases = (n) => '# Evals\n\n| ID | Category | Given |\n|---|---|---|\n' + Array.from({ length: n }, (_, i) => `| E${i + 1} | golden | x |`).join('\n') + '\n';
+  check('16 eval cases at tier 1 is sent back', res(putText(`docs/sdlc/${aid}/evals.md`, cases(16))).decision === 'block');
+  check('15 eval cases at tier 1 passes', res(putText(`docs/sdlc/${aid}/evals.md`, cases(15))).decision === undefined);
+  // Reviewer reports are files now, capped so the fixer and shipper can read them.
+  check('a 61-line reviewer report at tier 1 is sent back', res(putText(`docs/sdlc/${aid}/reviews/bug.md`, 'x\n'.repeat(61))).decision === 'block');
+  check('a 60-line reviewer report passes', res(putText(`docs/sdlc/${aid}/reviews/bug.md`, 'x\n'.repeat(60))).decision === undefined);
+  // A finished Ship document with a blocker is sent back with the reason.
+  const ship = (row) => `# Ship\n\n## What the reviewers found\n\n| Severity | Reviewer | File:line | Finding | Resolution |\n|---|---|---|---|---|\n${row}\n\n## Your decision\n\nApprove.\n`;
+  const blocked = res(putText(`docs/sdlc/${aid}/ship.md`, ship('| medium | security | a.ts:1 | Leaks the id | open |')));
+  check('a finished ship.md with an open medium finding is sent back', blocked.decision === 'block' && /medium finding without a resolution/.test(blocked.reason) && /verification is none/.test(blocked.reason), JSON.stringify(blocked));
+  check('an unfinished ship.md is left alone while it is being written', res(putText(`docs/sdlc/${aid}/ship.md`, '# Ship\n\n| medium | x | y | z | open |\n')).decision === undefined);
   fs.writeFileSync(path.join(az, 'README.md'), 'x\n'.repeat(1000));
   check('files outside a change folder are ignored',
     res({ session_id: 's', cwd: az, hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(az, 'README.md') } }).decision === undefined);
@@ -442,11 +536,8 @@ console.log('phase done');
   g('add', '.'); g('commit', '-q', '-m', 'onboard');
   const pid = JSON.parse(wh(pd, 'new', 'Close me', '--tier', '0').out).change_id;
   const dir = `docs/sdlc/${pid}`;
-  // A live run closed the change before the retro existed, leaving retro.md out of the close
-  // commit; phase done now refuses until it exists.
-  const early = wh(pd, 'phase', 'done');
-  check('phase done refuses while retro.md is missing', early.code !== 0 && /retro\.md does not exist/.test(early.err), early.err);
-  fs.writeFileSync(path.join(pd, dir, 'retro.md'), '# retro\n');
+  // The retro runs in the background after the close and commits its own file, so "done" no
+  // longer waits for it (it used to refuse without retro.md).
   fs.writeFileSync(path.join(pd, 'unrelated.txt'), 'not part of the change\n');
   fs.mkdirSync(path.join(pd, '.workhorse', 'instincts'), { recursive: true });
   fs.writeFileSync(path.join(pd, '.workhorse', 'instincts', 'wait-for-close.md'), '---\nid: wait-for-close\nconfidence: 0.7\n---\n');
@@ -457,7 +548,7 @@ console.log('phase done');
   check('the close commit carries the retro instincts too',
     g('ls-files', '.workhorse/instincts').includes('wait-for-close.md') && g('status', '--porcelain', '--', '.workhorse/instincts') === '');
   JSON.parse(wh(pd, 'new', 'No retro', '--tier', '0').out);
-  check('--no-retro closes a change without a retro', wh(pd, 'phase', 'done', '--no-retro').code === 0);
+  check('phase done closes a change without a retro, and still accepts --no-retro', wh(pd, 'phase', 'done', '--no-retro').code === 0);
 }
 
 console.log('control state location');

@@ -179,13 +179,29 @@ function loadContext(cwd) {
 
 // ---------- gates ----------
 
+// Two human touches: Design (G2) and Ship (G4). Tier 3 adds Deploy (G5), where the human runs
+// the production step. G1 and G3 are kept as ids so state, approvals and Paddock keep their
+// shape, but no tier requires them: three real runs showed they were answered "none" and cost
+// hours of waiting each (docs/superpowers/specs/2026-09-19-two-gates-design.md).
 const ALL_GATES = ['G1', 'G2', 'G3', 'G4', 'G5'];
+const GATE_NAMES = { G1: 'Intent', G2: 'Design', G3: 'Plan', G4: 'Ship', G5: 'Deploy' };
 const TIER_GATES = {
   0: ['G4'],
   1: ['G2', 'G4'],
-  2: ['G1', 'G2', 'G3', 'G4', 'G5'],
-  3: ['G1', 'G2', 'G3', 'G4', 'G5'],
+  2: ['G2', 'G4'],
+  3: ['G2', 'G4', 'G5'],
 };
+const PHASES = ['design', 'build', 'verify', 'review', 'deploy', 'done'];
+
+// Agent-time budget per tier, in minutes. A run over budget says so in its Ship document. The
+// profile may override with `budgets: { agent_minutes: { 0: 15, ... } }`.
+const BUDGET_MINUTES = { 0: 15, 1: 30, 2: 90, 3: 180 };
+function budgetMinutes(tier, profile) {
+  const t = Math.min(Math.max(Number(tier) || 0, 0), 3);
+  const o = profile && profile.budgets && profile.budgets.agent_minutes;
+  const v = o && (o[t] !== undefined ? o[t] : o[String(t)]);
+  return v !== undefined && v !== null && v !== '' ? Number(v) : BUDGET_MINUTES[t];
+}
 
 function effectiveTier(state) {
   if (!state) return 0;
@@ -194,10 +210,11 @@ function effectiveTier(state) {
 }
 
 // Which gates need a human for this change. Autonomy can add gates, never remove G4.
+// `assisted` and `shadow` add the Deploy touch at every tier; the Design touch at tier 0.
 function requiredGates(state, profile) {
   const tier = effectiveTier(state);
   const autonomy = (profile && profile.autonomy) || 'bounded';
-  if (autonomy === 'assisted' || autonomy === 'shadow') return ALL_GATES.slice();
+  if (autonomy === 'assisted' || autonomy === 'shadow') return ['G2', 'G4', 'G5'];
   const gates = new Set(TIER_GATES[Math.min(Math.max(tier, 0), 3)] || ['G4']);
   gates.add('G4');
   return ALL_GATES.filter((g) => gates.has(g));
@@ -211,12 +228,11 @@ function gateSatisfied(state, profile, gate) {
 }
 
 // Artifact that opens each phase, and the gate that must be satisfied before it may be written.
+// Everything the designer writes (brief, spec, plan, evals) comes before Design; verification
+// and the Ship document come after it; the Deploy runbook comes after Ship.
 const PHASE_ARTIFACT_GATE = {
-  'spec.md': 'G1',
-  'evals.md': 'G1',
-  'plan.md': 'G2',
-  'verification.md': 'G3',
-  'review-packet.md': 'G3',
+  'verification.md': 'G2',
+  'ship.md': 'G2',
   'release.md': 'G4',
 };
 
@@ -405,6 +421,215 @@ function parseYaml(text) {
   return parseBlock(0) || {};
 }
 
+// ---------- clock ----------
+//
+// Speed was never measured: three real runs took about a hundred hours for under three hours of
+// code-writing, and nothing in the pipeline could say so. The clock reads the timestamps the CLI
+// already stamps (conductor-log.md rows, approvals.md blocks) and splits wall time into agents
+// working, waiting on the human, and dead time after a service cut-off. It is derived, never
+// stored, so it cannot drift from the record.
+
+/** Rows of conductor-log.md in either format the CLI has written: `<iso> | phase | rest` or the
+ *  older table `| <iso> | phase | agent | result |`. Timestamps without a zone are UTC. */
+function parseConductorLog(text) {
+  const rows = [];
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim().replace(/^\|\s*/, '').replace(/\s*\|$/, '');
+    const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)\s*\|\s*([^|]*?)\s*\|\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const stamp = /Z|[+-]\d{2}:\d{2}$/.test(m[1]) ? m[1] : m[1] + 'Z';
+    const t = Date.parse(stamp);
+    if (Number.isNaN(t)) continue;
+    rows.push({ t, phase: m[2].trim(), text: m[3].trim() });
+  }
+  return rows;
+}
+
+/** Approval blocks of approvals.md: gate, status and when. */
+function parseApprovals(text) {
+  const out = [];
+  for (const b of String(text || '').split(/^## /m).slice(1)) {
+    const head = /^(G\d): (approved|rejected)/.exec(b);
+    const when = /^- When: (.*)$/m.exec(b);
+    if (!head || !when) continue;
+    const t = Date.parse(when[1].trim());
+    if (Number.isNaN(t)) continue;
+    out.push({ t, gate: head[1], status: head[2] });
+  }
+  return out;
+}
+
+const RESUME_RE = /\b(resumed|resuming|killed|cut off|usage limit|rate limit|session limit)\b/i;
+const GAP_MINUTES = 90;
+
+/**
+ * Split the change's wall time. Every interval between two consecutive events is one of:
+ * waiting (it ends in a human decision, or the run is currently stopped at a pending gate),
+ * dead (it ends in a row that says the conductor resumed after a cut-off), a gap (over
+ * GAP_MINUTES with nothing to explain it; reported, counted in neither), or agents working.
+ * `human_minutes` is the time between Paddock opening a packet (state.gate_opened.<G>) and the
+ * decision, when Paddock recorded it; null otherwise.
+ */
+function computeClock(opts) {
+  const now = opts.now !== undefined ? opts.now : Date.now();
+  const state = opts.state || {};
+  const rows = parseConductorLog(opts.log).map((r) => ({ ...r, kind: 'log' }));
+  const approvals = parseApprovals(opts.approvals).map((a) => ({ ...a, kind: 'approval' }));
+  const events = rows.concat(approvals).sort((a, b) => a.t - b.t);
+  const tier = effectiveTier(state);
+  const budget = budgetMinutes(tier, opts.profile);
+  const done = state.phase === 'done';
+  const empty = {
+    agent_minutes: 0, waiting_minutes: 0, dead_minutes: 0, gap_minutes: 0, wall_minutes: 0,
+    human_minutes: null, budget_minutes: budget, within_budget: true, tier, done,
+    phases: [], gaps: [], events: 0, started_at: null, ended_at: null,
+  };
+  if (events.length === 0) return empty;
+
+  const waitingNow = Boolean(opts.pending_gate) && !done;
+  const end = done ? events[events.length - 1].t : Math.max(now, events[events.length - 1].t);
+  const byPhase = {};
+  const gaps = [];
+  let agent = 0, waiting = 0, dead = 0, gap = 0;
+  const intervals = [];
+  for (let i = 1; i < events.length; i++) intervals.push([events[i - 1], events[i]]);
+  if (!done && end > events[events.length - 1].t) intervals.push([events[events.length - 1], { t: end, kind: 'now' }]);
+
+  for (const [a, b] of intervals) {
+    const mins = Math.max(0, (b.t - a.t) / 60000);
+    if (b.kind === 'approval') { waiting += mins; continue; }
+    if (b.kind === 'now' && waitingNow) { waiting += mins; continue; }
+    if (b.kind === 'log' && RESUME_RE.test(b.text)) { dead += mins; continue; }
+    if (mins > GAP_MINUTES) {
+      gap += mins;
+      gaps.push({ from: new Date(a.t).toISOString(), to: new Date(b.t).toISOString(), minutes: Math.round(mins) });
+      continue;
+    }
+    agent += mins;
+    const phase = (a.kind === 'log' ? a.phase : (b.kind === 'log' ? b.phase : state.phase)) || 'unknown';
+    byPhase[phase] = (byPhase[phase] || 0) + mins;
+  }
+
+  let human = null;
+  const opened = state.gate_opened || {};
+  for (const ap of approvals) {
+    const o = opened[ap.gate] ? Date.parse(opened[ap.gate]) : NaN;
+    if (Number.isNaN(o) || o > ap.t) continue;
+    human = (human || 0) + (ap.t - o) / 60000;
+  }
+
+  const r1 = (n) => Math.round(n * 10) / 10;
+  return {
+    agent_minutes: r1(agent), waiting_minutes: r1(waiting), dead_minutes: r1(dead), gap_minutes: r1(gap),
+    wall_minutes: r1((end - events[0].t) / 60000),
+    human_minutes: human === null ? null : r1(human),
+    budget_minutes: budget, within_budget: agent <= budget, tier, done,
+    phases: Object.entries(byPhase).map(([phase, m]) => ({ phase, agent_minutes: r1(m) })),
+    gaps, events: events.length,
+    started_at: new Date(events[0].t).toISOString(), ended_at: new Date(end).toISOString(),
+  };
+}
+
+function fmtMinutes(m) {
+  const n = Math.round(m);
+  return n >= 60 ? `${Math.floor(n / 60)} h ${String(n % 60).padStart(2, '0')} m` : `${n} m`;
+}
+
+/** One line for status, the Ship document and Paddock. */
+function formatClock(c) {
+  if (!c || !c.events) return 'Clock: no events yet';
+  const parts = [
+    `agents ${fmtMinutes(c.agent_minutes)} of ${fmtMinutes(c.budget_minutes)} budget${c.within_budget ? '' : ' (OVER)'}`,
+    `waiting on you ${fmtMinutes(c.waiting_minutes)}`,
+    `dead ${fmtMinutes(c.dead_minutes)}`,
+  ];
+  if (c.gap_minutes) parts.push(`unexplained gaps ${fmtMinutes(c.gap_minutes)}`);
+  if (c.human_minutes !== null) parts.push(`your time ${fmtMinutes(c.human_minutes)}`);
+  parts.push(`wall ${fmtMinutes(c.wall_minutes)}`);
+  return 'Clock: ' + parts.join(' · ');
+}
+
+// ---------- known failures ----------
+//
+// A pre-existing failure (a check that is red on the base branch before the change touched
+// anything) was re-derived four times in one live run by four agents. It is recorded once,
+// with the base-branch reproduction, and every later phase cites the record.
+
+function knownFailuresFile(root) { return path.join(root, '.workhorse', 'known-failures.md'); }
+
+function parseKnownFailures(text) {
+  const out = [];
+  for (const line of String(text || '').split(/\r?\n/)) {
+    if (!line.startsWith('|')) continue;
+    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+    if (cells.length < 5 || /^:?-{2,}/.test(cells[0]) || /^date$/i.test(cells[0])) continue;
+    out.push({ date: cells[0], check: cells[1], command: cells[2], base: cells[3], reason: cells[4], change: cells[5] || '' });
+  }
+  return out;
+}
+
+function loadKnownFailures(root) {
+  const f = knownFailuresFile(root);
+  return fs.existsSync(f) ? parseKnownFailures(fs.readFileSync(f, 'utf8')) : [];
+}
+
+function addKnownFailure(root, entry) {
+  const f = knownFailuresFile(root);
+  if (!fs.existsSync(f)) {
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, [
+      '# Known pre-existing failures',
+      '',
+      'Checks that fail on the base branch before any change touched them. Recorded once by the',
+      'verifier with the base-branch reproduction; every later phase cites the row instead of',
+      're-deriving it. Remove a row when the failure is fixed.',
+      '',
+      '| Date | Check | Command | Reproduced on base | Reason | Recorded by change |',
+      '|------|-------|---------|--------------------|--------|--------------------|',
+      '',
+    ].join('\n'));
+  }
+  const cell = (s) => String(s || '').replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
+  fs.appendFileSync(f, `| ${cell(entry.date)} | ${cell(entry.check)} | ${cell(entry.command)} | ${cell(entry.base)} | ${cell(entry.reason)} | ${cell(entry.change)} |\n`);
+}
+
+// ---------- ship readiness ----------
+//
+// The Ship document is never presented with a defect the pipeline could have fixed. A live G4
+// packet said "fix before merge" about two items and was approved without them being fixed.
+
+const OPEN_RESOLUTION_RE = /^(|open|todo|pending|unresolved|fix before merge|fix now|not fixed|-)$/i;
+const BLOCKING_SEVERITY_RE = /^(critical|high|medium)$/i;
+
+/** Reasons the Ship document may not be presented, as human-readable strings; empty when ready. */
+function shipBlockers(shipMd, state) {
+  const blockers = [];
+  const v = (state && state.verification && state.verification.status) || 'none';
+  if (v !== 'green') blockers.push(`verification is ${v}, not green`);
+  const lines = String(shipMd || '').split(/\r?\n/);
+  const start = lines.findIndex((l) => /^#{1,6}.*reviewers? found/i.test(l) || /^#{1,6}.*review findings/i.test(l));
+  if (start >= 0) {
+    for (let i = start + 1; i < lines.length; i++) {
+      const l = lines[i].trim();
+      if (/^#{1,6}\s/.test(l)) break;
+      if (!l.startsWith('|')) continue;
+      const cells = l.split('|').slice(1, -1).map((c) => c.trim());
+      if (cells.length < 5 || /^:?-{2,}/.test(cells[0]) || /^severity$/i.test(cells[0])) continue;
+      if (BLOCKING_SEVERITY_RE.test(cells[0]) && OPEN_RESOLUTION_RE.test(cells[4])) {
+        blockers.push(`${cells[0].toLowerCase()} finding without a resolution: ${cells[3].slice(0, 80)}`);
+      }
+    }
+  }
+  if (!/^## Your decision/m.test(shipMd || '')) blockers.push('the "## Your decision" section is missing (the document is not finished)');
+  return blockers;
+}
+
+/** A gate packet is live for the human only once its closing section exists. Until then the
+ *  agent is still writing it, and Paddock must not show it as waiting on you. */
+function packetComplete(md) {
+  return /^## Your decision/m.test(String(md || ''));
+}
+
 // ---------- misc ----------
 
 function nowIso() { return new Date().toISOString(); }
@@ -422,7 +647,11 @@ module.exports = {
   readStdinJson, emit, preToolDecision, allow, deny, ask, failOpen,
   findRoot, isInsideWorktree, loadProfile, activeChangeId, setActiveChangeId, changeDir, loadState, saveState, loadContext,
   gitCommonDir, stateRoot, stateFile, activeFile, listChangeIds, isInStateRoot,
-  ALL_GATES, TIER_GATES, effectiveTier, requiredGates, gateSatisfied, PHASE_ARTIFACT_GATE,
+  ALL_GATES, GATE_NAMES, TIER_GATES, PHASES, BUDGET_MINUTES, budgetMinutes,
+  effectiveTier, requiredGates, gateSatisfied, PHASE_ARTIFACT_GATE,
+  parseConductorLog, parseApprovals, computeClock, formatClock, fmtMinutes,
+  knownFailuresFile, parseKnownFailures, loadKnownFailures, addKnownFailure,
+  shipBlockers, packetComplete,
   normalize, relToRoot, globToRegex, matchesAny, toolFilePath,
   parseYaml, nowIso, git,
 };

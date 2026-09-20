@@ -30,7 +30,7 @@
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/format-on-write.js\"", "timeout": 60 },
-          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/artifact-size.js\"", "timeout": 10 }
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/artifact-check.js\"", "timeout": 10 }
         ]
       }
     ],
