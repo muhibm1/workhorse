@@ -7,6 +7,14 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.8 — 2026-09-20
+
+Follows 0.3.7 (tier 0 budget 25; the proving runs recorded).
+
+- Setting the tier resets to pending any gate the tier requires that was stamped `auto` while
+  the tier was unknown, and `present` flips an `auto` gate to pending. Run 4 (Portfolio) marked
+  Design `auto` before the designer had set the tier, which would have skipped the Design touch.
+
 ## 0.3.7 — 2026-09-20
 
 Follows 0.3.6 (the sensitive-path hook reads the approved plan from the main checkout).
