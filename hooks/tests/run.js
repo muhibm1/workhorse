@@ -68,6 +68,13 @@ console.log('glob');
   check('no false match', !L.globToRegex('infra/**').test('src/infra.ts'));
 }
 
+console.log('worktree detection');
+{
+  check('recognises the plugin worktree folder', L.isInsideWorktree('C:\\repo\\.worktrees\\t1'));
+  check('recognises the harness isolation worktrees', L.isInsideWorktree('C:\\repo\\.claude\\worktrees\\agent-abc'));
+  check('a plain checkout is not a worktree', !L.isInsideWorktree('C:\\repo'));
+}
+
 console.log('cli init/new');
 {
   let r = wh(repo, 'init');
