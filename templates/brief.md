@@ -1,6 +1,7 @@
 # {{title}}
 
-Change id: `{{change_id}}` · Tier {{tier}} ({{tier_reason}}) · Prepared {{timestamp}} UTC
+Change id: `{{change_id}}` · Prepared {{timestamp}} UTC
+Risk tier: {{tier}} ({{tier_reason}})
 For the agents: [spec.md](./spec.md), [plan.md](./plan.md), [evals.md](./evals.md), [adr/](./adr/)
 
 This is the Design document. A person reads it in under five minutes, technical or not. Plain

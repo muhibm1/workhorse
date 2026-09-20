@@ -404,3 +404,15 @@
   margin-right: 6px;
   accent-color: var(--accent);
 }
+
+/* The header names the gate ("Ship") with its id as a small badge beside it. */
+.gate-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gate-title-id {
+  text-transform: none;
+  letter-spacing: 0;
+}

@@ -5,6 +5,26 @@ it shipped (listed by hash) and names the release it follows and what that relea
 releases are in the repository's root `CHANGELOG.md`; each Paddock build bundles the plugin version
 it names.
 
+## 0.5.0 — 2026-09-19
+
+Follows 0.4.9 (Refresh reads changelogs).
+
+- The two-gates model (plugin 0.3.0): gates are named Design, Ship and Deploy wherever one is
+  shown, with the id beside the name ("Ship (G4)"), and the Run screen's ring has ten stations:
+  Onboard, Design, the Design gate, Build, Verify, Review, the Ship gate, Deploy, the Deploy gate,
+  Retro. A change from an older plugin still renders; its intent, spec or plan phase reads as
+  Design.
+- The Gate screen reads `brief.md` at Design and `ship.md` at Ship (the runbook, `release.md`,
+  at Deploy), and finds the decisions table under "Decisions" as well as "Decisions requested".
+- Every decision starts on its recommendation, so the primary action reads "Approve as
+  recommended" until an override is picked, then "Approve"; the other action is "Reject with
+  notes".
+- The Run screen shows the clock from the digest against the tier budget: agent minutes with a
+  thin bar that turns coral when over, waiting on you, dead time, and your own time once
+  measured. Opening a pending gate records `gate_opened.<G>` in the change's state so `WH clock`
+  can measure that time.
+- Bundles plugin 0.3.0.
+
 ## 0.4.9 — 2026-09-19
 
 Follows 0.4.8 (transformers.js 4.3.0).

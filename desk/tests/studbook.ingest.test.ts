@@ -27,6 +27,22 @@ describe('studbook parser', () => {
     expect(docTypeFor('docs/sdlc/codebase-map.md')).toBe('codebase-map');
   });
 
+  it('maps the two gate documents and reviewer reports of WorkHorse 0.3.0, keeping the older ones', () => {
+    expect(docTypeFor('docs/sdlc/2026-01-01-x/brief.md')).toBe('brief');
+    expect(docTypeFor('docs/sdlc/2026-01-01-x/ship.md')).toBe('ship');
+    expect(docTypeFor('docs/sdlc/2026-01-01-x/reviews/wh-bug-reviewer.md')).toBe('review');
+    expect(docTypeFor('docs/sdlc/2026-01-01-x/reviews/spec.md')).toBe('review');
+    expect(docTypeFor('docs/sdlc/2026-01-01-x/intent.md')).toBe('intent');
+    expect(docTypeFor('docs/sdlc/2026-01-01-x/review-packet.md')).toBe('review-packet');
+    // Only .md files directly inside reviews/, and only inside a change folder.
+    expect(docTypeFor('docs/sdlc/2026-01-01-x/reviews/notes.txt')).toBeNull();
+    expect(docTypeFor('docs/sdlc/2026-01-01-x/reviews/deeper/x.md')).toBeNull();
+    expect(docTypeFor('reviews/x.md')).toBeNull();
+    expect(changeIdFor('docs/sdlc/2026-01-01-x/brief.md', 'brief')).toBe('2026-01-01-x');
+    expect(changeIdFor('docs/sdlc/2026-01-01-x/ship.md', 'ship')).toBe('2026-01-01-x');
+    expect(changeIdFor('docs/sdlc/2026-01-01-x/reviews/wh-bug-reviewer.md', 'review')).toBe('2026-01-01-x');
+  });
+
   it('skips nested READMEs, verify-logs and unknown files', () => {
     expect(docTypeFor('examples/hello-service/README.md')).toBeNull();
     expect(docTypeFor('docs/sdlc/2026-01-01-x/verify-logs/spec.md')).toBeNull();
@@ -86,6 +102,40 @@ describe('studbook parser', () => {
     expect(docs.map((d) => d.docType)).toEqual(['readme']);
     expect(docs[0].commitSha).toBe(commits[0].commitSha); // stamped with the enclosing HEAD
     expect(await walkRepo('repo', repo)).toHaveLength(files.length + commits.length);
+  });
+
+  it('takes the tier from brief.md, which wins over intent.md, and applies it to the whole change', async () => {
+    // The same three changes studbook/tests/test_parser.py walks, so both ports agree on the tier.
+    const repo = mkdtempSync(join(tmpdir(), 'paddock-parser-brief-'));
+    const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    const add = (changeId: string, files: Record<string, string>) => {
+      for (const [rel, text] of Object.entries(files)) {
+        const abs = join(repo, 'docs', 'sdlc', changeId, ...rel.split('/'));
+        mkdirSync(join(abs, '..'), { recursive: true });
+        writeFileSync(abs, text);
+      }
+    };
+    add('2026-02-02-brief-only', {
+      'brief.md': '# Brief\n\nChange id: `2026-02-02-brief-only` · Prepared 2026-02-02 UTC\nRisk tier: 3 (touches production data)\n',
+      'ship.md': '# Ship\n\n## Verification\n\ngreen\n',
+      'reviews/wh-bug-reviewer.md': '# Bug review\n\nNo findings.\n',
+    });
+    add('2026-02-03-both', { 'intent.md': '# Intent\n\nRisk tier: 1 (old)\n', 'brief.md': '# Brief\n\nRisk tier: 2 (redesigned)\n', 'spec.md': '# Spec\n' });
+    add('2026-02-04-brief-without-tier', { 'intent.md': '# Intent\n\nRisk tier: 1 (old)\n', 'brief.md': '# Brief\n\nNo tier line yet.\n' });
+    git('add', '.');
+    git('commit', '-q', '-m', 'docs');
+
+    const byPath = new Map((await walkFiles('repo', repo)).map((f) => [f.path, f]));
+    for (const [rel, docType] of [['brief.md', 'brief'], ['ship.md', 'ship'], ['reviews/wh-bug-reviewer.md', 'review']]) {
+      const d = byPath.get(`docs/sdlc/2026-02-02-brief-only/${rel}`)!;
+      expect(d).toMatchObject({ docType, changeId: '2026-02-02-brief-only', tier: 3 });
+    }
+    expect(byPath.get('docs/sdlc/2026-02-03-both/spec.md')!.tier).toBe(2);
+    expect(byPath.get('docs/sdlc/2026-02-03-both/intent.md')!.tier).toBe(2);
+    expect(byPath.get('docs/sdlc/2026-02-04-brief-without-tier/brief.md')!.tier).toBe(1);
   });
 });
 

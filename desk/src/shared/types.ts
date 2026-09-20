@@ -1,5 +1,37 @@
-export type Phase = 'intent' | 'spec' | 'plan' | 'build' | 'verify' | 'review' | 'deploy' | 'done';
+/**
+ * The pipeline phases of plugin 0.3 (two-gates design, section 3). `intent`, `spec` and `plan`
+ * are the pre-0.3 design phases: a change started under an older plugin still carries one in
+ * its digest, so they stay in the union and read as `design` wherever a position matters
+ * (`phaseIndex` in renderer/lib/polar.ts).
+ */
+export type Phase = 'design' | 'build' | 'verify' | 'review' | 'deploy' | 'done' | 'intent' | 'spec' | 'plan';
 export type Gate = 'G1' | 'G2' | 'G3' | 'G4' | 'G5';
+
+/**
+ * What `WH clock` measures (hooks/scripts/lib.js `computeClock`): minutes the agents worked,
+ * minutes the change waited on the human, dead time from service cut-offs, unexplained gaps,
+ * and the wall total, against the tier's agent-minute budget. `human_minutes` is the time between
+ * Paddock opening a packet (`gate_opened.<G>` in state) and the approval, or null when no gate
+ * has been both opened here and decided.
+ */
+export interface Clock {
+  agent_minutes: number;
+  waiting_minutes: number;
+  dead_minutes: number;
+  gap_minutes: number;
+  wall_minutes: number;
+  human_minutes: number | null;
+  budget_minutes: number;
+  within_budget: boolean;
+  tier: number;
+  done: boolean;
+  phases: { phase: string; agent_minutes: number }[];
+  gaps: { from: string; to: string; minutes: number }[];
+  /** Log rows plus approvals the clock was computed from; 0 means "no events yet". */
+  events: number;
+  started_at: string | null;
+  ended_at: string | null;
+}
 export type GateStatus = 'pending' | 'auto' | 'approved' | 'rejected' | 'n/a';
 export type Backend = 'cli' | 'sdk';
 
@@ -23,6 +55,12 @@ export interface ChangeDigest {
   tier: number; tier_reason: string; phase: Phase; mode: 'normal' | 'fix';
   status_label: string; waiting_on: string; blocking_gate: Gate | null;
   gates: Record<Gate, GateStatus>; required_human_gates: Gate[];
+  /** Plugin 0.3.0 and later. Optional so a digest from an older plugin still parses; read them
+   *  through `gateName` / `gateLabel` (shared/gates.ts) and with a fallback, never bare. */
+  gate_names?: Record<Gate, string>;
+  /** Why the Ship document is not yet presentable (verification not green, an open finding). */
+  ship_blockers?: string[];
+  clock?: Clock;
   verification: 'none' | 'red' | 'green' | string;
   branch: string; pr_url: string; commit: string;
   problem: string; outcome: string; tldr: string; decisions: string[];
@@ -165,6 +203,9 @@ export interface PaddockApi {
   gate: {
     approve(repoId: string, gate: Gate, notes: string): Promise<ApproveResult>;
     reject(repoId: string, gate: Gate, notes: string): Promise<ApproveResult>;
+    /** Records `gate_opened.<G>` in the change's state so the clock can measure the human's
+     *  reading time. Best effort: main logs a failure and resolves anyway. */
+    opened(repoId: string, gate: Gate): Promise<void>;
   };
   settings: {
     get(): Promise<Settings>;
@@ -214,7 +255,7 @@ export const IPC = {
   fleetDigest: 'fleet:digest',
   artifactRead: 'artifact:read',
   runStart: 'run:start', runResume: 'run:resume', runStop: 'run:stop', runEvent: 'run:event',
-  gateApprove: 'gate:approve', gateReject: 'gate:reject',
+  gateApprove: 'gate:approve', gateReject: 'gate:reject', gateOpened: 'gate:opened',
   settingsGet: 'settings:get', settingsSet: 'settings:set', settingsSetKey: 'settings:setKey',
   settingsHasKey: 'settings:hasKey', settingsClearKey: 'settings:clearKey',
   watchDigest: 'watch:digest',

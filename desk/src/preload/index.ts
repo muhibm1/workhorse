@@ -39,6 +39,7 @@ const api: PaddockApi = {
   gate: {
     approve: (repoId, gate, notes) => ipcRenderer.invoke(IPC.gateApprove, repoId, gate, notes),
     reject: (repoId, gate, notes) => ipcRenderer.invoke(IPC.gateReject, repoId, gate, notes),
+    opened: (repoId, gate) => ipcRenderer.invoke(IPC.gateOpened, repoId, gate),
   },
 
   settings: {

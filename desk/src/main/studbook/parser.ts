@@ -35,9 +35,15 @@ export interface ParsedDocument {
   contentHash: string;
 }
 
-/** Filename stem -> doc_type for files directly under a change folder or the docs/sdlc root. */
+/**
+ * Filename stem -> doc_type for files directly under a change folder or the docs/sdlc root.
+ * 'intent' and 'review-packet' are what WorkHorse wrote before 0.3.0 replaced them with 'brief'
+ * and 'ship'; older changes keep them, so both generations are ingested.
+ */
 const DOC_TYPE_BY_STEM: Record<string, string> = {
   intent: 'intent',
+  brief: 'brief',
+  ship: 'ship',
   spec: 'spec',
   plan: 'plan',
   evals: 'evals',
@@ -53,6 +59,9 @@ const DOC_TYPE_BY_STEM: Record<string, string> = {
 
 const DATE_LINE = /^Date:\s*(\d{4}-\d{2}-\d{2})/m;
 const TIER_LINE = /^Risk tier:\s*(\d)/m;
+/** The documents that state a change's tier, in the order consulted: the first that carries a
+ *  TIER_LINE decides. brief.md replaced intent.md in WorkHorse 0.3.0. As the Python module. */
+const TIER_SOURCES = ['brief', 'intent'] as const;
 
 export function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
@@ -67,6 +76,8 @@ export function docTypeFor(relPath: string): string | null {
   // The root changelog, or a component's (desk/CHANGELOG.md): as studbook's ingest/parser.py.
   if (name === 'CHANGELOG.md' && parts.length <= 2) return 'changelog';
   const isMd = name.endsWith('.md');
+  // docs/sdlc/<id>/reviews/<agent>.md: one report per reviewer since WorkHorse 0.3.0.
+  if (parts.length === 5 && parts[0] === 'docs' && parts[1] === 'sdlc' && parts[3] === 'reviews' && isMd) return 'review';
   if (parts.includes('adr') && isMd) return 'adr';
   if (parts[0] === 'docs' && parts[1] === 'superpowers' && isMd) return 'design-doc';
   const stem = name.replace(/\.[^.]*$/, '');
@@ -117,17 +128,24 @@ export async function walkFiles(repo: string, repoPath: string): Promise<ParsedD
   const head = (await git(repoPath, 'rev-parse', 'HEAD')).trim();
   const docs: ParsedDocument[] = [];
 
-  // Only intent.md states the tier; it is applied to every document in the same change.
+  // One document per change states the tier (brief.md since WorkHorse 0.3.0, intent.md before);
+  // it is applied to every document in the same change. brief.md is read first, so its tier
+  // wins when both exist and state one; intent.md's is used when brief.md states none.
   const tierByChange = new Map<string, number>();
   const sdlcRoot = join(repoPath, 'docs', 'sdlc');
   const sdlcExists = existsSync(sdlcRoot) && statSync(sdlcRoot).isDirectory();
   if (sdlcExists) {
     for (const entry of readdirSync(sdlcRoot, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const intent = join(sdlcRoot, entry.name, 'intent.md');
-      if (!existsSync(intent)) continue;
-      const m = TIER_LINE.exec(readFileSync(intent, 'utf8'));
-      if (m) tierByChange.set(entry.name, Number(m[1]));
+      for (const stem of TIER_SOURCES) {
+        const tierFile = join(sdlcRoot, entry.name, `${stem}.md`);
+        if (!existsSync(tierFile) || !statSync(tierFile).isFile()) continue;
+        const m = TIER_LINE.exec(readFileSync(tierFile, 'utf8'));
+        if (m) {
+          tierByChange.set(entry.name, Number(m[1]));
+          break;
+        }
+      }
     }
   }
 

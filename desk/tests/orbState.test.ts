@@ -9,7 +9,13 @@ describe('orbSpecFor (spec 3.1 table)', () => {
     expect(orbSpecFor(idle)).toEqual({ state: 'breathing', speed: 1, ring: 'none', pulse: false });
   });
 
-  it('intent -> composing, 1, cyan', () => {
+  it('design -> weaving, 1, cyan (the spec row, since plugin 0.3 folded intent/spec/plan into design)', () => {
+    expect(orbSpecFor({ ...idle, phase: 'design', running: true })).toEqual({
+      state: 'weaving', speed: 1, ring: 'cyan', pulse: false,
+    });
+  });
+
+  it('intent -> composing, 1, cyan (legacy phase of an older change)', () => {
     expect(orbSpecFor({ ...idle, phase: 'intent', running: true })).toEqual({
       state: 'composing', speed: 1, ring: 'cyan', pulse: false,
     });
@@ -52,7 +58,7 @@ describe('orbSpecFor (spec 3.1 table)', () => {
   });
 
   it('stopped at a gate -> breathing, 1, amber, pulsing', () => {
-    expect(orbSpecFor({ ...idle, phase: 'spec', blockingGate: 'G2' })).toEqual({
+    expect(orbSpecFor({ ...idle, phase: 'design', blockingGate: 'G2' })).toEqual({
       state: 'breathing', speed: 1, ring: 'amber', pulse: true,
     });
   });

@@ -1,16 +1,22 @@
 /**
- * Gate screen (spec 2.3): the packet for one gate, rendered from markdown, with a sticky
- * left index of its `## ` sections, Approve / Reject forms, and a right-hand read-only sheet
- * for paths the packet links to.
+ * Gate screen (spec 2.3, reshaped by the two-gates design section 5): the packet for one gate,
+ * rendered from markdown, with a sticky left index of its `## ` sections, the two primary
+ * actions ("Approve as recommended", "Reject with notes") with per-decision overrides, and a
+ * right-hand read-only sheet for paths the packet links to.
  *
- * The packet file is picked by `gate` (spec 2.3's "the packet") and read from the active
- * digest's `artifact_dir`, which `wh.js digest` always emits with a trailing slash (see
- * `scripts/wh.js`), so the two are joined with a plain string concatenation -- `path.join`
- * would normalise to a backslash on Windows, and `artifact.read`'s guard (plan Global
- * Constraints: "artifact paths guarded to docs/sdlc/") wants a forward-slash relPath.
+ * The packet file is picked by `gate` (the brief at Design, the Ship document at Ship, the
+ * runbook at Deploy) and read from the active digest's `artifact_dir`, which `wh.js digest`
+ * always emits with a trailing slash (see `scripts/wh.js`), so the two are joined with a plain
+ * string concatenation -- `path.join` would normalise to a backslash on Windows, and
+ * `artifact.read`'s guard (plan Global Constraints: "artifact paths guarded to docs/sdlc/")
+ * wants a forward-slash relPath.
+ *
+ * Opening a pending gate records `gate_opened.<G>` once (`gate.opened`), so `WH clock` can
+ * measure the human's reading time from here to the approval.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Gate as GateId, GateStatus } from '@shared/types';
+import { gateName } from '@shared/gates';
 import { usePaddockStore } from '@/store';
 import type { Screen } from '@/store';
 import { Panel } from '@/components/Panel';
@@ -26,13 +32,19 @@ import {
 } from '@/decisions';
 import './Gate.css';
 
+/** The document each gate reads (two-gates design, section 2). G1 and G3 are no longer required
+ *  by any tier; they keep a file so an older change's approved gate still opens something. */
 const PACKET_FILE: Record<GateId, string> = {
-  G1: 'intent.md',
-  G2: 'spec.md',
+  G1: 'brief.md',
+  G2: 'brief.md',
   G3: 'plan.md',
-  G4: 'review-packet.md',
+  G4: 'ship.md',
   G5: 'release.md',
 };
+
+/** Until the person changes it, every decision is on its recommendation: the design says
+ *  approving a packet accepts every recommendation in it unless the notes say otherwise. */
+const DEFAULT_CHOICE: DecisionChoice = { pick: 'recommendation', note: '' };
 
 const GATE_STATUS_TONE: Record<GateStatus, BadgeTone> = {
   pending: 'neutral',
@@ -143,19 +155,41 @@ export function Gate({ repoId, gate }: GateScreenProps) {
 
   const index = useMemo(() => (packet.status === 'loaded' ? buildIndex(packet.data) : []), [packet]);
 
-  // The packet's "Decisions requested" rows. wh.js approve refuses an approval that does not
-  // answer each one by id, so the form asks for every decision before Approve is enabled.
+  // The packet's "Decisions" rows. wh.js approve refuses an approval that does not answer each
+  // one by id, so every decision is answered before Approve is enabled: on its recommendation
+  // by default, or whatever the person picks instead.
   const decisions = useMemo(() => (packet.status === 'loaded' ? parseDecisions(packet.data) : []), [packet]);
-  const [choices, setChoices] = useState<Record<string, DecisionChoice>>({});
-  useEffect(() => setChoices({}), [relPath]);
+  const [overrides, setOverrides] = useState<Record<string, DecisionChoice>>({});
+  useEffect(() => setOverrides({}), [relPath]);
+  const choices = useMemo(
+    () => Object.fromEntries(decisions.map((d) => [d.id, overrides[d.id] ?? DEFAULT_CHOICE])),
+    [decisions, overrides],
+  );
   const decisionsDone = decisionsComplete(decisions, choices);
+  const allRecommended = decisions.every((d) => choices[d.id]?.pick === 'recommendation');
 
   function setChoice(id: string, patch: Partial<DecisionChoice>) {
-    setChoices((prev) => {
-      const current = prev[id] ?? { pick: null, note: '' };
+    setOverrides((prev) => {
+      const current = prev[id] ?? DEFAULT_CHOICE;
       return { ...prev, [id]: { ...current, ...patch } };
     });
   }
+
+  // Record when this pending gate was first opened, once per repo+gate, so the clock can measure
+  // the human's time. A gate already decided (its status is not pending, or the last approval is
+  // its own approval) is being re-read, not opened. Best effort: a failure is logged, never shown.
+  const gateStatus = digest?.gates[gate];
+  const approvedAlready = digest?.last_approval?.gate === gate && digest.last_approval.status === 'approved';
+  const recordedFor = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${repoId}:${gate}`;
+    if (recordedFor.current === key) return;
+    if (gateStatus !== 'pending' || approvedAlready) return;
+    recordedFor.current = key;
+    window.paddock.gate.opened(repoId, gate).catch((err: unknown) => {
+      console.warn('[paddock] could not record the gate opening:', errorMessage(err));
+    });
+  }, [repoId, gate, gateStatus, approvedAlready]);
 
   function scrollToSlug(slug: string) {
     const el = contentRef.current?.querySelector<HTMLElement>(`#${CSS.escape(slug)}`);
@@ -207,9 +241,16 @@ export function Gate({ repoId, gate }: GateScreenProps) {
   const lastApproval = digest?.last_approval ?? null;
   const busy = submitting !== null;
 
+  const title = (
+    <span className="gate-title">
+      {gateName(digest, gate)}
+      <Badge tone="neutral" className="gate-title-id">{gate}</Badge>
+    </span>
+  );
+
   return (
     <div className="gate-screen">
-      <Panel className="gate-header" title={`Gate ${gate}`}>
+      <Panel className="gate-header" title={title}>
         <div className="gate-header-row">
           <div className="gate-header-item">
             <span className="label">Tier</span>
@@ -222,8 +263,8 @@ export function Gate({ repoId, gate }: GateScreenProps) {
             <div className="gate-header-badges">
               {requiredGates.length === 0 && <span className="gate-muted">none</span>}
               {requiredGates.map((g) => (
-                <Badge key={g} tone={digest ? GATE_STATUS_TONE[digest.gates[g]] : 'neutral'}>
-                  {g}
+                <Badge key={g} tone={digest ? GATE_STATUS_TONE[digest.gates[g]] : 'neutral'} title={g}>
+                  {`${gateName(digest, g)} ${g}`}
                 </Badge>
               ))}
             </div>
@@ -232,7 +273,9 @@ export function Gate({ repoId, gate }: GateScreenProps) {
             <span className="label">Last approval</span>
             {lastApproval ? (
               <span className="gate-last-approval">
-                <Badge tone={lastApproval.status === 'approved' ? 'mint' : 'coral'}>{lastApproval.gate}</Badge>
+                <Badge tone={lastApproval.status === 'approved' ? 'mint' : 'coral'}>
+                  {`${gateName(digest, lastApproval.gate)} ${lastApproval.gate}`}
+                </Badge>
                 {lastApproval.status} by {lastApproval.who} at {lastApproval.at}
                 {lastApproval.notes ? ` — “${lastApproval.notes}”` : ''}
               </span>
@@ -263,9 +306,9 @@ export function Gate({ repoId, gate }: GateScreenProps) {
           <div className="gate-actions">
             {decisions.length > 0 && (
               <fieldset className="gate-decisions" disabled={busy}>
-                <legend className="label">{`Decisions requested (${decisions.length})`}</legend>
+                <legend className="label">{`Decisions (${decisions.length})`}</legend>
                 {decisions.map((d) => {
-                  const choice = choices[d.id] ?? { pick: null, note: '' };
+                  const choice = choices[d.id] ?? DEFAULT_CHOICE;
                   const option = (pick: DecisionPick, text: string) => (
                     <label className="gate-decision-option" key={pick}>
                       <input
@@ -313,10 +356,10 @@ export function Gate({ repoId, gate }: GateScreenProps) {
                 disabled={busy}
               />
               {!decisionsDone && (
-                <p className="gate-muted gate-decisions-hint">Answer every decision above to enable Approve.</p>
+                <p className="gate-muted gate-decisions-hint">Say what you decided for every "Other" above to enable Approve.</p>
               )}
               <Button tone="primary" onClick={handleApprove} disabled={busy || !decisionsDone}>
-                {submitting === 'approve' ? 'Approving…' : `Approve ${gate}`}
+                {submitting === 'approve' ? 'Approving…' : allRecommended ? 'Approve as recommended' : 'Approve'}
               </Button>
             </div>
 
@@ -334,7 +377,7 @@ export function Gate({ repoId, gate }: GateScreenProps) {
                 disabled={busy}
               />
               <Button tone="danger" onClick={handleReject} disabled={busy || rejectNotes.trim() === ''}>
-                {submitting === 'reject' ? 'Rejecting…' : `Reject ${gate}`}
+                {submitting === 'reject' ? 'Rejecting…' : 'Reject with notes'}
               </Button>
             </div>
 

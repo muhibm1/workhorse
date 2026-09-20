@@ -7,6 +7,13 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.1 — 2026-09-19
+
+Follows 0.3.0 (two gates and a clock).
+
+- `brief.md` carries its tier on its own line, `Risk tier: N (reason)`, the line both Studbook
+  ingesters read; the header no longer folds it into the change-id line.
+
 ## 0.3.0 — 2026-09-19
 
 Follows 0.2.14 (the verifier's plain-words "What was measured" section). Two gates and a clock,
