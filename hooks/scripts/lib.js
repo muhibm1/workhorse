@@ -195,7 +195,7 @@ const PHASES = ['design', 'build', 'verify', 'review', 'deploy', 'done'];
 
 // Agent-time budget per tier, in minutes. A run over budget says so in its Ship document. The
 // profile may override with `budgets: { agent_minutes: { 0: 15, ... } }`.
-const BUDGET_MINUTES = { 0: 15, 1: 30, 2: 90, 3: 180 };
+const BUDGET_MINUTES = { 0: 25, 1: 30, 2: 90, 3: 180 };
 function budgetMinutes(tier, profile) {
   const t = Math.min(Math.max(Number(tier) || 0, 0), 3);
   const o = profile && profile.budgets && profile.budgets.agent_minutes;

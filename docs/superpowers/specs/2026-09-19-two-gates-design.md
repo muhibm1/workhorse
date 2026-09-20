@@ -119,6 +119,13 @@ primary actions, "Approve as recommended" and "Reject with notes", with per-deci
 kept; the Run screen shows the clock live against the budget; opening a gate screen records
 `WH state set gate_opened.<G> <iso>` so the clock can measure the human's time.
 
+## 5b. Budgets, revised after measurement
+
+The tier 0 budget of 15 agent-minutes was not reachable: a verify pass and a review pass with
+their fixes cost about 25 minutes on a one-file change, and that rigour is the product. Budget
+for tier 0 is 25 minutes from 0.3.6; tiers 1 to 3 stay at 30, 90 and 180. The three runs of
+2026-09-20 are recorded in `docs/STATUS.md`.
+
 ## 6. Proving it
 
 Three changes with the clock running, each from an existing backlog: hello-service tier 0 (15

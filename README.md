@@ -89,7 +89,7 @@ users, no compliance", then `/workhorse:run "there is no way to check the servic
 Under the skills sits `scripts/wh.js`, the CLI every agent uses for state: `new`, `phase`,
 `gate`, `approve`, `required`, `log`, `status`, `digest`, and two added in 0.3.0. `wh.js clock`
 reports agent time, waiting time and dead time for the active change against its tier budget
-(0: 15 minutes, 1: 30, 2: 90, 3: 180; `budgets.agent_minutes` in the profile overrides).
+(0: 25 minutes, 1: 30, 2: 90, 3: 180; `budgets.agent_minutes` in the profile overrides).
 `wh.js known-failure add <check> --command "<cmd>" --base <sha> --reason "<why>"` records a check
 that was already red on the base branch, once; `wh.js known-failure list` is what later phases
 cite instead of re-deriving it.
