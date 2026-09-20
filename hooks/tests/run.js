@@ -130,6 +130,21 @@ console.log('protect-paths');
   check('asks on migrations', decision(hook('protect-paths.js', edit('db/migrations/002.sql'))) === 'ask');
   check('allows src edit', decision(hook('protect-paths.js', edit('src/index.ts'))) === 'none');
   check('denies approvals.md', decision(hook('protect-paths.js', edit(`docs/sdlc/${id}/approvals.md`))) === 'deny');
+  // A headless run cannot answer "ask". Once the human has approved the Design document, a
+  // sensitive path that the approved plan names is allowed; one it does not name still asks.
+  const cdir = path.join(repo, 'docs', 'sdlc', id);
+  fs.writeFileSync(path.join(cdir, 'brief.md'), '# Brief\n\n## The short version\n\nx\n\n## Your decision\n\nApprove.\n');
+  fs.writeFileSync(path.join(cdir, 'plan.md'), '# Plan\n\nT1 edits db/migrations/002.sql and adds the trigger.\n');
+  check('sensitive path still asks before Design is approved', decision(hook('protect-paths.js', edit('db/migrations/002.sql'))) === 'ask');
+  wh(repo, 'state', 'set', 'tier', '2');
+  const g2 = wh(repo, 'approve', 'G2', '--accept-all');
+  check('Design approved for the sensitive-path check', g2.code === 0, g2.err);
+  const named = hook('protect-paths.js', edit('db/migrations/002.sql'));
+  check('a sensitive path the approved plan names is allowed', decision(named) === 'allow' && /plan\.md/.test(named.hookSpecificOutput.permissionDecisionReason), JSON.stringify(named));
+  check('a sensitive path the plan does not name still asks', decision(hook('protect-paths.js', edit('db/migrations/003.sql'))) === 'ask');
+  check('a protected path is denied even when the plan names it', (() => { fs.appendFileSync(path.join(cdir, 'plan.md'), 'T2 edits .github/workflows/ci.yml\n'); return decision(hook('protect-paths.js', edit('.github/workflows/ci.yml'))) === 'deny'; })());
+  wh(repo, 'gate', 'G2', 'pending'); wh(repo, 'state', 'set', 'tier', '0');
+  fs.unlinkSync(path.join(cdir, 'brief.md')); fs.unlinkSync(path.join(cdir, 'plan.md'));
   check('no opinion outside repo', decision(hook('protect-paths.js', { ...base, cwd: os.tmpdir(), tool_name: 'Edit', tool_input: { file_path: path.join(os.tmpdir(), 'x.yml') } })) === 'none');
 }
 
@@ -196,8 +211,8 @@ console.log('gate-guard');
   const af = fs.readFileSync(path.join(repo, 'docs', 'sdlc', id, 'approvals.md'), 'utf8');
   check('approvals.md has who/when/commit', /Who: tester@example.com/.test(af) && /Artifact commit:/.test(af));
   check('approval committed', /G4 approved/.test(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: repo, encoding: 'utf8' })));
-  const recorded = (af.match(/Artifact commit: `([0-9a-f]{7,40})`/) || [])[1];
-  const shaLine = af.match(/Packet: `([^`]+)` sha256 `([0-9a-f]{64})`/) || [];
+  const recorded = (af.slice(af.lastIndexOf("## G4:")).match(/Artifact commit: `([0-9a-f]{7,40})`/) || [])[1];
+  const shaLine = af.slice(af.lastIndexOf("## G4:")).match(/Packet: `([^`]+)` sha256 `([0-9a-f]{64})`/) || [];
   const expectSha = require('crypto').createHash('sha256').update(packetBody).digest('hex');
   check('approval records the packet sha256 matching its content', shaLine[1] === packetRel && shaLine[2] === expectSha, JSON.stringify(shaLine.slice(1)));
   let inCommit = '';
