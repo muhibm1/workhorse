@@ -8,7 +8,7 @@ picking this back up. Studbook's own detail is in `studbook/docs/status.md`.
 
 All three are functionally complete and in daily-usable shape. WorkHorse 0.3.0 is the current
 source (two gates and a clock; install it to replace 0.2.14 at user scope); Paddock 0.4.9 is the
-current portable build (`desk/dist/Paddock-0.4.9-portable.exe`) and still shows the five-gate
+current portable build (`~/Paddock-builds/Paddock-0.5.0-portable.exe`, bundling plugin 0.3.1) and shows the two-gate
 model until 0.5.0; Studbook's pipeline is finished, measured on a held-out split, and runs inside
 Paddock with its Python reference held to it by exact parity checks. Both repositories have CI on
 every push, branch protection, pre-push hooks, Dependabot and changelogs. What is left is the
@@ -32,7 +32,7 @@ full list.
 | Piece | Version | Where |
 |---|---|---|
 | WorkHorse plugin | 0.3.0 | source is this repository; 0.2.14 is what is installed at user scope until reinstalled |
-| Paddock | 0.4.9 | `desk/dist/Paddock-0.4.9-portable.exe`, bundling plugin 0.2.14; 0.5.0 (Design / Ship / Deploy gate screens, the clock on the Run screen) is the next release |
+| Paddock | 0.5.0 | `~/Paddock-builds/Paddock-0.5.0-portable.exe`, bundling plugin 0.3.1 (0.3.3 is installed at user scope); 0.5.0 (Design / Ship / Deploy gate screens, the clock on the Run screen) is the next release |
 | Studbook | reference implementation + eval harness | `~\studbook`, private repo `muhibm1/studbook` |
 
 A release must add a changelog entry (`CHANGELOG.md` for the plugin, `desk/CHANGELOG.md` for
@@ -74,7 +74,15 @@ Paddock): CI fails otherwise, because Studbook answers release questions from th
 
 ## Picking it back up
 
-- **Building with Paddock:** run `desk/dist/Paddock-0.4.9-portable.exe`, register a repository,
+- **Disk.** `claude plugin install` copies the whole plugin folder into
+  `~/.claude/plugins/cache/<version>/`, Paddock's `desk/` included, and never prunes old
+  versions. On 2026-09-20 seventeen cached versions held 40 GB and the disk was full. Two rules
+  keep it at 3 MB per version: `desk/node_modules` is a junction to
+  `~/Paddock-deps/node_modules` (the installer skips links that point outside the
+  plugin; recreate the junction after any `npm ci` that replaces it), and electron-builder
+  writes to `~/Paddock-builds`, outside the repository. Delete old cache versions
+  by hand when they pile up; there is no documented prune command.
+- **Building with Paddock:** run `~/Paddock-builds/Paddock-0.5.0-portable.exe`, register a repository,
   onboard it, and start a change. Use 0.4.9 or later to refresh Studbook's record: an older
   build's Refresh deletes documents its parser does not know, which now includes the changelogs.
   Until Paddock 0.5.0, a 0.3.0 change is approved with `/workhorse:approve G2` and `G4` from
