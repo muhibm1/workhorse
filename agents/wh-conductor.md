@@ -80,7 +80,7 @@ set `auto` with `WH gate <G> auto`; a required one means present the packet (see
 
 | Phase | Dispatch | Artifacts | Then |
 |-------|----------|-----------|------|
-| design | `WH phase design`, `WH gate G1 auto`, `WH gate G3 auto`. Dispatch `wh-designer` with the request (and any rejection notes); it sets the tier and its reason itself (`WH state set tier`, `tier_reason`) and reports them; confirm with `WH status --json` and set them yourself only if it did not. Then `wh-constraint-auditor` and `wh-eval-designer` in ONE message. If the auditor reports a high finding, dispatch `wh-designer` once more with the findings; one round only, then present anyway with the finding as the first Decision. Medium findings become brief decision rows, not rounds. | `brief.md` (written last), `spec.md`, `plan.md`, `evals.md`, `adr/` | G2 required: present and STOP; else `WH gate G2 auto` |
+| design | `WH phase design`, `WH gate G1 auto`, `WH gate G3 auto`. Dispatch `wh-designer` with the request (and any rejection notes); it sets the tier and its reason itself (`WH state set tier`, `tier_reason`) and reports them; confirm with `WH status --json` and set them yourself only if it did not. It writes `spec.md`, `evals.md`, `plan.md` (every eval case has a task) and `brief.md`. At tier 0 that is the whole phase. At tier 1 dispatch `wh-constraint-auditor`; at tier 2+ dispatch `wh-constraint-auditor` and `wh-eval-designer` in ONE message (the eval designer reviews `evals.md` and adds the cases worth having to both `evals.md` and the matching `plan.md` task). If the auditor reports a high finding, dispatch `wh-designer` once more with the findings; one round only, then present anyway with the finding as the first Decision. Medium findings become brief decision rows, not rounds. | `brief.md` (written last), `spec.md`, `plan.md`, `evals.md`, `adr/` | G2 required: present and STOP; else `WH gate G2 auto` |
 | build | see Build below; then `wh-polish` once on the whole change's diff after the last wave, not per wave | commits on the change branch | Verify |
 | verify | see Verify below | `verification.md` green | Review |
 | review | see Review below | `reviews/<agent>.md`, `ship.md`, PR | G4 required (always): present and STOP |
@@ -102,7 +102,8 @@ The Build phase scales to the size of the plan.
      single message, each with `run_in_background: false`, so they run concurrently and you
      receive every result. Each builder gets the change id, the task number, the task text
      verbatim, `state.branch` to base on, and the instruction to commit on a task branch
-     `<state.branch>/t<N>`. Builders run with `isolation: worktree`.
+     `<state.branch>-t<N>` (a dash, never a slash: git cannot hold `wh/x` and `wh/x/t1` at
+     once, and a live run lost time discovering that). Builders run with `isolation: worktree`.
    - When all builders in the wave return, fold each task branch into `state.branch` in task
      order using the profile's `build.wave_merge` strategy. On conflict, dispatch one
      `wh-builder` with both diffs and the instruction to resolve and re-run that task's tests.
@@ -138,9 +139,12 @@ this run; say so in your report.
    `wh-bug-reviewer` (plus the security reviewer on a sensitive path). Each reviewer is told to
    write `docs/sdlc/<id>/reviews/<agent>.md` and to review `git diff <default>...<branch>`.
 2. Read every report. If any has a high or medium finding with a concrete fix, dispatch ONE
-   `wh-fixer` with the whole list (`WH mode fix` around it), then run Verify again from step 1:
-   a fix can change what the evals exercise. Findings without a fix, and lows, are notes for the
-   shipper. Never hand a fixable finding to the human.
+   `wh-fixer` in mode `review` with the whole list, in `WH mode normal` (not `fix`: review
+   findings are often in test files, and the reviewer has already judged them; the test lock is
+   for the verify loop, where a red test must not be edited green). Then run Verify again from
+   step 1: a fix can change what the evals exercise. Findings without a fix, and lows, are notes
+   for the shipper. Never hand a fixable finding to the human, and never route a review fix to
+   a builder: the fixer is the one agent for it.
 3. Dispatch `wh-shipper` in mode `ship` with the verifier's evidence and every report. It pushes
    the branch, opens the PR, and writes `ship.md` with the clock pasted in and `## Your decision`
    last. Then present G4 (see Gates) and STOP.

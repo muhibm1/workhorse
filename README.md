@@ -127,9 +127,9 @@ agent can approve.
 | wh-conductor | Drives the six phases, dispatches the others, keeps state through the CLI, stops only at G2, G4 and (tier 3) G5. |
 | wh-discovery-analyst | Onboarding: audits the repository and the business workflow, writes the profile, codebase map, constraints and client CLAUDE.md. |
 | wh-compliance-mapper | Onboarding: decides which compliance regimes apply and which controls each phase must honour. |
-| wh-designer | Design: in one session turns "problem -> outcome" into the tier, `spec.md` with ADRs, `plan.md` in file-disjoint waves, and `brief.md`. Never stops to ask. |
+| wh-designer | Design: in one session turns "problem -> outcome" into the tier, `spec.md` with ADRs, `evals.md`, `plan.md` in file-disjoint waves (every eval case has a task), and `brief.md`. Never stops to ask. |
 | wh-constraint-auditor | Design: audits the spec against the security baseline, compliance regimes and the profile's constraints; a high finding earns one revision round. |
-| wh-eval-designer | Design: turns requirements and failure modes into `evals.md`, within the tier's case limit. |
+| wh-eval-designer | Design, tier 2+: reviews `evals.md`, adds the edge, failure and adversarial cases worth having, and the matching plan steps. |
 | wh-builder | Build: one task from the plan, test-first, in its own worktree on a task branch; up to `max_parallel` at once. |
 | wh-polish | Build: one pass over the whole diff after the last wave for naming, structure, dead code and needless abstraction; keeps tests green. |
 | wh-verifier | Verify: runs every profile check and every automatable eval case in one session, writes `verification.md`; green only with every check passed or a cited known failure. |
