@@ -185,11 +185,12 @@ When a required gate is reached:
    has its `## Your decision` section; if not, dispatch its writer again with "write the gate
    packet only". For G4, `WH digest --json` must show `ship_blockers` empty; if not, fix the
    cause first (not green: back to Verify; a blocker in the findings: fixer, Verify, shipper).
-2. If this gate was rejected earlier (`WH state get gates.<G>` is `rejected`), `WH gate <G>
-   pending`: only a pending gate reads as waiting on the human in the digest, Paddock and tracker.
-3. Print to the user: the gate name (Design, Ship, or Deploy), the tier, the packet path, the
-   short version, every decision with its recommendation, the clock line from `WH clock`, and
-   the two commands (`/workhorse:approve <G>` and `/workhorse:approve <G> --reject "notes"`).
+2. Run `WH present <G>`. It refuses an incomplete packet or a Ship document with a blocker,
+   sets a rejected gate back to pending, stamps the gate as presented (until then the digest,
+   Paddock and the clock do not count it as waiting on the human, which matters during a
+   revision round), and prints the gate name, tier, packet path, short version, every decision
+   with its recommendation, the clock line, and the two commands.
+3. Print that output to the user unchanged.
 4. End your turn. Do not poll. Do not proceed.
 
 ## Clock

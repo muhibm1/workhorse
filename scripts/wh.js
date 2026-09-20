@@ -15,6 +15,8 @@
 //                                           G4 (Ship) refuses while the Ship document has a blocker
 //   wh.js required                          list human gates required for the active change
 //   wh.js log "<agent> | <result>"          append a line to conductor-log.md, stamped with the real time
+//   wh.js present <G2|G4|G5>                mark a gate packet as presented to the human and print its summary;
+//                                           until then the digest and clock do not count the gate as waiting
 //   wh.js clock [--json]                    agent time, waiting time and dead time for the active change
 //   wh.js known-failure add <check> --command "<cmd>" --base <sha> --reason "<why>"
 //   wh.js known-failure list [--json]       pre-existing failures recorded for this repository
@@ -358,6 +360,36 @@ switch (cmd) {
     break;
   }
 
+  case 'present': {
+    // A packet is waiting on the human only once the conductor has presented it. Without this,
+    // a finished brief counted as waiting during the auditor's revision round (run 3 of 0.3.2
+    // showed 7 "waiting" minutes that were agent time), and Paddock offered Approve too early.
+    const root = requireRoot();
+    const { id, state } = requireActive(root);
+    const g = args[0];
+    if (!L.ALL_GATES.includes(g)) die('usage: wh.js present <G2|G4|G5>');
+    const packet = readArtifact(root, id, GATE_PACKET[g]);
+    if (!L.packetComplete(packet)) die(`cannot present ${g}: ${GATE_PACKET[g]} is missing or has no "## Your decision" section`);
+    if (g === 'G4') {
+      const blockers = L.shipBlockers(packet, state);
+      if (blockers.length) die(`cannot present G4 (Ship): ${blockers.join('; ')}`);
+    }
+    state.gates = state.gates || {};
+    if (state.gates[g] === 'rejected') state.gates[g] = 'pending';
+    state.presented = state.presented || {};
+    state.presented[g] = L.nowIso();
+    L.saveState(root, id, state);
+    appendLog(root, id, state, `conductor | ${g} ${L.GATE_NAMES[g]} presented`);
+    out([
+      `${L.GATE_NAMES[g]} (${g}) is waiting on you. Tier ${L.effectiveTier(state)}. Packet: docs/sdlc/${id}/${GATE_PACKET[g]}`,
+      sectionText(packet, /^#{1,6}.*(short version|tl;dr)/i, 900),
+      ...decisionRows(packet, 20).map((d) => `  ${d}`),
+      L.formatClock(clockFor(root, id, state)),
+      `Approve: /workhorse:approve ${g} --accept-all    Reject: /workhorse:approve ${g} --reject "notes"`,
+    ].join('\n'));
+    break;
+  }
+
   case 'clock': {
     const root = requireRoot();
     const { id, state } = requireActive(root);
@@ -482,12 +514,22 @@ function appendLog(root, id, state, msg) {
   return line;
 }
 
+/** True once the conductor has run `present <G>` for this gate. A gate rejected and reworked is
+ *  presented again, so the stamp must be newer than the last rejection. */
+function presentedAfterPacket(root, id, state, gate) {
+  const at = state.presented && state.presented[gate];
+  if (!at) return false;
+  const rej = state.last_rejection && state.last_rejection.gate === gate ? Date.parse(state.last_rejection.at) : 0;
+  return Date.parse(at) >= rej;
+}
+
 /** The change's clock, from its log and approvals on disk. */
 function clockFor(root, id, state) {
   const profile = (() => { try { return L.loadProfile(root); } catch (e) { return {}; } })();
   const gateHere = PHASE_GATE[state.phase];
   const pending = Boolean(gateHere && L.requiredGates(state, profile).includes(gateHere)
     && ((state.gates || {})[gateHere] || 'pending') === 'pending'
+    && presentedAfterPacket(root, id, state, gateHere)
     && L.packetComplete(readArtifact(root, id, PHASE_ARTIFACT[state.phase])));
   return L.computeClock({
     log: readArtifact(root, id, 'conductor-log.md'),
@@ -641,8 +683,11 @@ function buildDigest(root, id, state) {
   // The Ship document also has to be free of blockers (green verification, no unresolved
   // high or medium finding); until then it is the agents' problem, not the human's.
   const shipBlockers = gateHere === 'G4' && packetExists ? L.shipBlockers(packetMd, state) : [];
+  // ... and the conductor must have presented it (`wh.js present`): a complete brief is not
+  // waiting on anyone while the auditor's revision round is still running.
   const humanGate =
-    gateHere && required.includes(gateHere) && (gates[gateHere] || 'pending') === 'pending' && packetExists && shipBlockers.length === 0
+    gateHere && required.includes(gateHere) && (gates[gateHere] || 'pending') === 'pending' && packetExists
+      && shipBlockers.length === 0 && presentedAfterPacket(root, id, state, gateHere)
       ? gateHere
       : null;
 

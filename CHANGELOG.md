@@ -7,6 +7,16 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.3 — 2026-09-20
+
+Follows 0.3.2 (evals in the plan, the review fix with the lock off, dashed task branches).
+
+- `wh.js present <G>`: a gate counts as waiting on the human only once the conductor has
+  presented it. A finished brief used to read as waiting during the auditor's revision round,
+  which charged agent time to "waiting on you" and let Paddock offer Approve too early. The
+  command also refuses an incomplete packet or a blocked Ship document, resets a rejected gate to
+  pending, logs a clock row, and prints the summary the human reads.
+
 ## 0.3.2 — 2026-09-20
 
 Follows 0.3.1 (the brief's own tier line). Three fixes from the first measured run of the
