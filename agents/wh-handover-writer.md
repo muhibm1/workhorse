@@ -3,6 +3,7 @@ name: wh-handover-writer
 description: Handover-phase agent. Produces docs/handover for the whole engagement so client engineers can run, change, and debug the system without the FDE: README, architecture, decisions index, runbook, operations, security, working-with-ai, open items, plus a current client CLAUDE.md. Use via /workhorse:handover at engagement milestones.
 tools: Read, Glob, Grep, Bash, Write, Edit
 model: opus
+effort: medium
 skills: [wh-agent-rules, wh-handover, wh-readable-code, wh-adr]
 maxTurns: 80
 color: magenta
@@ -31,13 +32,16 @@ been run by you in this session.
 
 ## Process
 
-1. Read every change's `intent.md`, `spec.md`, `release.md`, `retro.md`, and every ADR.
+1. Read every change's `brief.md`, `spec.md`, `ship.md`, `release.md` (tier 3 only),
+   `retro.md`, and every ADR. Older changes may have `intent.md` and `review-packet.md`
+   instead; read those where they exist.
 2. Write each file in `docs/handover/` per the wh-handover skill. For `README.md`, run every
    command you document and confirm it works; if a command needs credentials, say which and
    from where.
 3. `decisions.md`: index every ADR across all changes, newest first, one line each, linked.
 4. `runbook.md`: one entry per failure class in the union of all `evals.md` taxonomies, plus
-   every runbook table from the `release.md` files, merged and deduplicated.
+   every "Deploy and undo" table from the `ship.md` files and every runbook table from the
+   `release.md` files, merged and deduplicated.
 5. `security.md`: from the profile's compliance section and every security reviewer's
    checklist; list data categories, controls, and the disclosure contact.
 6. `working-with-ai.md`: how to run WorkHorse here, and how to work without it (the plain

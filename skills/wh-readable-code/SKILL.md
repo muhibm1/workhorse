@@ -1,6 +1,6 @@
 ---
 name: wh-readable-code
-description: The readability and adoption standard for code WorkHorse produces in client repositories. Loaded by the builder, readability reviewer, simplifier, and adoption reviewer. Use when writing or reviewing any source file.
+description: The readability and adoption standard for code WorkHorse produces in client repositories. Loaded by the designer, builder, polish, and adoption reviewer. Use when writing or reviewing any source file.
 user-invocable: false
 ---
 
@@ -53,7 +53,7 @@ change it, and trust it. Optimise for the reader, not the writer.
 - README sections updated in the same change when behaviour visible to a user or an operator
   changes.
 
-## Review questions the readability reviewer asks
+## Review questions the polish pass asks
 
 1. Can I state what each changed file does in one sentence without reading its body?
 2. Are there names I had to look up to understand?

@@ -461,6 +461,36 @@ console.log('plugin structure');
   const conductor = fs.readFileSync(path.join(AG, 'wh-conductor.md'), 'utf8');
   const undispatchable = ecc.filter((f) => !conductor.includes(`workhorse:${f.replace(/\.md$/, '')}`));
   check('the conductor can name every vendored ECC agent', undispatchable.length === 0, undispatchable.join(', '));
+
+  // The two-gates roster (2026-09-19): ten agents merged into three, and none of the retired
+  // names may survive anywhere the runtime reads, or a dispatch would silently fail.
+  const roster = ['wh-designer', 'wh-polish', 'wh-shipper', 'wh-verifier', 'wh-conductor', 'wh-builder', 'wh-fixer',
+    'wh-constraint-auditor', 'wh-eval-designer', 'wh-bug-reviewer', 'wh-conformance-reviewer', 'wh-security-reviewer',
+    'wh-adoption-reviewer', 'wh-retro-learner', 'wh-tracker-sync'];
+  const absent = roster.filter((a) => !agentFiles.includes(`${a}.md`));
+  check('every agent of the two-gates roster exists', absent.length === 0, absent.join(', '));
+  const retired = /wh-(intent-writer|risk-classifier|spec-architect|implementation-planner|readability-reviewer|simplifier|eval-runner|packet-compiler|release-engineer|express-dev)\b/;
+  const stillNamed = [];
+  for (const dir of ['agents', 'skills', 'templates', 'hooks/scripts', 'scripts']) {
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (retired.test(fs.readFileSync(p, 'utf8'))) stillNamed.push(path.relative(PLUGIN, p)); } };
+    walk(path.join(PLUGIN, dir));
+  }
+  check('no runtime file names a retired agent', stillNamed.length === 0, stillNamed.join(', '));
+  const undispatchableWh = roster.filter((a) => a !== 'wh-conductor' && !conductor.includes(`workhorse:${a}`));
+  check('the conductor can name every roster agent', undispatchableWh.length === 0, undispatchableWh.join(', '));
+  const noEffort = agentFiles.filter((f) => f !== 'wh-conductor.md' && !/^effort:\s*(low|medium|high|xhigh|max)$/m.test(front(f)));
+  check('every agent but the conductor sets a reasoning effort', noEffort.length === 0, noEffort.join(', '));
+  const reviewers = agentFiles.filter((f) => /reviewer|silent-failure|test-analyzer/.test(f));
+  const noReportFile = reviewers.filter((f) => !/reviews\//.test(fs.readFileSync(path.join(AG, f), 'utf8')));
+  check('every reviewer writes its report under reviews/', noReportFile.length === 0, noReportFile.join(', '));
+  for (const t of ['brief.md', 'ship.md']) {
+    check(`templates/${t} ends with the "## Your decision" section`, /^## Your decision/m.test(fs.readFileSync(path.join(PLUGIN, 'templates', t), 'utf8')));
+  }
+  check('the retired templates are gone', !fs.existsSync(path.join(PLUGIN, 'templates', 'intent.md')) && !fs.existsSync(path.join(PLUGIN, 'templates', 'review-packet.md')));
+  check('the design skill replaces intent, spec and plan',
+    fs.existsSync(path.join(SK, 'design', 'SKILL.md')) && !fs.existsSync(path.join(SK, 'intent')) && !fs.existsSync(path.join(SK, 'spec')) && !fs.existsSync(path.join(SK, 'plan')));
+  check('the designer writes the brief last', /brief\.md[^\n]*last|last[^\n]*brief\.md/i.test(fs.readFileSync(path.join(AG, 'wh-designer.md'), 'utf8')));
+  check('the conductor dispatches the retro in the background', /wh-retro-learner[\s\S]{0,200}run_in_background: true/.test(conductor));
 }
 
 console.log('changelog');

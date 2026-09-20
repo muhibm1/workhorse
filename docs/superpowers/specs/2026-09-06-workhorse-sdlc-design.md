@@ -53,6 +53,13 @@ as the `wh-security-baseline` skill and are loaded by every reviewer and the spe
 
 ## 4. The lifecycle
 
+> Superseded on 2026-09-19 by [2026-09-19-two-gates-design.md](./2026-09-19-two-gates-design.md),
+> sections 2 and 3. The pipeline is now six phases (design, build, verify, review, deploy, done)
+> with three human touches: Ask, Design (G2, `brief.md`) and Ship (G4, `ship.md`), plus Deploy
+> (G5) at tier 3. The gate ids, the state shape and the risk tiers below still hold; the phase
+> table, the gate-per-phase mapping and the required-gates-by-tier rule in 4.1 do not. Kept as
+> written for the record.
+
 ```
  Discover ─► Intent ─► Spec ─► Plan ─► Build ─► Verify ─► Review ─► Deploy ─► Handover
    G0         G1       G2      G3      (agents)  (agents)    G4        G5     (client)
@@ -178,6 +185,14 @@ rewriting both from the branch point, emptying the active change and turning the
 backwards, which disabled every state-driven hook. Old repositories migrate on first read.
 
 ## 5. Deterministic guardrails
+
+> Partly superseded on 2026-09-19 by [2026-09-19-two-gates-design.md](./2026-09-19-two-gates-design.md),
+> section 4 ("Documents"). The table below predates `artifact-check.js` (0.3.0, replacing the
+> `artifact-size.js` of 0.2.11), which holds every change document to its tier's line limit,
+> counts eval cases, limits reviewer reports under `reviews/`, and refuses a finished `ship.md`
+> that carries a blocker; the gate-guard now protects `brief.md` and `ship.md` rather than
+> `intent.md` and `review-packet.md`. The failure-mode rule (fail open, except gate-guard) and
+> the other eight hooks stand as written.
 
 All hooks are Node scripts with zero dependencies so they run identically on Windows, macOS,
 and Linux. Each reads the hook JSON on stdin and writes a `hookSpecificOutput` decision. A

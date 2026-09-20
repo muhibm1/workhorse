@@ -7,6 +7,44 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.0 — 2026-09-19
+
+Follows 0.2.14 (the verifier's plain-words "What was measured" section). Two gates and a clock,
+from `docs/superpowers/specs/2026-09-19-two-gates-design.md`. (`85cc9cc`)
+
+- Two human gates instead of five. The human touches a change at Ask (nothing to read), Design
+  (G2, `brief.md`) and Ship (G4, `ship.md`); tier 3 adds Deploy (G5, `release.md`), and `assisted`
+  or `shadow` autonomy adds Deploy at every tier. Tier 0 needs G4 only; tiers 1 and 2 need G2 and
+  G4. G1 and G3 keep their ids for state, approvals and Paddock, but no tier requires them and the
+  conductor sets them `auto`.
+- A clock on every run. `WH clock` reads the conductor log and reports agents working, waiting on
+  the human, dead time and gaps against the tier budget (0: 15 minutes, 1: 30, 2: 90, 3: 180;
+  `budgets.agent_minutes` in the profile overrides). The shipper pastes it into `ship.md`; the
+  retro judges the run against it.
+- Known failures. A check that is red on the base branch is recorded once with `WH known-failure
+  add` and cited by later phases with `WH known-failure list`; verification may be green with a
+  known failure cited, never with one that is not recorded.
+- Agents merged. `wh-designer` replaces the intent writer, risk classifier, spec architect and
+  implementation planner; `wh-polish` replaces the readability reviewer and simplifier;
+  `wh-shipper` replaces the packet compiler and release engineer; the verifier absorbs the eval
+  runner; `wh-express-dev` is removed, since tier 0 is now the same pipeline with one gate.
+- Document size limits enforced by `artifact-check.js`, which replaces `artifact-size.js`: line
+  limits by tier for every change document, a cap on eval cases (15/40/80 by tier, counted by
+  id), and reviewer reports written to `reviews/<agent>.md` at 60/80/100 lines.
+- The Ship document is never presented with a blocker. Findings marked high or medium with a
+  concrete fix go to the fixer before `ship.md` exists, and the hook and `WH approve G4` both
+  refuse a Ship document that still carries one.
+- The retro runs in the background after `WH phase done`, the one exception to the conductor's
+  always-wait rule; it commits its own `retro.md`.
+- Phases renamed to design, build, verify, review, deploy, done. The templates `intent.md` and
+  `review-packet.md` are replaced by `brief.md` and `ship.md`.
+- The decision policy: no agent stops a run to ask a question. A question becomes a decision row
+  with a recommendation, the run continues with the recommendation, and the row appears in the
+  next packet; approving a packet accepts every recommendation unless the notes say otherwise.
+- Why: measured from three real changes' logs, the human waited 41, 10 and 17 hours on runs whose
+  agents worked 7 hours, 3 hours 40 minutes and 1 hour 45 minutes, with every webapp approval note
+  reading "none".
+
 ## 0.2.14 — 2026-09-18
 
 Follows 0.2.13 (a version bump with no content change).

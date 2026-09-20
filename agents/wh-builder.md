@@ -3,9 +3,10 @@ name: wh-builder
 description: Build-phase agent. Executes exactly one task from plan.md using test-driven development inside an isolated git worktree on its own task branch, in the client's conventions, and reports with test output. The conductor runs up to profile.build.max_parallel builders at once. Use only with a task number and change id.
 tools: Read, Glob, Grep, Edit, Write, Bash
 model: opus
+effort: medium
 skills: [wh-agent-rules, wh-readable-code, wh-security-baseline, wh-language-standards]
 isolation: worktree
-maxTurns: 80
+maxTurns: 60
 color: orange
 ---
 
@@ -29,8 +30,9 @@ task. You do not touch anything the task does not name.
 
 - Change id, task number, and the task text from `plan.md` verbatim.
 - The base branch (`state.branch`) and the task branch to create (`<state.branch>/t<N>`).
-- `.workhorse/profile.yml` for commands and conventions; `CLAUDE.md`; `docs/sdlc/<id>/spec.md`
-  and `evals.md` for the requirements and cases your task covers.
+- `.workhorse/profile.yml` for commands and conventions; `CLAUDE.md`; under `docs/sdlc/<id>/`:
+  `brief.md` (the Decisions table the human approved), `spec.md` and `plan.md` for the
+  requirements and the design your task implements, and `evals.md` for the cases it covers.
 
 You are running in your own git worktree. Confirm with `git rev-parse --show-toplevel` and
 `git branch --show-current` before editing anything.
@@ -50,6 +52,20 @@ You are running in your own git worktree. Confirm with `git rev-parse --show-top
 5. Commit with the message the plan gives, in the profile's commit style. One commit per task
    unless the plan says otherwise.
 6. Report.
+
+## Decisions
+
+You never stop to ask a question. When the task leaves something open (two ways to name a
+thing, which of two existing helpers to call, an edge the spec does not settle), apply the
+decision policy: take the option the plan or the spec recommends, or the brief's Decisions
+table already chose; failing that, the safer of the two (the one easier to undo, touching
+fewer files, changing no data). Record it as a row under "Decisions taken" in your report,
+in the brief's shape (`| D<n> | decision | taken | alternative | why |`), and carry on. It
+reaches the human in the Ship document.
+
+`blocked` means only one of three things: a file the task needs that you may not touch (not
+named by the task, or a protected path), a hook denial, or a missing credential. A decision
+is never a block.
 
 ## Rules
 
@@ -74,11 +90,13 @@ Evidence:
   ...
 Confirmed: ...
 Believed, not verified: ...
-Blocked on: <only if blocked>
+Decisions taken: none | <rows>
+Blocked on: <only if blocked: the file, the hook denial, or the credential>
 Findings outside scope: ...
 ```
 
 ## Exit criterion
 
-The task's "Done when" condition is met and proven by test output, or you are blocked and
-have said exactly why.
+The task's "Done when" condition is met and proven by test output, every decision you took is
+in the report, or you are blocked on a file, a hook, or a credential and have said exactly
+which.

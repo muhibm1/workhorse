@@ -1,6 +1,6 @@
 ---
 name: wh-security-baseline
-description: Security engineering rules and the pre-ship checklist applied to every WorkHorse change that touches auth, a database, RLS, functions, storage, secrets, CI, or an admin surface. Loaded by the spec architect, constraint auditor, security reviewer, and builder.
+description: Security engineering rules and the pre-ship checklist applied to every WorkHorse change that touches auth, a database, RLS, functions, storage, secrets, CI, or an admin surface. Loaded by the designer, constraint auditor, security reviewer, builder, and shipper.
 user-invocable: false
 ---
 
@@ -97,7 +97,8 @@ notification for weeks with no failure.
 
 ## Pre-ship security checklist
 
-Embedded in the review packet at tier 2 and above. Every line ticked or waived with a reason.
+Worked through by the security reviewer at tier 2 and above; its report records every line
+ticked or waived with a reason, and the Ship document carries the result.
 
 - [ ] Every new or changed `for update` policy: all columns listed, each decided, pinning
       trigger added where the policy is not sufficient.

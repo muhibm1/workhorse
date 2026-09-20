@@ -1,6 +1,6 @@
 ---
 name: wh-language-standards
-description: Tells code-writing WorkHorse agents which vendored ECC language rules to read for this client's stack before writing or reviewing code. Preloaded by the builder, express dev, fixer, readability reviewer, and simplifier.
+description: Tells code-writing WorkHorse agents which vendored ECC language rules to read for this client's stack before writing or reviewing code. Preloaded by the builder, polish, and fixer.
 user-invocable: false
 ---
 

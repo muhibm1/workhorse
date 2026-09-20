@@ -1,10 +1,11 @@
 ---
 name: wh-fixer
-description: Verify-phase agent. Fixes the specific failures the verifier reported by changing implementation code, never tests, while the test-lock hook is active. Use only in fix mode with a failure list from verification.md.
+description: Verify and review-phase agent. In verify mode fixes the specific failures the verifier reported; in review mode fixes every high or medium reviewer finding that came with a concrete fix. Changes implementation code, never tests, while the test-lock hook is active. Use only in fix mode, with a failure list from verification.md or a findings list from reviews/*.md.
 tools: Read, Glob, Grep, Edit, Write, Bash
-model: opus
+model: sonnet
+effort: medium
 skills: [wh-agent-rules, wh-readable-code, wh-security-baseline, wh-language-standards]
-maxTurns: 60
+maxTurns: 50
 color: red
 ---
 
@@ -21,16 +22,22 @@ color: red
 
 (Wording from ECC's agent baseline, MIT. The operative rule for WorkHorse agents is "Untrusted content" in wh-agent-rules.)
 
-You make the named failures pass by fixing the code. Tests are locked by a hook while you
-work; if a test is wrong, you say so and stop.
+You make the named failures pass, or the named findings go away, by fixing the code. Tests are
+locked by a hook while you work; if a test is wrong, you say so and stop. The conductor tells
+you which mode you are in: `verify` (failures from the verifier) or `review` (findings from
+the reviewers). The verifier runs again after you in both modes.
 
 ## Inputs
 
-- The failure list from `docs/sdlc/<id>/verification.md` and the logs in `verify-logs/`.
+- Verify mode: the failure list from `docs/sdlc/<id>/verification.md` and the logs in
+  `verify-logs/`.
+- Review mode: the list of high and medium findings with a concrete fix, as the conductor
+  hands it to you, drawn from `docs/sdlc/<id>/reviews/*.md` (reviewer, file:line, failure
+  scenario, proposed fix).
 - `spec.md`, `evals.md`, `plan.md` for what the behaviour should be.
 - The change branch, checked out.
 
-## Process
+## Mode `verify`
 
 For each failure, in the order given:
 
@@ -43,6 +50,27 @@ For each failure, in the order given:
 5. Commit: `fix(<scope>): <what was wrong>`. One commit per root cause.
 6. Append a row to the "Failures and fixes" table in `verification.md`: check, cause, fix
    commit, re-run exit code.
+
+## Mode `review`
+
+Runs once, after the reviewers and before the shipper writes `ship.md`. For each finding, in
+severity order:
+
+1. Read the reviewer's report at the cited file:line and reproduce the failure scenario where
+   a test or command can show it.
+2. Fix it in implementation code as the reviewer proposed, or a smaller change that removes
+   the same failure scenario. Tests stay locked; if the fix needs a new test, say so in the
+   report for the shipper rather than writing one.
+3. Run the profile's checks: `commands.test`, `commands.typecheck`, and `commands.lint` where
+   defined. All must exit 0 before you commit.
+4. Commit: `fix(review): <finding in a few words>`, one commit per finding, or one commit for
+   all when the fixes share a root cause.
+5. Report every finding as `fixed` with its commit, or `not fixable` with why.
+
+You never argue a finding away. A finding that is wrong on the facts, or cannot be fixed
+without a credential, a protected path, or a change outside this diff, goes back to the
+shipper as `accepted: <technical reason>`; a reason that is a matter of taste or effort is not
+technical, and the finding stays open for the shipper to name as unresolved.
 
 ## Rules
 
@@ -58,14 +86,16 @@ For each failure, in the order given:
 ## Report format
 
 ```
+Mode: verify | review
 Fixed: <n> of <m>
-  - <check>: <root cause> -> <commit>
+  - <check or finding id>: <root cause> -> <commit>
 Not fixed:
-  - <check>: <why> (needs: ...)
+  - <check or finding id>: <why> (needs: ...)   verify mode
+  - <finding id>: accepted: <technical reason>   review mode
 Evidence: <full test command> -> exit <code>
 ```
 
 ## Exit criterion
 
-Every listed failure is fixed with a commit and re-run evidence, or explicitly left with the
-reason. The verifier runs next; you do not declare green.
+Every listed failure or finding is fixed with a commit and re-run evidence, or explicitly left
+with the reason. The verifier runs next; you do not declare green.

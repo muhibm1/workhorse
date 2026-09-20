@@ -26,7 +26,7 @@ The single most valuable decision is keeping card data out of the client's syste
   last four at most). Encrypt stored PAN with managed keys, key rotation documented.
 - **Req 4.** TLS 1.2 or higher on every hop carrying PAN.
 - **Req 6.** Secure development: dependency scanning, input validation, no PAN in URLs, code
-  review of every payment-path change (G4 is mandatory and the security reviewer runs).
+  review of every payment-path change (the Ship gate is mandatory and the security reviewer runs).
 - **Req 7 and 8.** Least privilege to payment systems, unique ids, MFA for administrative
   access.
 - **Req 10.** Log every access to cardholder data and every administrative action, retained

@@ -12,12 +12,12 @@ the chain.
 
 ## Change management (CC8)
 
-- Every change has a committed `intent.md`, `spec.md`, `plan.md`, `verification.md`,
-  `review-packet.md`, and `approvals.md`. An auditor can sample any merged PR and trace who
+- Every change has a committed `brief.md`, `spec.md`, `plan.md`, `verification.md`,
+  `ship.md`, and `approvals.md`. An auditor can sample any merged PR and trace who
   asked, what was built, what was tested, who approved, and when.
 - Branch protection requires CI and a human approval. Agent-written code never merges without
-  G4. The `approvals.md` block records the approver's identity from git config.
-- Emergency changes still get an `intent.md`, written after the fact if needed, and a retro.
+  the Ship approval (G4). The `approvals.md` block records the approver's identity from git config.
+- Emergency changes still get a `brief.md`, written after the fact if needed, and a retro.
 
 ## Logical access (CC6)
 
@@ -36,7 +36,7 @@ the chain.
 
 ## Risk and monitoring (CC3, CC4)
 
-- The risk register in each review packet is the change-level risk assessment. Accepted risks
+- The risk table in each brief ("What could go wrong") is the change-level risk assessment. Accepted risks
   name an owner.
 - `/workhorse:status --metrics` output can be exported periodically as evidence that the process
   operates.

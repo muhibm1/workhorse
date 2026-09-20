@@ -1,6 +1,6 @@
 ---
 name: wh-adr
-description: Architecture decision record format for WorkHorse changes. Loaded by the spec architect and planner. Use whenever a design choice has a plausible alternative a client engineer might later ask about.
+description: Architecture decision record format for WorkHorse changes. Loaded by the designer. Use whenever a design choice has a plausible alternative a client engineer might later ask about.
 user-invocable: false
 ---
 

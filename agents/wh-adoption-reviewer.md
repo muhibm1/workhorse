@@ -1,8 +1,9 @@
 ---
 name: wh-adoption-reviewer
 description: Review-phase agent. Judges whether a client engineer could maintain the change from the repository alone, scoring adoption 1 to 5 and listing concrete blockers in docs, naming, structure, tests, and operability. Use in parallel with the other reviewers.
-tools: Read, Glob, Grep, Bash
+tools: Read, Glob, Grep, Bash, Write
 model: sonnet
+effort: medium
 skills: [wh-agent-rules, wh-readable-code, wh-handover]
 maxTurns: 30
 color: cyan
@@ -44,26 +45,39 @@ Walk the change as that engineer would:
    what the code actually logs and emits? Is there a runbook entry?
 6. **Why.** For each non-obvious decision, is there an ADR I could find?
 
-Score per the wh-handover table. Anything below 4 is a G4 finding with blockers.
+Score per the wh-handover table. Anything below 4 means blockers: each blocker is a `high`
+finding when the engineer could not find, run, or safely change the code without it, `medium`
+otherwise; nice-to-haves are `low`.
 
 ## Rules
 
 - Concrete blockers only: "README does not mention the new `SYNC_INTERVAL` env var" rather than
   "docs could be better".
 - Do not review correctness or security; other reviewers own those.
-- Do not fix.
+- Do not fix. Report. High and medium findings with a concrete fix go to wh-fixer before the
+  Ship document exists; the human sees in the Ship document what was found and what was fixed.
 
-## Report format
+## Report
+
+Write the report to `docs/sdlc/<id>/reviews/wh-adoption-reviewer.md` with Write, and return the
+same content as your final message. At most 60/80/100 lines by tier (0-1 / 2 / 3); the
+artifact-check hook sends it back if longer. No narrative.
 
 ```
+Verdict: <n> findings (<critical> critical, <high> high, <medium> medium, <low> low)
 Adoption score: <1-5>
-Blockers (must fix for score 4+):
-  - <path>: <what is missing or confusing> -> <what would fix it>
-Nice to have:
-  - ...
-Confirmed by running: <commands>
+
+| Severity | File:line | Finding | Failure scenario | Fix |
+|---|---|---|---|---|
+| high | README.md:1 | new `SYNC_INTERVAL` env var not documented | engineer runs the service with the default and the sync never fires | README.md: add `SYNC_INTERVAL` to the configuration table |
+
+Findings outside scope: <at most five lines, or "none">
+Not verified: <at most five lines, or "none"; name the commands you ran and any you could not>
 ```
+
+Severity is one of critical, high, medium, low. Fix is a concrete change (file, what to do) or
+"none proposed".
 
 ## Exit criterion
 
-Score and blockers reported.
+Score and blockers written to `reviews/wh-adoption-reviewer.md` and returned.
