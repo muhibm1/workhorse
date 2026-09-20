@@ -187,6 +187,65 @@
   width: 100%;
 }
 
+/* ---------------------------------------------------------------------- Clock (two-gates design 4) */
+
+.run-clock {
+  width: 100%;
+  max-width: 640px;
+}
+
+.run-clock-empty {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 0.82rem;
+}
+
+.run-clock-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px 20px;
+  margin: 0;
+}
+
+.run-clock-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.run-clock-row dd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.run-clock-waiting dd {
+  color: var(--amber);
+}
+
+/* The budget bar: agent minutes over the tier budget, clamped at full; coral once over. */
+.run-clock-bar {
+  height: 3px;
+  width: 100%;
+  border-radius: 999px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+
+.run-clock-bar-fill {
+  height: 100%;
+  background: var(--cyan);
+  transition: width 300ms ease-out;
+}
+
+.run-clock-bar-over .run-clock-bar-fill {
+  background: var(--coral);
+}
+
 /* ---------------------------------------------------------------------- Satellite chips */
 
 .satellite {

@@ -19,6 +19,7 @@ import type { Watcher } from './watcher';
 import type { RunDriver, RunHandle } from './drivers';
 import type { WhResult } from './wh';
 import type { Studbook } from './studbook';
+import { isGate } from '@shared/gates';
 import { looksLikeConninfo } from './studbook/conninfo';
 import { repoKeyFor } from './studbook/parser';
 import { createAutoResume, createGateNotifier, createStallTimer, postNotification } from './autopilot';
@@ -334,6 +335,20 @@ export function registerIpc(deps: IpcDeps): void {
     const repo = requireRepo(registry, repoId);
     const result = await deps.runWh(pluginPath, repo.path, ['approve', gate, '--reject', notes]);
     return parseApproveResult(result);
+  });
+
+  // The Gate screen reports when a pending packet is first opened; `WH clock` measures the
+  // human's time from that stamp to the approval (two-gates design, section 5). Best effort by
+  // design: a failure here is logged and the screen still renders, since the packet is what the
+  // person came for. The gate id is the only renderer-supplied text that reaches the state key,
+  // so it is checked against the known ids rather than interpolated as given.
+  ipcMain.handle(IPC.gateOpened, async (_e, repoId: string, gate: unknown) => {
+    if (!isGate(gate)) throw new Error(`unknown gate: ${String(gate)}`);
+    const repo = requireRepo(registry, repoId);
+    const result = await deps.runWh(pluginPath, repo.path, ['state', 'set', `gate_opened.${gate}`, new Date().toISOString()]);
+    if (result.code !== 0) {
+      console.warn(`paddock: could not record gate_opened.${gate} for ${repo.name}: ${result.stderr.trim() || `wh.js exited with code ${result.code}`}`);
+    }
   });
 
   // -- settings ----------------------------------------------------------

@@ -36,8 +36,13 @@ export interface OrbSpecInput {
   done: boolean;
 }
 
-/** Phase rows of the spec 3.1 table. `done` is handled by the `done` flag, not by this map. */
+/**
+ * Phase rows of the spec 3.1 table. `done` is handled by the `done` flag, not by this map.
+ * Plugin 0.3 folded intent, spec and plan into one `design` phase; it takes the spec row's
+ * state, and the three legacy rows stay so an older change's digest still gets a phase orb.
+ */
 const PHASE_ORB: Partial<Record<Phase, { state: OrbState; speed: number }>> = {
+  design: { state: 'weaving', speed: 1 },
   intent: { state: 'composing', speed: 1 },
   spec: { state: 'weaving', speed: 1 },
   plan: { state: 'shaping', speed: 1 },

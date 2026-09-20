@@ -33,6 +33,25 @@ describe('parseDecisions', () => {
   it('returns nothing for a packet with no decisions section', () => {
     expect(parseDecisions('# Intent\n\n## Problem\n\nx\n')).toEqual([]);
   });
+
+  it('accepts the brief and Ship document heading "## Decisions", as wh.js decisionItems does', () => {
+    const brief = [
+      '# Brief', '', '## Decisions', '',
+      '| # | Decision | Recommendation | Alternative | Why |',
+      '|---|----------|----------------|-------------|-----|',
+      '| D1 | Pin Node to 22 | Accept | Leave floating | CI drift |',
+      '', '## Your decision', '', 'Approve or reject.', '',
+    ].join('\n');
+    expect(parseDecisions(brief)).toEqual([
+      { id: 'D1', decision: 'Pin Node to 22', recommendation: 'Accept', alternative: 'Leave floating' },
+    ]);
+    expect(parseDecisions(brief.replace('## Decisions', '### 3. Decisions requested'))).toHaveLength(1);
+  });
+
+  it('does not mistake a heading that merely mentions decisions for the table', () => {
+    const md = '## Decisions we already made\n\n| D1 | x | y | z |\n';
+    expect(parseDecisions(md)).toEqual([]);
+  });
 });
 
 describe('decisionsComplete / composeApprovalNotes', () => {

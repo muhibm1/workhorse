@@ -114,19 +114,35 @@ describe('applyEvent (pure reducer)', () => {
   });
 });
 
+/** A plugin 0.3.0 digest: gate names, ship blockers and the clock alongside the older fields. */
 function digest(change_id: string, updated_at: string): ChangeDigest {
   return {
     change_id, title: change_id, client: 'c', repo: 'r',
     tier: 1, tier_reason: '', phase: 'build', mode: 'normal',
     status_label: '', waiting_on: '', blocking_gate: null,
-    gates: { G1: 'approved', G2: 'approved', G3: 'approved', G4: 'pending', G5: 'pending' },
-    required_human_gates: [], verification: 'none',
+    gates: { G1: 'auto', G2: 'approved', G3: 'auto', G4: 'pending', G5: 'pending' },
+    gate_names: { G1: 'Intent', G2: 'Design', G3: 'Plan', G4: 'Ship', G5: 'Deploy' },
+    required_human_gates: ['G2', 'G4'], verification: 'none',
+    ship_blockers: [],
+    clock: {
+      agent_minutes: 12, waiting_minutes: 3, dead_minutes: 0, gap_minutes: 0, wall_minutes: 15,
+      human_minutes: null, budget_minutes: 30, within_budget: true, tier: 1, done: false,
+      phases: [{ phase: 'design', agent_minutes: 12 }], gaps: [], events: 4,
+      started_at: '2026-01-01T00:00:00.000Z', ended_at: '2026-01-01T00:15:00.000Z',
+    },
     branch: '', pr_url: '', commit: '',
     problem: '', outcome: '', tldr: '', decisions: [],
     last_approval: null, artifacts: [], artifact_dir: '',
     tracker: { provider: '', database: '', page_id: null },
     updated_at,
   };
+}
+
+/** What a plugin before 0.3.0 printed: no gate_names, ship_blockers or clock, and a phase the
+ *  new pipeline no longer has. Paddock must still hold it. */
+function legacyDigest(change_id: string, updated_at: string): ChangeDigest {
+  const { gate_names: _names, ship_blockers: _blockers, clock: _clock, ...rest } = digest(change_id, updated_at);
+  return { ...rest, phase: 'spec' };
 }
 
 describe('applyDigest / activeDigest', () => {
@@ -142,6 +158,17 @@ describe('applyDigest / activeDigest', () => {
     usePaddockStore.getState().applyDigest('repo1', [oldest, newest, middle]);
 
     expect(usePaddockStore.getState().digests.repo1.map((d) => d.change_id)).toEqual(['c3', 'c2', 'c1']);
+  });
+
+  it('holds a digest from an older plugin, with no clock or gate names and a legacy phase', () => {
+    const old = legacyDigest('c-old', '2026-01-01T00:00:00.000Z');
+    expect(old.clock).toBeUndefined();
+    expect(old.gate_names).toBeUndefined();
+    usePaddockStore.getState().applyDigest('repo1', [old, digest('c-new', '2026-01-02T00:00:00.000Z')]);
+    const held = usePaddockStore.getState().digests.repo1;
+    expect(held.map((d) => d.change_id)).toEqual(['c-new', 'c-old']);
+    expect(held[1].phase).toBe('spec');
+    expect(held[0].clock?.budget_minutes).toBe(30);
   });
 
   it('activeDigest returns the newest by updated_at, and null when none has arrived', () => {

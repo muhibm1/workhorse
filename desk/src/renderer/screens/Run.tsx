@@ -1,9 +1,9 @@
 /**
  * The Run screen (spec 2.2): the centrepiece of Paddock, for one repository. Merges the file
- * watcher's digest (phase, gates, waiting_on -- from `wh.js digest`) with the live event stream
- * (agents, tools, cost -- from the run driver) into one picture: the orb, the fourteen-station
- * ring around it, agent satellites, the primary action, the radial menu, the log rail and the
- * bottom status strip.
+ * watcher's digest (phase, gates, waiting_on, clock -- from `wh.js digest`) with the live event
+ * stream (agents, tools, cost -- from the run driver) into one picture: the orb, the ten-station
+ * ring around it, agent satellites, the primary action, the clock against the tier budget, the
+ * radial menu, the log rail and the bottom status strip.
  *
  * Global Constraints: "No Date.now() in the renderer for elapsed times; `at` timestamps come
  * from main." Every elapsed value shown here (`Elapsed` in the status strip, a satellite's
@@ -25,7 +25,9 @@ import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { ArrowRight, ChevronLeft } from '@/components/Icons';
 import { polar, STATIONS, stationAngle, phaseIndex, type Station as StationSlot } from '@/lib/polar';
-import type { ChangeDigest, Gate } from '@shared/types';
+import { budgetFraction, clockRows, overBudget } from '@/lib/clock';
+import type { ChangeDigest, Clock, Gate } from '@shared/types';
+import { gateLabel } from '@shared/gates';
 import './Run.css';
 
 export interface RunProps {
@@ -102,6 +104,56 @@ function formatCost(usd: number): string {
 
 function verificationTone(v: ChangeDigest['verification']): 'mint' | 'coral' | 'neutral' {
   return v === 'green' ? 'mint' : v === 'red' ? 'coral' : 'neutral';
+}
+
+/** "You · Ship (G4)" while a gate waits on the person; otherwise what the digest says. */
+function waitingLabel(digest: ChangeDigest): string {
+  return digest.blocking_gate ? `You · ${gateLabel(digest, digest.blocking_gate)}` : digest.waiting_on;
+}
+
+/**
+ * The clock (two-gates design, section 4): agent minutes against the tier's budget as a thin
+ * bar that turns coral when over, then waiting, dead and (once measured) the person's own time.
+ * A digest from a plugin before 0.3.0 has no clock, and a change with no log rows yet has one
+ * with no events; both render as a single quiet line rather than zeros.
+ */
+function ClockBlock({ clock }: { clock: Clock | undefined }) {
+  const rows = clockRows(clock);
+  if (!clock || clock.events === 0) {
+    return (
+      <Panel title="Clock" className="run-clock">
+        <p className="run-clock-empty">{clock ? 'No events yet.' : 'Not measured by this plugin.'}</p>
+      </Panel>
+    );
+  }
+  const over = overBudget(clock);
+  return (
+    <Panel title="Clock" className="run-clock">
+      <dl className="run-clock-rows">
+        {rows.map((row) => (
+          <div className={`run-clock-row run-clock-${row.key}`} key={row.key}>
+            <dt className="label">{row.label}</dt>
+            <dd className="mono tnum">
+              {row.value}
+              {row.key === 'agents' && over && <Badge tone="coral">over budget</Badge>}
+            </dd>
+            {row.key === 'agents' && (
+              <div
+                className={`run-clock-bar${over ? ' run-clock-bar-over' : ''}`}
+                role="meter"
+                aria-label="Agent minutes against the tier budget"
+                aria-valuemin={0}
+                aria-valuemax={clock.budget_minutes}
+                aria-valuenow={clock.agent_minutes}
+              >
+                <div className="run-clock-bar-fill" style={{ width: `${budgetFraction(clock) * 100}%` }} />
+              </div>
+            )}
+          </div>
+        ))}
+      </dl>
+    </Panel>
+  );
 }
 
 export function Run({ repoId }: RunProps) {
@@ -234,7 +286,7 @@ export function Run({ repoId }: RunProps) {
                 <div className="run-change-badges">
                   <Badge tone="cyan">{digest.phase}</Badge>
                   <Badge tone="neutral">{`Tier ${digest.tier}`}</Badge>
-                  <Badge tone={blockingGate ? 'amber' : 'neutral'}>{digest.waiting_on}</Badge>
+                  <Badge tone={blockingGate ? 'amber' : 'neutral'}>{waitingLabel(digest)}</Badge>
                   <Badge tone={verificationTone(digest.verification)}>{digest.verification}</Badge>
                 </div>
                 <dl className="run-change-fields">
@@ -265,7 +317,7 @@ export function Run({ repoId }: RunProps) {
               const onClick = gate && lit ? () => go({ name: 'gate', repoId, gate }) : undefined;
               const title =
                 station.kind === 'gate'
-                  ? `${station.label} — ${digest ? digest.gates[gate as Gate] : 'pending'}`
+                  ? `${gateLabel(digest, gate as Gate)} — ${digest ? digest.gates[gate as Gate] : 'pending'}`
                   : station.label;
               return (
                 <Station
@@ -352,9 +404,9 @@ export function Run({ repoId }: RunProps) {
                       <dt>Tier</dt>
                       <dd>{`${digest.tier} — ${digest.tier_reason}`}</dd>
                       <dt>Waiting on</dt>
-                      <dd>{digest.waiting_on}</dd>
+                      <dd>{waitingLabel(digest)}</dd>
                       <dt>Blocking gate</dt>
-                      <dd>{digest.blocking_gate ?? 'none'}</dd>
+                      <dd>{digest.blocking_gate ? gateLabel(digest, digest.blocking_gate) : 'none'}</dd>
                       <dt>Verification</dt>
                       <dd>{digest.verification}</dd>
                       <dt>Status</dt>
@@ -386,7 +438,7 @@ export function Run({ repoId }: RunProps) {
               // there (Task 13).
               <div className="run-gate-actions">
                 <Button tone="amber" onClick={() => go({ name: 'gate', repoId, gate: blockingGate })}>
-                  {`Approve ${blockingGate}`}
+                  {`Approve ${gateLabel(digest, blockingGate)}`}
                 </Button>
                 <Button tone="danger" onClick={() => go({ name: 'gate', repoId, gate: blockingGate })}>
                   Reject
@@ -435,6 +487,8 @@ export function Run({ repoId }: RunProps) {
               </Button>
             )}
           </div>
+
+          {digest && <ClockBlock clock={digest.clock} />}
         </section>
 
         <div className="run-right" ref={logWrapRef} tabIndex={-1}>

@@ -33,18 +33,20 @@ describe('polar', () => {
   });
 });
 
-describe('station ring', () => {
-  it('has 14 slots in the spec 2.2 order', () => {
-    expect(STATIONS).toHaveLength(14);
+describe('station ring (two-gates design, section 5)', () => {
+  it('has 10 slots: six phases, three named gates, Onboard first', () => {
+    expect(STATIONS).toHaveLength(10);
     expect(STATIONS.map((s) => s.label)).toEqual([
-      '00 Onboard', '01 Intent', 'G1', '02 Spec', 'G2', '03 Plan', 'G3',
-      '04 Build', '05 Verify', '06 Review', 'G4', '07 Deploy', 'G5', '08 Retro',
+      '00 Onboard', '01 Design', 'Design', '02 Build', '03 Verify', '04 Review', 'Ship', '05 Deploy', 'Deploy', '06 Retro',
     ]);
   });
-  it('places G1..G5 at indices 2, 4, 6, 10, 12', () => {
+  it('places the Design, Ship and Deploy gates at indices 2, 6, 8 with their ids', () => {
     const gates = STATIONS.map((s, i) => (s.kind === 'gate' ? i : -1)).filter((i) => i >= 0);
-    expect(gates).toEqual([2, 4, 6, 10, 12]);
-    expect(gates.map((i) => STATIONS[i].gate)).toEqual(['G1', 'G2', 'G3', 'G4', 'G5']);
+    expect(gates).toEqual([2, 6, 8]);
+    expect(gates.map((i) => STATIONS[i].gate)).toEqual(['G2', 'G4', 'G5']);
+  });
+  it('has no slot for G1 or G3, which no tier requires', () => {
+    expect(STATIONS.some((s) => s.gate === 'G1' || s.gate === 'G3')).toBe(false);
   });
   it('gives every gate slot a gate and every phase slot except Onboard a phase', () => {
     for (const s of STATIONS) {
@@ -52,25 +54,31 @@ describe('station ring', () => {
       else { expect(s.gate).toBeUndefined(); }
     }
     expect(STATIONS[0].phase).toBeUndefined();
-    expect(STATIONS[13].phase).toBe('done');
+    expect(STATIONS.slice(1).filter((s) => s.kind === 'phase').map((s) => s.phase)).toEqual(PHASE_ORDER);
+    expect(STATIONS[9].phase).toBe('done');
   });
   it('has unique keys', () => {
-    expect(new Set(STATIONS.map((s) => s.key)).size).toBe(14);
+    expect(new Set(STATIONS.map((s) => s.key)).size).toBe(10);
   });
-  it('stationAngle(7) is 180 (Build sits at the bottom)', () => {
-    expect(stationAngle(7)).toBe(180);
-    expect(STATIONS[7].label).toBe('04 Build');
-  });
-  it('spaces the 14 slots evenly from the top', () => {
+  it('spaces the 10 slots evenly from the top, 36 degrees apart', () => {
     expect(stationAngle(0)).toBe(0);
-    expect(Math.abs(stationAngle(1) - 360 / 14)).toBeLessThan(EPS);
-    expect(Math.abs(stationAngle(14) - 360)).toBeLessThan(EPS);
+    expect(Math.abs(stationAngle(1) - 36)).toBeLessThan(EPS);
+    expect(stationAngle(5)).toBe(180);
+    expect(STATIONS[5].label).toBe('04 Review');
+    expect(Math.abs(stationAngle(10) - 360)).toBeLessThan(EPS);
   });
-  it('orders phases intent..done and indexes them', () => {
-    expect(PHASE_ORDER).toEqual(['intent', 'spec', 'plan', 'build', 'verify', 'review', 'deploy', 'done']);
-    expect(phaseIndex('intent')).toBe(0);
-    expect(phaseIndex('done')).toBe(7);
+  it('orders phases design..done and indexes them', () => {
+    expect(PHASE_ORDER).toEqual(['design', 'build', 'verify', 'review', 'deploy', 'done']);
+    expect(phaseIndex('design')).toBe(0);
+    expect(phaseIndex('build')).toBe(1);
+    expect(phaseIndex('done')).toBe(5);
     expect(phaseIndex(null)).toBe(-1);
+    expect(phaseIndex(undefined)).toBe(-1);
+  });
+  it('reads the legacy intent, spec and plan phases as design, so an older change still lights the ring', () => {
+    expect(phaseIndex('intent')).toBe(phaseIndex('design'));
+    expect(phaseIndex('spec')).toBe(phaseIndex('design'));
+    expect(phaseIndex('plan')).toBe(phaseIndex('design'));
   });
 });
 

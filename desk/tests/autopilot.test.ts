@@ -155,7 +155,7 @@ describe('createStallTimer', () => {
 function digest(overrides: Partial<ChangeDigest>): ChangeDigest {
   return {
     change_id: 'c1', title: 'Add /health', client: 'acme', repo: 'svc', tier: 1,
-    tier_reason: '', phase: 'spec', mode: 'normal', status_label: 'Spec',
+    tier_reason: '', phase: 'design', mode: 'normal', status_label: 'Design',
     waiting_on: 'You (G2)', blocking_gate: 'G2',
     gates: { G1: 'auto', G2: 'pending', G3: 'pending', G4: 'pending', G5: 'pending' },
     required_human_gates: ['G2', 'G4'], verification: 'none', branch: 'wh/c1', pr_url: '',
@@ -179,7 +179,7 @@ describe('createGateNotifier', () => {
     notifier.onDigests('r1', 'svc', [digest({ blocking_gate: null })]); // approved, moving on
     notifier.onDigests('r1', 'svc', [digest({ blocking_gate: 'G4', phase: 'review' })]);
     expect(post).toHaveBeenCalledTimes(1);
-    expect(post.mock.calls[0][1].title).toBe('WorkHorse: G4 waiting on you');
+    expect(post.mock.calls[0][1].title).toBe('WorkHorse: Ship waiting on you');
 
     notifier.onDigests('r1', 'svc', [digest({ blocking_gate: 'G4', phase: 'review' })]); // same gate again
     expect(post).toHaveBeenCalledTimes(1);
@@ -202,10 +202,21 @@ describe('createGateNotifier', () => {
 });
 
 describe('buildGateNotification / postNotification', () => {
-  it('carries repo, title, tier, phase and the approve command', () => {
+  it('names the gate in the title and keeps the id in the body, with repo, title, tier, phase and the approve command', () => {
     const n = buildGateNotification('svc', digest({ blocking_gate: 'G4', phase: 'review' }));
-    expect(n.title).toBe('WorkHorse: G4 waiting on you');
+    expect(n.title).toBe('WorkHorse: Ship waiting on you');
     expect(n.body).toBe('svc: Add /health\nTier 1, phase review. Approve in Paddock or run /workhorse:approve G4.');
+  });
+
+  it("uses the digest's own gate_names when the plugin sends them, and the fallback table when it does not", () => {
+    const named = digest({
+      blocking_gate: 'G2',
+      gate_names: { G1: 'Intent', G2: 'Blueprint', G3: 'Plan', G4: 'Ship', G5: 'Deploy' },
+    });
+    expect(buildGateNotification('svc', named).title).toBe('WorkHorse: Blueprint waiting on you');
+    expect(buildGateNotification('svc', digest({ blocking_gate: 'G2' })).title).toBe('WorkHorse: Design waiting on you');
+    expect(buildGateNotification('svc', digest({ blocking_gate: 'G5' })).title).toBe('WorkHorse: Deploy waiting on you');
+    expect(buildGateNotification('svc', digest({ blocking_gate: null })).title).toBe('WorkHorse: ? waiting on you');
   });
 
   it('POSTs the ntfy shape and never throws', async () => {

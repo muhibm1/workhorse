@@ -142,13 +142,13 @@ describe('registerIpc', () => {
     it('reads a file under docs/sdlc/<change>/<file>', async () => {
       const changeDir = join(dir, 'docs', 'sdlc', 'change-1');
       mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'intent.md'), '# intent');
+      writeFileSync(join(changeDir, 'brief.md'), '# brief');
 
       const repos: RepoRef[] = [{ id: 'repo-1', path: dir, name: 'r', addedAt: new Date(0).toISOString() }];
       const { invoke } = makeDeps({ registry: createFakeRegistry(repos) });
 
-      const content = await invoke(IPC.artifactRead, 'repo-1', 'docs/sdlc/change-1/intent.md');
-      expect(content).toBe('# intent');
+      const content = await invoke(IPC.artifactRead, 'repo-1', 'docs/sdlc/change-1/brief.md');
+      expect(content).toBe('# brief');
     });
 
     it('reads a nested artifact path', async () => {
@@ -405,6 +405,53 @@ describe('registerIpc', () => {
       const runWh = vi.fn(async (): Promise<WhResult> => ({ code: 1, stdout: '', stderr: 'gate not ready' }));
       const { invoke } = makeDeps({ runWh });
       await expect(invoke(IPC.gateApprove, 'repo-1', 'G3', 'notes')).rejects.toThrow('gate not ready');
+    });
+  });
+
+  describe('gate:opened (the clock\'s "your time" stamp, two-gates design section 5)', () => {
+    it('records gate_opened.<G> as an ISO timestamp through wh.js state set, in the repo cwd', async () => {
+      const runWh = vi.fn(async (): Promise<WhResult> => ({ code: 0, stdout: '{}', stderr: '' }));
+      const { invoke } = makeDeps({ runWh });
+      const before = Date.now();
+      await invoke(IPC.gateOpened, 'repo-1', 'G4');
+      expect(runWh).toHaveBeenCalledTimes(1);
+      const [pluginPath, repoPath, args] = runWh.mock.calls[0] as unknown as [string, string, string[]];
+      expect(pluginPath).toBe('/plugin');
+      expect(repoPath).toBe('/repos/one');
+      expect(args.slice(0, 3)).toEqual(['state', 'set', 'gate_opened.G4']);
+      const stamped = Date.parse(args[3]);
+      expect(args[3]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(stamped).toBeGreaterThanOrEqual(before);
+      expect(stamped).toBeLessThanOrEqual(Date.now());
+    });
+
+    it('logs and resolves when wh.js fails, so the Gate screen still renders', async () => {
+      const runWh = vi.fn(async (): Promise<WhResult> => ({ code: 1, stdout: '', stderr: 'no active change' }));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const { invoke } = makeDeps({ runWh });
+        await expect(invoke(IPC.gateOpened, 'repo-1', 'G2')).resolves.toBeUndefined();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('gate_opened.G2'));
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('no active change'));
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('refuses a gate id that is not one of G1..G5, so the state key is never renderer-shaped', async () => {
+      const runWh = vi.fn(async (): Promise<WhResult> => ({ code: 0, stdout: '{}', stderr: '' }));
+      const { invoke } = makeDeps({ runWh });
+      await expect(invoke(IPC.gateOpened, 'repo-1', 'G9')).rejects.toThrow('unknown gate');
+      await expect(invoke(IPC.gateOpened, 'repo-1', 'G4.verification.status')).rejects.toThrow('unknown gate');
+      await expect(invoke(IPC.gateOpened, 'repo-1', undefined)).rejects.toThrow('unknown gate');
+      expect(runWh).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown repo before touching wh.js', async () => {
+      const runWh = vi.fn(async (): Promise<WhResult> => ({ code: 0, stdout: '{}', stderr: '' }));
+      const { invoke } = makeDeps({ runWh });
+      await expect(invoke(IPC.gateOpened, 'nope', 'G4')).rejects.toThrow('unknown repo');
+      expect(runWh).not.toHaveBeenCalled();
     });
   });
 

@@ -1,4 +1,5 @@
 import type { ChangeDigest, Gate } from '@shared/types';
+import { gateName } from '@shared/gates';
 
 /**
  * Autopilot: the pieces that keep a run moving while nobody is at the desk.
@@ -204,11 +205,14 @@ export function createStallTimer(timeoutMs: number, onStall: () => void): StallT
 
 export interface GateNotification { title: string; body: string; }
 
+/** The title names the gate as the person knows it ("Ship"); the body keeps the id, which is
+ *  what the approve command takes. */
 export function buildGateNotification(repoName: string, digest: ChangeDigest): GateNotification {
-  const gate = digest.blocking_gate ?? '?';
+  const gate = digest.blocking_gate;
+  const name = gate ? gateName(digest, gate) : '?';
   return {
-    title: `WorkHorse: ${gate} waiting on you`,
-    body: `${repoName}: ${digest.title}\nTier ${digest.tier}, phase ${digest.phase}. Approve in Paddock or run /workhorse:approve ${gate}.`,
+    title: `WorkHorse: ${name} waiting on you`,
+    body: `${repoName}: ${digest.title}\nTier ${digest.tier}, phase ${digest.phase}. Approve in Paddock or run /workhorse:approve ${gate ?? '?'}.`,
   };
 }
 

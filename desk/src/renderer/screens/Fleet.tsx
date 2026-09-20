@@ -19,6 +19,7 @@
  */
 import { useMemo, useState, type DragEvent } from 'react';
 import type { ChangeDigest, Phase, RepoRef } from '@shared/types';
+import { gateLabel } from '@shared/gates';
 import { usePaddockStore, type RunState } from '@/store';
 import { glyph } from '@/lib/asciiMask';
 import { AsciiField } from '@/components/AsciiField';
@@ -147,8 +148,8 @@ function FleetCard({ repo, digest, run, onboarded, onStartOnboard, onOpen }: Fle
           <span className="label">{onboarded ? (digest?.client ?? 'onboarded') : 'not onboarded'}</span>
         </div>
         {onboarded &&
-          (waiting && digest ? (
-            <Badge tone="amber">{digest.waiting_on}</Badge>
+          (waiting && digest?.blocking_gate ? (
+            <Badge tone="amber">{`You · ${gateLabel(digest, digest.blocking_gate)}`}</Badge>
           ) : running ? (
             <Badge tone="cyan">{agents > 0 ? `${agents} ${agents === 1 ? 'agent' : 'agents'}` : 'running'}</Badge>
           ) : (

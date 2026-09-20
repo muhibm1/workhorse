@@ -1,5 +1,6 @@
 /**
- * The "Decisions requested" table of a gate packet, and the notes an approval writes back.
+ * The "Decisions" table of a gate packet (the brief and the Ship document; "Decisions requested"
+ * in packets written before plugin 0.3), and the notes an approval writes back.
  *
  * `wh.js approve` refuses an approval whose notes do not name every decision id, so the Gate
  * screen asks for each one before it lets the human approve. The parser mirrors
@@ -21,7 +22,9 @@ export interface DecisionChoice {
 
 export function parseDecisions(markdown: string): DecisionItem[] {
   const lines = markdown.split(/\r?\n/);
-  const start = lines.findIndex((l) => /^#{1,6}.*decisions requested/i.test(l));
+  // "## Decisions", "## 2. Decisions requested": the heading text alone, an optional number
+  // in front, as wh.js decisionItems matches it.
+  const start = lines.findIndex((l) => /^#{1,6}\s*(\d+\.\s*)?decisions( requested)?\s*$/i.test(l));
   if (start < 0) return [];
   const items: DecisionItem[] = [];
   for (let i = start + 1; i < lines.length; i++) {
