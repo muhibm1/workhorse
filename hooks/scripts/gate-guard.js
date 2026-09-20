@@ -28,7 +28,9 @@ if (tool === 'Bash') {
     if (!L.gateSatisfied(state, profile, 'G4')) return blocked('G4', 'Merging');
   }
   if (/\bgh\s+pr\s+create\b/.test(cmd) || /\bgit\s+push\b/.test(cmd)) {
-    // Pushing the change branch is allowed once verification is green; it is how the PR for G4 is opened.
+    // Pushing the change branch is allowed once the design is approved and verification is
+    // green; it is how the PR for G4 (Ship) is opened.
+    if (!L.gateSatisfied(state, profile, 'G2')) return blocked('G2', 'Pushing');
     const v = state.verification || {};
     if (v.status !== 'green') {
       return L.deny(`Pushing requires a green verification.md for change ${ctx.id} (current: ${v.status || 'none'}). Run the verifier first.`);

@@ -6,14 +6,18 @@
 //   wh.js active [id|--clear]               show or set the active change
 //   wh.js state get [key.path]              print state (or one key) as JSON
 //   wh.js state set <key.path> <value>      set a key (numbers/booleans/null/JSON parsed)
-//   wh.js phase <name>                      set phase (intent|spec|plan|build|verify|review|deploy|done);
+//   wh.js phase <name>                      set phase (design|build|verify|review|deploy|done);
 //                                           "done" also commits the change's artifacts
 //   wh.js mode <normal|fix>                 set fix mode (locks tests)
 //   wh.js gate <G1..G5> <status>            set a gate status: pending|auto|approved|rejected|n/a
 //   wh.js approve <gate> [--reject] [notes] record a human decision in approvals.md (main session only);
-//                                           an approval must answer every packet decision by id, or pass --accept-all
+//                                           an approval must answer every packet decision by id, or pass --accept-all;
+//                                           G4 (Ship) refuses while the Ship document has a blocker
 //   wh.js required                          list human gates required for the active change
 //   wh.js log "<agent> | <result>"          append a line to conductor-log.md, stamped with the real time
+//   wh.js clock [--json]                    agent time, waiting time and dead time for the active change
+//   wh.js known-failure add <check> --command "<cmd>" --base <sha> --reason "<why>"
+//   wh.js known-failure list [--json]       pre-existing failures recorded for this repository
 //   wh.js status [--json] [--metrics]       human-readable status
 //   wh.js scaffold <template> [--out path]  render a template with state placeholders
 //   wh.js digest [--json] [--all]           emit the tracker sync payload (one change, or every change)
@@ -26,17 +30,17 @@ const L = require(path.join(__dirname, '..', 'hooks', 'scripts', 'lib.js'));
 
 const PLUGIN_ROOT = path.resolve(__dirname, '..');
 const TEMPLATES = path.join(PLUGIN_ROOT, 'templates');
-const PHASES = ['intent', 'spec', 'plan', 'build', 'verify', 'review', 'deploy', 'done'];
-/** The packet a human reads at each gate, and therefore the artifact an approval must pin. */
-const GATE_PACKET = { G1: 'intent.md', G2: 'spec.md', G3: 'plan.md', G4: 'review-packet.md', G5: 'release.md' };
+const PHASES = L.PHASES;
+/** The packet a human reads at each gate, and therefore the artifact an approval must pin.
+ *  G1 and G3 are no longer required by any tier; they map to the brief and the plan so an old
+ *  change or an `assisted` profile still resolves to a file. */
+const GATE_PACKET = { G1: 'brief.md', G2: 'brief.md', G3: 'plan.md', G4: 'ship.md', G5: 'release.md' };
 
 // The gate that closes each phase, and the artifact that must exist for that gate to be live.
-// A phase whose gate is required, still pending, and whose packet exists is waiting on a human.
-const PHASE_GATE = { intent: 'G1', spec: 'G2', plan: 'G3', review: 'G4', deploy: 'G5' };
-const PHASE_ARTIFACT = {
-  intent: 'intent.md', spec: 'spec.md', plan: 'plan.md',
-  review: 'review-packet.md', deploy: 'release.md',
-};
+// A phase whose gate is required, still pending, and whose packet exists and is complete (its
+// "## Your decision" section written) is waiting on a human.
+const PHASE_GATE = { design: 'G2', review: 'G4', deploy: 'G5' };
+const PHASE_ARTIFACT = { design: 'brief.md', review: 'ship.md', deploy: 'release.md' };
 
 
 const args = process.argv.slice(2);
@@ -124,6 +128,8 @@ function stateVars(root, id, state) {
     gate: '',
     pr_url: state.pr_url || '',
     version: '',
+    budget: L.budgetMinutes(L.effectiveTier(state), p),
+    clock: L.formatClock(clockFor(root, id, state)),
     security_checklist: L.effectiveTier(state) >= 2 ? '\n### Pre-ship security checklist (tier 2+)\n\nSee the wh-security-baseline skill; every item must be ticked or explicitly waived with a reason.\n' : '',
   };
 }
@@ -164,13 +170,14 @@ switch (cmd) {
     state.title = title;
     state.tier = tier !== null ? Number(tier) : null;
     state.branch = `${(profile.conventions && profile.conventions.branch_prefix) || 'wh/'}${id}`;
-    state.phase = 'intent';
+    state.phase = 'design';
     L.saveState(root, id, state);
     L.setActiveChangeId(root, id);
     const vars = stateVars(root, id, state);
-    for (const t of ['intent.md', 'approvals.md']) {
-      fs.writeFileSync(path.join(dir, t), render(fs.readFileSync(path.join(TEMPLATES, t), 'utf8'), vars));
-    }
+    // Only approvals.md is scaffolded. The designer writes brief.md itself, last, so a half-written
+    // packet never shows as waiting on the human.
+    fs.writeFileSync(path.join(dir, 'approvals.md'), render(fs.readFileSync(path.join(TEMPLATES, 'approvals.md'), 'utf8'), vars));
+    appendLog(root, id, state, `conductor | change created: ${title}`);
     out({ change_id: id, dir: path.relative(root, dir), branch: state.branch });
     break;
   }
@@ -227,12 +234,9 @@ switch (cmd) {
     const { id, state } = requireActive(root);
     const p = args[0];
     if (!PHASES.includes(p)) die(`phase must be one of ${PHASES.join(', ')}`);
-    // The retro must exist before the change closes, so the close commit carries it. A live run
-    // closed first and would have left retro.md out of history; the order is now enforced here.
-    if (p === 'done' && !hasFlag('--no-retro') &&
-        !fs.existsSync(path.join(L.changeDir(root, id), 'retro.md'))) {
-      die('cannot close the change: retro.md does not exist. Dispatch wh-retro-learner first, or pass --no-retro to close without one.');
-    }
+    // The retro now runs in the background after the change closes and commits its own file,
+    // so "done" no longer waits for retro.md. --no-retro is accepted for older callers.
+    hasFlag('--no-retro');
     state.phase = p;
     if (p !== 'verify' && p !== 'build') state.mode = 'normal';
     L.saveState(root, id, state);
@@ -290,6 +294,11 @@ switch (cmd) {
     if (!L.ALL_GATES.includes(g)) die('usage: wh.js approve <G1..G5> [--reject | --accept-all] [notes]');
     let notes = args.join(' ').trim();
     if (reject && !notes) die('a rejection needs notes so the phase can be re-entered with them');
+    if (!reject && g === 'G4') {
+      // Ship is never approved over a defect the pipeline could have fixed, or over a red check.
+      const blockers = L.shipBlockers(readArtifact(root, id, 'ship.md'), state);
+      if (blockers.length) die(`cannot approve G4 (Ship): ${blockers.join('; ')}. The conductor must fix and re-verify before presenting the Ship document.`);
+    }
     if (!reject) notes = requireDecisionsAnswered(readArtifact(root, id, GATE_PACKET[g]), notes, acceptAll);
     const who = L.git(root, ['config', 'user.email']) || process.env.USER || process.env.USERNAME || 'unknown';
 
@@ -345,11 +354,41 @@ switch (cmd) {
     // The CLI adds the phase itself; drop one the caller included, which doubled it in live logs.
     const msg = args.join(' ').replace(/\s+/g, ' ').trim().replace(new RegExp(`^${state.phase}\\s*\\|\\s*`), '');
     if (!msg) die('usage: wh.js log "<agent> | <result>"');
-    const f = path.join(L.changeDir(root, id), 'conductor-log.md');
-    if (!fs.existsSync(f)) fs.writeFileSync(f, `# Conductor log: ${id}\n\n`);
-    const line = `${L.nowIso()} | ${state.phase} | ${msg}`;
-    fs.appendFileSync(f, line + '\n');
-    out(line);
+    out(appendLog(root, id, state, msg));
+    break;
+  }
+
+  case 'clock': {
+    const root = requireRoot();
+    const { id, state } = requireActive(root);
+    const c = clockFor(root, id, state);
+    out(hasFlag('--json') ? c : L.formatClock(c));
+    break;
+  }
+
+  case 'known-failure': {
+    const root = requireRoot();
+    const sub = args.shift();
+    if (sub === 'list') {
+      const rows = L.loadKnownFailures(root);
+      if (hasFlag('--json')) { out(rows); break; }
+      out(rows.length ? rows.map((r) => `${r.date} | ${r.check} | ${r.command} | base ${r.base} | ${r.reason} | ${r.change}`).join('\n') : 'No known failures recorded.');
+      break;
+    }
+    if (sub === 'add') {
+      const check = args.filter((a) => !a.startsWith('--'))[0];
+      const command = flag('--command');
+      const base = flag('--base');
+      const reason = flag('--reason');
+      if (!check || !command || !base || !reason) {
+        die('usage: wh.js known-failure add <check> --command "<cmd>" --base <sha> --reason "<why it predates this change>"');
+      }
+      const id = L.activeChangeId(root) || '';
+      L.addKnownFailure(root, { date: today(), check, command, base, reason, change: id });
+      out({ recorded: check, file: path.relative(root, L.knownFailuresFile(root)) });
+      break;
+    }
+    die('usage: wh.js known-failure add|list');
     break;
   }
 
@@ -371,21 +410,26 @@ switch (cmd) {
     const state = L.loadState(root, id);
     const req = L.requiredGates(state, profile);
     const blocking = req.find((g) => (state.gates || {})[g] !== 'approved');
+    const clock = clockFor(root, id, state);
     const summary = {
       change_id: id, title: state.title, tier: L.effectiveTier(state), phase: state.phase, mode: state.mode,
       branch: state.branch, worktree: state.worktree, gates: state.gates, required_human_gates: req,
+      gate_names: L.GATE_NAMES,
       verification: state.verification, next_blocking_gate: blocking || null, autonomy: profile.autonomy || 'bounded',
+      clock,
       artifacts: fs.existsSync(L.changeDir(root, id)) ? fs.readdirSync(L.changeDir(root, id)).filter((f) => f !== 'adr') : [],
     };
     if (json) { out(summary); break; }
+    const named = (g) => `${g} ${L.GATE_NAMES[g]}`;
     out([
       `Change: ${id} "${state.title}"`,
       `Tier: ${summary.tier}   Phase: ${state.phase}   Mode: ${state.mode}   Autonomy: ${summary.autonomy}`,
       `Branch: ${state.branch || '-'}   Worktree: ${state.worktree || '-'}`,
       `Gates: ${Object.entries(state.gates || {}).map(([g, v]) => `${g}=${v}`).join('  ')}`,
-      `Required human gates: ${req.join(', ')}`,
+      `Required human gates: ${req.map(named).join(', ')}`,
       `Verification: ${(state.verification || {}).status || 'none'}`,
-      `Next blocking gate: ${blocking || 'none'}`,
+      `Next blocking gate: ${blocking ? named(blocking) : 'none'}`,
+      L.formatClock(clock),
       `Artifacts: ${summary.artifacts.join(', ') || 'none'}`,
     ].join('\n'));
     break;
@@ -429,6 +473,29 @@ switch (cmd) {
     die(`unknown command "${cmd || ''}". See the header of scripts/wh.js for usage.`);
 }
 
+/** Append one stamped row to conductor-log.md. The CLI is the only clock the pipeline has. */
+function appendLog(root, id, state, msg) {
+  const f = path.join(L.changeDir(root, id), 'conductor-log.md');
+  if (!fs.existsSync(f)) fs.writeFileSync(f, `# Conductor log: ${id}\n\n`);
+  const line = `${L.nowIso()} | ${state.phase} | ${msg}`;
+  fs.appendFileSync(f, line + '\n');
+  return line;
+}
+
+/** The change's clock, from its log and approvals on disk. */
+function clockFor(root, id, state) {
+  const profile = (() => { try { return L.loadProfile(root); } catch (e) { return {}; } })();
+  const gateHere = PHASE_GATE[state.phase];
+  const pending = Boolean(gateHere && L.requiredGates(state, profile).includes(gateHere)
+    && ((state.gates || {})[gateHere] || 'pending') === 'pending'
+    && L.packetComplete(readArtifact(root, id, PHASE_ARTIFACT[state.phase])));
+  return L.computeClock({
+    log: readArtifact(root, id, 'conductor-log.md'),
+    approvals: readArtifact(root, id, 'approvals.md'),
+    state, profile, pending_gate: pending,
+  });
+}
+
 function computeMetrics(root) {
   const base = path.join(root, 'docs', 'sdlc');
   const rows = [];
@@ -441,15 +508,24 @@ function computeMetrics(root) {
     const rejections = approvals.filter((a) => a.endsWith('rejected')).length;
     const vtxt = fs.existsSync(path.join(base, id, 'verification.md')) ? fs.readFileSync(path.join(base, id, 'verification.md'), 'utf8') : '';
     const fixRows = (vtxt.match(/^\| \d+ \|/gm) || []).length;
-    rows.push({ id, tier: L.effectiveTier(s), phase: s.phase, rejections, fix_iterations: fixRows, gates: s.gates });
+    const clock = clockFor(root, id, s);
+    rows.push({
+      id, tier: L.effectiveTier(s), phase: s.phase, rejections, fix_iterations: fixRows, gates: s.gates,
+      agent_minutes: clock.agent_minutes, waiting_minutes: clock.waiting_minutes, dead_minutes: clock.dead_minutes,
+      budget_minutes: clock.budget_minutes, within_budget: clock.within_budget,
+    });
   }
   const done = rows.filter((r) => r.phase === 'done' || r.phase === 'deploy');
+  const mean = (k, set) => (set.length ? Number((set.reduce((a, r) => a + r[k], 0) / set.length).toFixed(1)) : null);
   return {
     changes: rows.length,
     completed: done.length,
     single_pass_rate: rows.length ? Number((rows.filter((r) => r.rejections === 0).length / rows.length).toFixed(2)) : null,
     mean_rework_cycles: rows.length ? Number((rows.reduce((a, r) => a + r.rejections, 0) / rows.length).toFixed(2)) : null,
     mean_fix_iterations: rows.length ? Number((rows.reduce((a, r) => a + r.fix_iterations, 0) / rows.length).toFixed(2)) : null,
+    mean_agent_minutes: mean('agent_minutes', done),
+    mean_waiting_minutes: mean('waiting_minutes', done),
+    within_budget_rate: done.length ? Number((done.filter((r) => r.within_budget).length / done.length).toFixed(2)) : null,
     by_tier: [0, 1, 2, 3].map((t) => ({ tier: t, count: rows.filter((r) => r.tier === t).length })),
     changes_detail: rows,
   };
@@ -485,7 +561,8 @@ function sectionText(md, re, maxLen) {
 function decisionItems(md) {
   if (!md) return [];
   const lines = md.split(/\r?\n/);
-  const start = lines.findIndex((l) => /^#{1,6}.*decisions requested/i.test(l));
+  // "## Decisions" in the brief and Ship document; "Decisions requested" in older packets.
+  const start = lines.findIndex((l) => /^#{1,6}\s*(\d+\.\s*)?decisions( requested)?\s*$/i.test(l));
   if (start < 0) return [];
   const items = [];
   for (let i = start + 1; i < lines.length; i++) {
@@ -553,21 +630,29 @@ function buildDigest(root, id, state) {
 
   const gateHere = PHASE_GATE[phase];
   const artifactHere = PHASE_ARTIFACT[phase];
-  const packetExists = artifactHere
-    ? fs.existsSync(path.join(L.changeDir(root, id), artifactHere))
-    : false;
+  const packetMd = artifactHere ? readArtifact(root, id, artifactHere) : '';
+  // The packet is live once its closing "## Your decision" section exists: the agent writes that
+  // last, so a half-written brief never shows as waiting on the human.
+  const packetExists = artifactHere ? L.packetComplete(packetMd) : false;
   // Only a pending gate waits on the human. A rejected one waits on the agents reworking it; the
   // conductor sets it back to pending when it presents the gate again. Treating "rejected" as
   // waiting (the old `!== 'approved'`) showed Approve buttons and would have suppressed the
   // re-presentation notification, because the gate never appeared to change.
+  // The Ship document also has to be free of blockers (green verification, no unresolved
+  // high or medium finding); until then it is the agents' problem, not the human's.
+  const shipBlockers = gateHere === 'G4' && packetExists ? L.shipBlockers(packetMd, state) : [];
   const humanGate =
-    gateHere && required.includes(gateHere) && (gates[gateHere] || 'pending') === 'pending' && packetExists
+    gateHere && required.includes(gateHere) && (gates[gateHere] || 'pending') === 'pending' && packetExists && shipBlockers.length === 0
       ? gateHere
       : null;
 
-  const packetMd = artifactHere ? readArtifact(root, id, artifactHere) : '';
-  const intentMd = readArtifact(root, id, 'intent.md');
+  // Problem and outcome live at the top of the brief now; older changes still have intent.md.
+  const intentMd = readArtifact(root, id, 'brief.md') || readArtifact(root, id, 'intent.md');
   const verification = state.verification || {};
+  const clock = L.computeClock({
+    log: readArtifact(root, id, 'conductor-log.md'), approvals: readArtifact(root, id, 'approvals.md'),
+    state, profile, pending_gate: humanGate !== null,
+  });
 
   // owner/repo only when origin is a real git host; a local or odd remote falls back to the folder.
   const remote = L.git(root, ['config', '--get', 'remote.origin.url']);
@@ -589,14 +674,17 @@ function buildDigest(root, id, state) {
     waiting_on: humanGate ? 'You (' + humanGate + ')' : (phase === 'done' ? 'Nobody' : 'Agents'),
     blocking_gate: humanGate,
     gates,
+    gate_names: L.GATE_NAMES,
     required_human_gates: required,
+    ship_blockers: shipBlockers,
+    clock,
     verification: verification.status || 'none',
     branch: state.branch || '',
     pr_url: state.pr_url || '',
     commit: L.git(root, ['rev-parse', '--short', 'HEAD']) || '',
     problem: sectionText(intentMd, /^#{1,6}\s*problem\b/i, 600),
     outcome: sectionText(intentMd, /^#{1,6}\s*outcome\b/i, 600),
-    tldr: sectionText(packetMd, /^#{1,6}.*(tl;dr|tldr)/i, 900),
+    tldr: sectionText(packetMd, /^#{1,6}.*(tl;dr|tldr|short version)/i, 900),
     decisions: decisionRows(packetMd, 5),
     decision_items: decisionItems(packetMd),
     last_approval: lastApproval(root, id),
