@@ -655,6 +655,18 @@ console.log('control state location');
   const writeWt = { session_id: 's', cwd: wt, hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: stateAt } };
   check('protect-paths denies editing control state', decision(hook('protect-paths.js', editMain)) === 'deny');
   check('protect-paths denies editing control state from a worktree', decision(hook('protect-paths.js', writeWt)) === 'deny');
+
+  // The worktree above was cut before any design document existed. Once Design is approved in the
+  // main checkout, a builder inside that stale worktree may still edit the sensitive paths the plan
+  // names: the hook reads the plan from the main checkout (webapp, run 3 of 0.3.4).
+  const csDir = path.join(cs, 'docs', 'sdlc', cid);
+  fs.writeFileSync(path.join(csDir, 'brief.md'), '# Brief\n\n## The short version\n\nx\n\n## Your decision\n\nApprove.\n');
+  fs.writeFileSync(path.join(csDir, 'plan.md'), '# Plan\n\nT1 edits db/migrations/009.sql.\n');
+  wh(cs, 'state', 'set', 'tier', '2');
+  check('Design approved in the main checkout', wh(cs, 'approve', 'G2', '--accept-all').code === 0);
+  check('the stale worktree has no copy of the plan', !fs.existsSync(path.join(wt, 'docs', 'sdlc', cid, 'plan.md')));
+  const wtSensitive = { session_id: 's', cwd: wt, hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(wt, 'db', 'migrations', '009.sql') } };
+  check('a sensitive path the approved plan names is allowed from a stale worktree', decision(hook('protect-paths.js', wtSensitive)) === 'allow');
 }
 
 console.log('legacy state migration');

@@ -7,6 +7,14 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.6 — 2026-09-20
+
+Follows 0.3.5 (harness-guarded files become a human decision; verifier writes first).
+
+- The sensitive-path hook reads the approved design from the main checkout as well as the
+  builder's worktree. A worktree cut before the design documents were committed had no `plan.md`,
+  so run 3 (webapp) was denied an edit its approved plan named.
+
 ## 0.3.5 — 2026-09-20
 
 Follows 0.3.4 (an approved design unlocks the sensitive paths it names).
