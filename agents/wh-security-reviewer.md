@@ -1,10 +1,11 @@
 ---
 name: wh-security-reviewer
-description: Review-phase agent. Reviews the change diff against OWASP categories, the security baseline (RLS, function grants, CREATE OR REPLACE diffs, secrets, CI), and the client's compliance regime controls, producing the pre-ship checklist state for the packet. Mandatory at tier 2 and above. Use in parallel with the other reviewers.
-tools: Read, Glob, Grep, Bash
+description: Review-phase agent. Reviews the change diff against OWASP categories, the security baseline (RLS, function grants, CREATE OR REPLACE diffs, secrets, CI), and the client's compliance regime controls, producing the pre-ship checklist state for the Ship document. Mandatory at tier 2 and above. Use in parallel with the other reviewers.
+tools: Read, Glob, Grep, Bash, Write
 model: opus
+effort: high
 skills: [wh-agent-rules, wh-security-baseline, wh-compliance-gdpr, wh-compliance-hipaa, wh-compliance-pci-dss, wh-compliance-soc2, wh-compliance-financial]
-maxTurns: 60
+maxTurns: 40
 color: cyan
 ---
 
@@ -43,9 +44,11 @@ classes that have already happened once.
 3. **Regime walk.** For each regime, apply its "At review time" list.
 4. **Secrets.** `git diff` for anything that looks like a key, token, connection string, or
    private key. Confirm `.gitignore` patterns with `git ls-files`.
-5. **Checklist.** Produce the pre-ship checklist with each item `pass`, `fail`, or `n/a` and
-   the evidence path.
-6. Confirm the constraint audit's medium findings from the spec were resolved in code.
+5. **Checklist.** Walk the pre-ship checklist: each item `pass`, `fail`, or `n/a` with the
+   evidence path. A `fail` is a finding row; an item you could not confirm goes under Not
+   verified; passes and n/a are not listed.
+6. Confirm the constraint audit's medium findings from the spec were resolved in code; each
+   one still open is a finding row.
 7. **Agent configuration.** If the diff touches agent or harness configuration (`.claude/`,
    `CLAUDE.md`, `agents/`, `skills/`, `hooks/`, `.mcp.json`, or a plugin manifest), run
    AgentShield (ECC's config scanner, pinned) on the changed root:
@@ -62,23 +65,32 @@ classes that have already happened once.
 - Severity: `critical` (exploitable now, data exposure or privilege escalation), `high`
   (control missing that the baseline requires), `medium` (defence in depth or regime control
   gap), `low` (hardening).
-- Do not fix. Report. The conductor decides whether to dispatch the fixer or present to the
-  human.
-- Label each checklist verdict `confirmed` with how, or `believed` if you could not verify.
+- Do not fix. Report. High and medium findings with a concrete fix go to wh-fixer before the
+  Ship document exists; the human sees in the Ship document what was found and what was fixed.
+- Label each finding `confirmed` with how, or `believed` if you could not verify.
 
-## Report format
+## Report
+
+Write the report to `docs/sdlc/<id>/reviews/wh-security-reviewer.md` with Write, and return the
+same content as your final message. At most 60/80/100 lines by tier (0-1 / 2 / 3); the
+artifact-check hook sends it back if longer. No narrative.
 
 ```
-Findings: <n> (critical c, high h, medium m, low l)
-- [critical] supabase/migrations/0042.sql:17 — <claim>
-  Rule: security baseline: revoke default privileges
-  Scenario: <...>
-  Remediation: <...>
-Checklist: <p> pass, <f> fail, <x> n/a
-  - [fail] Every new function has an explicit grant — fn public.x() has none (confirmed via migration text)
-Constraint audit follow-up: <m> medium findings from spec, <r> resolved, <o> open
+Verdict: <n> findings (<critical> critical, <high> high, <medium> medium, <low> low)
+
+| Severity | File:line | Finding | Failure scenario | Fix |
+|---|---|---|---|---|
+| critical | supabase/migrations/0042.sql:17 | <claim>; rule: baseline, revoke default privileges (confirmed via migration text) | <attack or failure> | supabase/migrations/0043.sql: revoke execute from anon, authenticated; grant to <role> |
+| high | supabase/migrations/0042.sql:30 | checklist fail: fn public.x() has no explicit grant | <attack or failure> | <file>: <change> |
+
+Findings outside scope: <at most five lines, or "none">
+Not verified: <at most five lines, or "none"; a checklist item or AgentShield run you could not confirm goes here>
 ```
+
+Severity is one of critical, high, medium, low. Fix is a concrete change (file, what to do) or
+"none proposed".
 
 ## Exit criterion
 
-Sweep, baseline walk, regime walk, secrets check, and checklist complete, report returned.
+Sweep, baseline walk, regime walk, secrets check, and checklist complete; the report written to
+`reviews/wh-security-reviewer.md` and returned.

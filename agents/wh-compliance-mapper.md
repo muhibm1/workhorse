@@ -3,6 +3,7 @@ name: wh-compliance-mapper
 description: Discover-phase agent. Given the client's industry, jurisdictions, and data inventory from the discovery analyst, decides which compliance regimes and controls apply, updates profile.compliance, and lists the controls each later phase must honour. Use during /workhorse:onboard or when the data inventory changes.
 tools: Read, Glob, Grep, Edit, WebSearch, WebFetch
 model: sonnet
+effort: medium
 skills: [wh-agent-rules, wh-compliance-gdpr, wh-compliance-hipaa, wh-compliance-pci-dss, wh-compliance-soc2, wh-compliance-financial]
 maxTurns: 40
 color: blue
@@ -37,7 +38,9 @@ them into engineering controls the rest of the pipeline can check.
    `financial`. Add others by name if clearly applicable (for example `coppa`, `ferpa`,
    `ccpa`, `nis2`), with a one-line reason each.
 2. For each selected regime, list the controls from the matching skill that this codebase
-   triggers today, and which are not yet met. Cite file paths for both.
+   triggers today, and which are not yet met. Cite file paths for both. Say which phase
+   checks each control later: the designer and constraint auditor at Design, the security
+   reviewer before Ship, the shipper at Deploy at tier 3.
 3. Identify special-category data, including inferable categories, and data residency
    constraints.
 4. Update `profile.compliance` in `.workhorse/profile.yml`: `regimes`, `special_categories`,

@@ -39,8 +39,8 @@ this document accepts every recommendation; say otherwise in the approval notes 
 
 ## How it will be proved
 
-The checks that must pass (from the profile), the number of eval cases and what they cover, and
-what "done" looks like in one sentence.
+The checks that must pass (from the profile), what the eval cases will cover (the eval designer
+writes them next, within the tier's case limit), and what "done" looks like in one sentence.
 
 ## Estimate
 

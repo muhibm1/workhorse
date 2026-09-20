@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review phase only for the active WorkHorse change. Runs the bug, conformance, security, and adoption reviewers in parallel, compiles review-packet.md, pushes the branch, opens the PR, and presents G4.
+description: Review phase only for the active WorkHorse change. Runs the reviewers in parallel, sends fixable high and medium findings to the fixer and re-verifies, then the shipper writes ship.md, pushes the branch, opens the PR, and presents Ship (G4).
 disable-model-invocation: true
 allowed-tools: Agent, Read, Bash(node *), Bash(git *), Bash(gh *)
 ---
@@ -11,9 +11,13 @@ allowed-tools: Agent, Read, Bash(node *), Bash(git *), Bash(gh *)
    will refuse the push anyway.
 2. Dispatch `wh-conductor` with the prompt:
 
-   > Run only the Review phase for the active change, following the review row of your phase
-   > table: the four reviewers in parallel, then the packet compiler, then push the branch and
-   > open a PR with the packet TL;DR as the description. Present G4 and stop.
+   > Run only the Review phase for the active change, following the Review section of your
+   > instructions: the reviewers in parallel (each writing reviews/<agent>.md), then wh-fixer
+   > once on every high or medium finding with a concrete fix, then wh-verifier again, then
+   > wh-shipper in mode ship (ship.md with the clock pasted in and "## Your decision" last,
+   > branch pushed, PR open). Present Ship (G4) and stop. Never hand a fixable finding to the
+   > human.
 
-3. Print the packet's TL;DR, decisions, recommendation, and PR link, then the approve and
-   reject commands.
+3. Print the Ship document's short version, its decisions with their recommendations, the PR
+   link, `wh.js clock`, and the two commands: `/workhorse:approve G4` and
+   `/workhorse:approve G4 --reject "notes"`.

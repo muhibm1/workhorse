@@ -36,7 +36,7 @@ Plus a repo `CLAUDE.md` under one page, generated from the template and kept cur
 ## Adoption review score
 
 The adoption reviewer scores each change 1 to 5 on the question "could a client engineer
-maintain this from the repo alone?" A score below 4 is a G4 finding with concrete blockers:
+maintain this from the repo alone?" A score below 4 is a finding in the Ship document with concrete blockers:
 
 | Score | Meaning |
 |-------|---------|

@@ -1,8 +1,8 @@
 {
   "name": "workhorse",
   "displayName": "WorkHorse",
-  "description": "Agentic SDLC for forward-deployed engineering: agents run Discover, Intent, Spec, Plan, Build, Verify, Review, Deploy, Handover and Maintain; humans approve at risk-tiered gates.",
-  "version": "0.2.14",
+  "description": "Agentic SDLC for forward-deployed engineering: agents design, build, verify, review and ship; the human asks, approves the Design document, and approves the Ship document. Measured with a clock on every run.",
+  "version": "0.3.0",
   "author": {
     "name": "Mohammed devm",
     "email": "90530587+muhibm1@users.noreply.github.com"

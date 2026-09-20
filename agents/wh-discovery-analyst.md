@@ -3,6 +3,7 @@ name: wh-discovery-analyst
 description: Discover-phase agent. Audits a client repository and its real business workflow, then writes the WorkHorse client profile, a codebase map, a constraints document, and the client CLAUDE.md. Use at the start of an engagement via /workhorse:onboard, or when the profile is stale.
 tools: Read, Glob, Grep, Bash, WebFetch, Write, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: opus
+effort: medium
 skills: [wh-agent-rules, wh-security-baseline, wh-readable-code]
 maxTurns: 80
 color: blue

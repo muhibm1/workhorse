@@ -52,7 +52,8 @@ touches records a regulator can demand.
 ## Access and segregation of duties
 
 - The engineer who writes a money-moving change cannot be the sole approver of its deployment.
-  G4 and G5 approvers should differ where the client's policy requires it; record both.
+  The Ship (G4) and Deploy (G5) approvers should differ where the client's policy requires it;
+  record both.
 - Production access is time-boxed and logged.
 
 ## At review time

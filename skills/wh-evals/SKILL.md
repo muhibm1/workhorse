@@ -1,6 +1,6 @@
 ---
 name: wh-evals
-description: How WorkHorse turns "does it work" into measurable evidence. Loaded by the eval designer, eval runner, verifier, and incident triager. Use when designing acceptance cases, golden datasets, failure taxonomies, or turning an incident into a permanent test.
+description: How WorkHorse turns "does it work" into measurable evidence. Loaded by the designer, eval designer, verifier, and incident triager. Use when designing acceptance cases, golden datasets, failure taxonomies, or turning an incident into a permanent test.
 user-invocable: false
 ---
 
@@ -21,7 +21,7 @@ For each requirement in `spec.md`, write cases in four categories:
 | Failure | Each dependency slow, down, or returning garbage; bad input; timeouts | 100% correct handling |
 | Adversarial | Injection, authorization bypass across tenants and roles, oversized input, replay | 100% rejected |
 
-Add non-functional rows where the intent has numeric success metrics: latency percentile,
+Add non-functional rows where the brief has numeric success metrics: latency percentile,
 throughput, cost per operation, error budget.
 
 Each case is written as Given / When / Then and maps to a requirement id. Where the stack
@@ -44,9 +44,10 @@ say how it is detected in production (log line, metric, alert).
 
 ## Running evals
 
-The eval runner executes every automatable case, reports pass counts per category against
-targets, and lists every failing case with its id, input, expected, actual. A category below
-target makes verification red. Manual cases are listed, not counted as passes.
+The verifier executes every automatable case in the same session as the profile checks,
+reports pass counts per category against targets in `verification.md`, and lists every failing
+case with its id, input, expected, actual. A category below target makes verification red.
+Manual cases are listed, not counted as passes.
 
 ## Incidents become evals
 

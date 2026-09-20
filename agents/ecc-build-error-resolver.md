@@ -3,7 +3,9 @@ name: ecc-build-error-resolver
 description: Build and TypeScript error resolution specialist. Use PROACTIVELY when build fails or type errors occur. Fixes build/type errors only with minimal diffs, no architectural edits. Focuses on getting the build green quickly.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
+effort: medium
 skills: [wh-agent-rules]
+maxTurns: 50
 ---
 <!-- Vendored from affaan-m/ECC @ 8321021 (MIT, see vendor/ecc/LICENSE). Upstream body unchanged except the WorkHorse adapter section at the end. -->
 
