@@ -223,6 +223,18 @@ switch (cmd) {
         setPath(state, 'verification.at', L.nowIso());
       }
       setPath(state, k, v);
+      // A conductor once marked G2 auto before the designer had set the tier (tier unknown reads as
+      // 0, where Design is not required). Once the tier is known, any gate it requires that was
+      // stamped auto goes back to pending, so it is presented rather than skipped.
+      if (k === 'tier' || k === 'tier_override') {
+        const prof = L.loadProfile(root);
+        state.gates = state.gates || {};
+        const reset = L.requiredGates(state, prof).filter((g) => state.gates[g] === 'auto');
+        for (const g of reset) state.gates[g] = 'pending';
+        L.saveState(root, id, state);
+        out(reset.length ? { [k]: v, reset_to_pending: reset } : { [k]: v });
+        break;
+      }
       L.saveState(root, id, state);
       out({ [k]: v });
       break;
@@ -375,7 +387,7 @@ switch (cmd) {
       if (blockers.length) die(`cannot present G4 (Ship): ${blockers.join('; ')}`);
     }
     state.gates = state.gates || {};
-    if (state.gates[g] === 'rejected') state.gates[g] = 'pending';
+    if (state.gates[g] === 'rejected' || state.gates[g] === 'auto') state.gates[g] = 'pending';
     state.presented = state.presented || {};
     state.presented[g] = L.nowIso();
     L.saveState(root, id, state);

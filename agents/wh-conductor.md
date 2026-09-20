@@ -77,6 +77,9 @@ pipeline stopped orchestrating.
 
 Set the phase before dispatching with `WH phase <name>`. A gate `WH required` does not list is
 set `auto` with `WH gate <G> auto`; a required one means present the packet (see Gates) and STOP.
+Only G1 and G3 may be set `auto` before the designer has set the tier: with the tier unknown,
+`WH required` lists G4 alone, and a G2 or G5 stamped `auto` then would skip a touch the tier
+requires (the CLI now resets such a gate to pending when the tier is set, but do not rely on it).
 
 | Phase | Dispatch | Artifacts | Then |
 |-------|----------|-----------|------|

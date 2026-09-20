@@ -98,6 +98,11 @@ console.log('cli init/new');
   check('G1 is never required, so it can be auto at any tier', g.code === 0, g.err);
   g = wh(repo, 'gate', 'G3', 'auto');
   check('G3 is never required, so it can be auto at any tier', g.code === 0, g.err);
+  // A gate stamped auto while the tier was unknown goes back to pending once the tier requires it.
+  wh(repo, 'state', 'set', 'tier', '0');
+  check('G2 can be auto at tier 0', wh(repo, 'gate', 'G2', 'auto').code === 0);
+  const t2 = wh(repo, 'state', 'set', 'tier', '2');
+  check('setting a tier that requires G2 resets its auto to pending', /reset_to_pending/.test(t2.out) && wh(repo, 'state', 'get', 'gates.G2').out === 'pending', t2.out);
   wh(repo, 'state', 'set', 'tier', '0');
   const v = wh(repo, 'state', 'set', 'verification.status', 'green');
   check('cannot mark green without verification.md', v.code !== 0, v.out);
