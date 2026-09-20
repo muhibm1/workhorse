@@ -7,6 +7,15 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.4 — 2026-09-20
+
+Follows 0.3.3 (a gate waits on the human only once presented).
+
+- A sensitive path that the approved Design document names may be edited without asking. A
+  headless run has nobody to answer the hook's "ask", so run 2 (Portfolio) was blocked creating
+  `.npmrc` and editing `package.json`, files its approved brief listed. Protected paths are still
+  denied; a sensitive path the plan does not name still asks.
+
 ## 0.3.3 — 2026-09-20
 
 Follows 0.3.2 (evals in the plan, the review fix with the lock off, dashed task branches).

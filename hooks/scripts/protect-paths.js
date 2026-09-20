@@ -29,6 +29,28 @@ const hit = L.matchesAny(rel, ctx.profile.protected_paths);
 if (hit) return L.deny(`"${rel}" matches protected path "${hit}" in .workhorse/profile.yml. Ask the human to change it or to lift the protection.`);
 
 const soft = L.matchesAny(rel, ctx.profile.sensitive_paths);
-if (soft) return L.ask(`"${rel}" matches sensitive path "${soft}" in .workhorse/profile.yml. Confirm this edit is intended.`);
+if (soft) {
+  // A headless run has nobody to answer "ask", so the edit was simply denied (Portfolio, run 2 of
+  // 0.3.3: the builder could not create .npmrc or edit package.json). The human has already
+  // approved a Design document that names the files the change edits, so an edit to a sensitive
+  // path the approved plan names is allowed, with a note. Anything the plan did not name still asks.
+  const named = namedInApprovedDesign(rel);
+  if (named) return L.allow(`"${rel}" is a sensitive path, but the Design document approved at G2 (${named}) names it.`);
+  return L.ask(`"${rel}" matches sensitive path "${soft}" in .workhorse/profile.yml and the approved design does not name it. Confirm this edit is intended.`);
+}
 
 L.emit({});
+
+/** The design document (brief.md or plan.md) that names `rel`, when G2 is approved; else null. */
+function namedInApprovedDesign(relPath) {
+  const s = ctx.state;
+  if (!ctx.id || !s || !s.gates || s.gates.G2 !== 'approved') return null;
+  const fs = require('fs');
+  for (const doc of ['plan.md', 'brief.md']) {
+    const p = path.join(L.changeDir(ctx.root, ctx.id), doc);
+    try {
+      if (fs.readFileSync(p, 'utf8').includes(relPath)) return doc;
+    } catch (e) { /* missing document: not named */ }
+  }
+  return null;
+}
