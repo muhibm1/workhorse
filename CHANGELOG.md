@@ -7,6 +7,21 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.2 — 2026-09-20
+
+Follows 0.3.1 (the brief's own tier line). Three fixes from the first measured run of the
+two-gates pipeline (hello-service, tier 0: 33 agent-minutes against a 15-minute budget, one
+touch, no waiting, no dead time).
+
+- The designer writes `evals.md`, and every eval case is implemented by exactly one plan task;
+  the eval designer becomes a reviewer that runs at tier 2 and above and extends both files.
+  Run 1 lost eight minutes to cases written after the plan existed.
+- The review-phase fix runs with the test lock off, so the fixer can correct a finding in a
+  test file; the lock stays on in the verify loop. Run 1 routed three such findings through a
+  builder and a third verification instead.
+- Task branches are `<change-branch>-t<N>`; the slash form cannot coexist with the change
+  branch in git.
+
 ## 0.3.1 — 2026-09-19
 
 Follows 0.3.0 (two gates and a clock).

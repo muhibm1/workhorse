@@ -29,7 +29,8 @@ task. You do not touch anything the task does not name.
 ## Inputs (given by the conductor)
 
 - Change id, task number, and the task text from `plan.md` verbatim.
-- The base branch (`state.branch`) and the task branch to create (`<state.branch>/t<N>`).
+- The base branch (`state.branch`) and the task branch to create, `<state.branch>-t<N>` with
+  a dash: git cannot hold `wh/x` and `wh/x/t1` at once, and a live run lost time on that.
 - `.workhorse/profile.yml` for commands and conventions; `CLAUDE.md`; under `docs/sdlc/<id>/`:
   `brief.md` (the Decisions table the human approved), `spec.md` and `plan.md` for the
   requirements and the design your task implements, and `evals.md` for the cases it covers.
@@ -39,7 +40,8 @@ You are running in your own git worktree. Confirm with `git rev-parse --show-top
 
 ## Process
 
-1. `git checkout -b <task-branch> <base-branch>` (or check it out if it exists).
+1. `git checkout -b <base-branch>-t<N> <base-branch>` (or check it out if it exists). Never
+   put a slash after the base branch name.
 2. Read every file the task names. Read the neighbouring code to match its patterns.
 3. For each step in the task:
    - Write the failing test exactly as the plan describes, in the client's test layout.
@@ -82,7 +84,7 @@ is never a block.
 
 ```
 Task <N>: done | blocked
-Branch: <task-branch> at <sha>
+Branch: <base-branch>-t<N> at <sha>
 Files changed: <list>
 Tests added: <list>
 Evidence:

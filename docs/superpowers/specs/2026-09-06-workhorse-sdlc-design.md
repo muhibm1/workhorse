@@ -117,7 +117,7 @@ Complex changes need throughput. The planner groups tasks into waves: every task
 touches a disjoint set of files, and a wave depends only on earlier waves. The conductor
 dispatches one `wh-builder` per task in the wave, all at once, up to `build.max_parallel` from
 the profile (default 10, hard-capped at 10). Each builder runs with `isolation: worktree` on its
-own task branch `<change-branch>/t<N>`, so builders cannot see or clobber each other's edits.
+own task branch `<change-branch>-t<N>` (a dash since 0.3.2), so builders cannot see or clobber each other's edits.
 
 When the wave returns, the conductor folds task branches into the change branch in task order
 (`build.wave_merge`: rebase or merge). A conflict, which the file-disjoint rule makes rare,

@@ -489,7 +489,14 @@ console.log('plugin structure');
   check('the retired templates are gone', !fs.existsSync(path.join(PLUGIN, 'templates', 'intent.md')) && !fs.existsSync(path.join(PLUGIN, 'templates', 'review-packet.md')));
   check('the design skill replaces intent, spec and plan',
     fs.existsSync(path.join(SK, 'design', 'SKILL.md')) && !fs.existsSync(path.join(SK, 'intent')) && !fs.existsSync(path.join(SK, 'spec')) && !fs.existsSync(path.join(SK, 'plan')));
-  check('the designer writes the brief last', /brief\.md[^\n]*last|last[^\n]*brief\.md/i.test(fs.readFileSync(path.join(AG, 'wh-designer.md'), 'utf8')));
+  const designer = fs.readFileSync(path.join(AG, 'wh-designer.md'), 'utf8');
+  check('the designer writes the brief last', /brief\.md[^\n]*last|last[^\n]*brief\.md/i.test(designer));
+  // Run 1 of 0.3.1: eval cases written after the plan had no tests, and slash-named task
+  // branches collided with the change branch. Both are now rules, and both are checked here.
+  check('the designer writes evals.md so every case is planned', /evals\.md/.test(designer) && /exactly one/i.test(designer));
+  const builder = fs.readFileSync(path.join(AG, 'wh-builder.md'), 'utf8');
+  check('task branches use a dash, never a slash', /-t<N>/.test(conductor) && !/\/t<N>/.test(conductor) && /-t<N>/.test(builder) && !/\/t<N>/.test(builder));
+  check('the review-phase fix runs with the test lock off', /mode `review`[\s\S]{0,300}WH mode normal/.test(conductor));
   check('the conductor dispatches the retro in the background', /wh-retro-learner[\s\S]{0,200}run_in_background: true/.test(conductor));
 }
 

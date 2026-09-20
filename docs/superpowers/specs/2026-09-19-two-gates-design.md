@@ -43,7 +43,7 @@ Phases: `design`, `build`, `verify`, `review`, `deploy`, `done`.
 
 | Phase | Dispatch | Writes | Gate |
 |---|---|---|---|
-| design | `wh-designer`; then `wh-constraint-auditor` and `wh-eval-designer` in parallel; at most one revision round, only on a high finding | `brief.md` (last), `spec.md`, `plan.md`, `evals.md`, `adr/` | G2 |
+| design | `wh-designer` writes spec, evals, plan (every eval case has a task) and brief; tier 1+: `wh-constraint-auditor`; tier 2+: also `wh-eval-designer` (reviews and extends evals and the plan) in parallel; at most one revision round, only on a high finding | `brief.md` (last), `spec.md`, `plan.md`, `evals.md`, `adr/` | G2 |
 | build | `wh-builder` per task in file-disjoint waves (unchanged); then `wh-polish` once | commits on the change branch | none |
 | verify | `wh-verifier` (runs checks and evals in one session); `wh-fixer` on red, max 5 loops | `verification.md` | none |
 | review | reviewers in parallel, each writing `reviews/<agent>.md`; `wh-fixer` once on every high or medium finding with a concrete fix, then `wh-verifier` again; `wh-shipper` | `ship.md`, PR | G4 |
@@ -84,7 +84,16 @@ document, never a red.
 **Reviewer reports.** Each reviewer writes `reviews/<agent>.md`, at most 60/80/100 lines by
 tier: one row per finding with severity (critical, high, medium, low), file:line, the failure
 scenario, and a concrete fix where one exists. Findings marked high or medium with a fix go to
-the fixer before the Ship document exists.
+the fixer before the Ship document exists. That review-phase fix runs with the test lock off
+(`WH mode normal`): review findings are often in test files, and the reviewer has already judged
+them. The lock stays on in the verify loop, where a red test must never be edited green.
+
+**Evals are in the plan.** The designer writes `evals.md` and every case is implemented by
+exactly one plan task, so the verifier never finds a case with no test. (Run 1 of 0.3.1 lost
+eight minutes to cases the eval designer added after the plan existed.)
+
+**Task branches** are `<change-branch>-t<N>`, with a dash: git cannot hold `wh/x` and
+`wh/x/t1` at once.
 
 **The clock.** `WH clock` reports agents working, waiting on the human, dead time and gaps,
 against the tier budget (0: 15 min, 1: 30, 2: 90, 3: 180; `budgets.agent_minutes` in the
