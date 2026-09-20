@@ -7,6 +7,15 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.9 — 2026-09-20
+
+Follows 0.3.8 (a gate stamped auto before the tier is known returns to pending).
+
+- The worktree fence recognises the harness's `.claude/worktrees/` as well as the plugin's
+  `.worktrees/`. While `state.worktree` pointed at one builder's tree, a builder in another tree
+  and the conductor in the main checkout were both denied an edit the approved plan named (run
+  4, `.github/workflows/deploy.yml`).
+
 ## 0.3.8 — 2026-09-20
 
 Follows 0.3.7 (tier 0 budget 25; the proving runs recorded).

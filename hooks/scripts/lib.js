@@ -50,8 +50,10 @@ function findRoot(startDir) {
   return null;
 }
 
+// Both the plugin's own `.worktrees/` and the harness's `isolation: worktree` trees under
+// `.claude/worktrees/`: a builder inside the latter was fenced out of its own tree (run 4).
 function isInsideWorktree(root) {
-  return root ? /[\\/]\.worktrees[\\/]/.test(root + path.sep) : false;
+  return root ? /[\\/](\.worktrees|\.claude[\\/]worktrees)[\\/]/.test(root + path.sep) : false;
 }
 
 function loadProfile(root) {
