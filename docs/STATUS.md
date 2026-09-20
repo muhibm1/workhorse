@@ -58,19 +58,33 @@ Paddock): CI fails otherwise, because Studbook answers release questions from th
 - **A few answers the prompt cannot fix.** `health-13` refuses with its evidence present in every
   run; `wh-15` names the wrong release even with the right changelog entry ranked first
   (`studbook/docs/refusal-experiments.md`).
-- **The two-gate pipeline has not run on a real change yet.** Every earlier live run surfaced
-  fixes that tests and reviewers had missed, and 0.3.0 changed the conductor, three new agents,
-  the CLI and a hook at once. The next step is the three proving runs from the design document
-  (section 6), each from an existing backlog with the clock running:
-  1. hello-service, tier 0: budget 15 agent-minutes, one touch (Ship).
-  2. Portfolio Node pin, tier 1: budget 30 to 60 agent-minutes, two touches (Design, Ship).
-  3. webapp `dvh`/`vh` and cross-reference comments, tier 2: budget 90 agent-minutes, two touches.
-  Results go here and into the scorecard as measured, budget missed or not.
-- **Paddock 0.4.9 still renders the five-gate model.** Its gate screen reads `intent.md` and
-  `review-packet.md`, which 0.3.0 no longer writes; a change started with the 0.3.0 plugin is
-  driven from the CLI until Paddock 0.5.0 ships (gate labels Design / Ship / Deploy, the Gate
-  screen renders `brief.md` and `ship.md`, the Run screen shows the clock, and opening a gate
-  records `gate_opened.<G>` so the clock can measure the human's time).
+- **The three proving runs, measured on 2026-09-20** (clocks from `wh.js clock`; agent minutes
+  exclude waiting on the human and the usage-limit cut-offs, which the clock reports as dead
+  time):
+
+  | Run | Tier | Agent minutes | Budget | Touches | Outcome |
+  |---|---|---|---|---|---|
+  | hello-service, README endpoints section | 0 | 40 | 15 | 1 | done; 11 tests, 3 medium findings fixed before Ship |
+  | Portfolio, Node 22.12 pin | 2 | 105 | 90 | 2 | at Ship; 4 tasks, 36 new tests, 10 findings fixed, one high caught by the shipper |
+  | webapp, moderationApi type fix | 2 | 79 | 90 | 2 | at Ship (PR #2); 8 reviewers, 9 findings fixed, one pre-existing high accepted with reason |
+
+  Every touch was one of the two designed ones; no run asked a question mid-way; no Ship
+  document was presented with an open finding. Each run over budget exposed a defect that is
+  now fixed and tested (0.3.2 to 0.3.6): eval cases written after the plan, review fixes barred
+  from test files, slash-named task branches, a gate counted as waiting before it was presented,
+  sensitive paths denied to a design the human had approved, the stale-worktree copy of the
+  plan, the verifier's turn cap, and files the harness itself refuses to write headless
+  (`.npmrc`). What remains over budget is real size: the Portfolio change grew to a CI guard
+  script with its own review findings. The tier 0 budget of 15 minutes is not reachable with a
+  verify and a review pass; 25 is the honest floor and is recorded in the design document.
+- **Paddock cannot record an approval for a repository it does not list.** On 2026-09-20 three
+  approvals were "made" in a Paddock whose registry held only the example folder; nothing was
+  recorded and the runs sat for hours. The Fleet screen now lists the three run repositories;
+  registering a repository is the first step of any run driven from Paddock.
+- **the harness refuses some writes headless, whatever the plugin says.** `.npmrc`, `.env*`,
+  keys and credential files need an interactive yes; a profile `ask_commands` entry such as
+  `git push` is the same. The designer (0.3.5) turns the first into a decision the human
+  performs; the second is the profile owner's call (Portfolio's rule kept the PR from opening).
 
 ## Picking it back up
 

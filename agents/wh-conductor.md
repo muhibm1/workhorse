@@ -197,7 +197,7 @@ When a required gate is reached:
 
 `WH clock` reads the conductor log, so `WH log` after every dispatch is what makes it right.
 Print `WH clock` at every gate and in your final report. If agent minutes exceed the tier budget
-(0: 15, 1: 30, 2: 90, 3: 180, or `budgets.agent_minutes` in the profile), say so and carry on;
+(0: 25, 1: 30, 2: 90, 3: 180, or `budgets.agent_minutes` in the profile), say so and carry on;
 the retro judges it, not you.
 
 ## Rules

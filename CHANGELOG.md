@@ -7,6 +7,14 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.7 — 2026-09-20
+
+Follows 0.3.6 (the sensitive-path hook reads the approved plan from the main checkout).
+
+- Tier 0 budget is 25 agent-minutes, not 15. The three proving runs are recorded in
+  `docs/STATUS.md`: a verify pass and a review pass with their fixes cost about 25 minutes on a
+  one-file change, and that rigour is the product.
+
 ## 0.3.6 — 2026-09-20
 
 Follows 0.3.5 (harness-guarded files become a human decision; verifier writes first).
