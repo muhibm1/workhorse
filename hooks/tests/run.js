@@ -269,7 +269,14 @@ console.log('digest');
   check('digest extracts outcome from the brief', d().outcome === 'Every order is logged.');
   check('a brief without "## Your decision" is not yet waiting on the human', d().waiting_on === 'Agents' && d().blocking_gate === null);
   fs.appendFileSync(path.join(ddir, 'brief.md'), '\n## Your decision\n\nApprove.\n');
-  check('a finished brief at tier 1 waits on the human at Design', d().waiting_on === 'You (G2)' && d().blocking_gate === 'G2');
+  // A finished brief is still the agents' while the auditor round runs; only `present` hands it over.
+  check('a finished brief is not waiting on the human until it is presented', d().waiting_on === 'Agents' && d().blocking_gate === null);
+  const early = wh(repo, 'present', 'G4');
+  check('present refuses a gate whose packet is missing', early.code !== 0 && /no "## Your decision"/.test(early.err), early.err);
+  const pres = wh(repo, 'present', 'G2');
+  check('present prints the gate name, the packet and the commands', pres.code === 0 && /Design \(G2\) is waiting on you/.test(pres.out) && /approve G2 --accept-all/.test(pres.out), pres.err || pres.out);
+  check('present logs a clock row', /G2 Design presented/.test(fs.readFileSync(path.join(ddir, 'conductor-log.md'), 'utf8')));
+  check('a presented brief at tier 1 waits on the human at Design', d().waiting_on === 'You (G2)' && d().blocking_gate === 'G2');
   const g2 = wh(repo, 'approve', 'G2', 'build it');
   check('Design approval records', g2.code === 0, g2.err);
 
@@ -296,7 +303,9 @@ console.log('digest');
   const refused = wh(repo, 'approve', 'G4', '--accept-all');
   check('approve refuses the Ship gate while a blocker stands', refused.code !== 0 && /cannot approve G4/.test(refused.err), refused.err);
   fs.writeFileSync(path.join(ddir, 'ship.md'), shipDoc('| high | bug | src/log.ts:12 | Drops the last order | fixed in a1b2c3d |'));
-  check('waiting_on names the gate once the ship document is clean', d().waiting_on === 'You (G4)' && d().ship_blockers.length === 0);
+  check('a clean ship document is still not waiting until presented', d().waiting_on === 'Agents' && d().ship_blockers.length === 0);
+  check('present accepts a clean ship document', wh(repo, 'present', 'G4').code === 0);
+  check('waiting_on names the gate once the ship document is clean and presented', d().waiting_on === 'You (G4)');
   check('blocking_gate is G4', d().blocking_gate === 'G4');
   check('digest extracts the short version as the TL;DR', /order audit log/i.test(d().tldr));
   check('digest extracts decision rows, skipping the header', d().decisions.length === 2, JSON.stringify(d().decisions));
@@ -309,8 +318,8 @@ console.log('digest');
   check('reject succeeds for the digest fixture', rjd.code === 0, rjd.err);
   check('a rejected gate waits on Agents, not on the human',
     d().waiting_on === 'Agents' && d().blocking_gate === null, JSON.stringify([d().waiting_on, d().blocking_gate]));
-  wh(repo, 'gate', 'G4', 'pending');
-  check('presenting the gate again puts it back on the human', d().blocking_gate === 'G4');
+  wh(repo, 'present', 'G4');
+  check('presenting the gate again puts it back on the human', d().blocking_gate === 'G4' && wh(repo, 'state', 'get', 'gates.G4').out === 'pending');
 
   // Approval flips waiting_on and is parsed back out of approvals.md.
   // The packet asks two decisions (D1, D2). An approval must answer both by id: a live G4
