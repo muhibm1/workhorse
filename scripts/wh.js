@@ -179,8 +179,16 @@ switch (cmd) {
     // Only approvals.md is scaffolded. The designer writes brief.md itself, last, so a half-written
     // packet never shows as waiting on the human.
     fs.writeFileSync(path.join(dir, 'approvals.md'), render(fs.readFileSync(path.join(TEMPLATES, 'approvals.md'), 'utf8'), vars));
-    appendLog(root, id, state, `conductor | change created: ${title}`);
-    out({ change_id: id, dir: path.relative(root, dir), branch: state.branch });
+    // Cut the change branch now, so the design documents and the Design approval commit land on
+    // it. They used to land on whatever branch was checked out (the default branch, in every
+    // live run), which left local main ahead of origin with commits the squash merge already
+    // carried, and a conflict on the next pull.
+    const from = L.git(root, ['branch', '--show-current']) || '(detached)';
+    const exists = L.git(root, ['rev-parse', '--verify', '--quiet', `refs/heads/${state.branch}`]);
+    L.git(root, exists ? ['checkout', '-q', state.branch] : ['checkout', '-q', '-b', state.branch]);
+    const onBranch = L.git(root, ['branch', '--show-current']) === state.branch;
+    appendLog(root, id, state, `conductor | change created: ${title}${onBranch ? ` on branch ${state.branch}, cut from ${from}` : ' (branch not cut: the checkout could not switch; cut it by hand before building)'}`);
+    out({ change_id: id, dir: path.relative(root, dir), branch: state.branch, on_branch: onBranch, cut_from: onBranch ? from : null });
     break;
   }
 

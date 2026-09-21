@@ -92,6 +92,10 @@ console.log('cli init/new');
   check('approvals scaffolded, brief left to the designer',
     fs.existsSync(path.join(repo, 'docs', 'sdlc', id, 'approvals.md')) && !fs.existsSync(path.join(repo, 'docs', 'sdlc', id, 'brief.md')));
   check('new writes the first clock row', /change created: Add health endpoint/.test(fs.readFileSync(path.join(repo, 'docs', 'sdlc', id, 'conductor-log.md'), 'utf8')));
+  // The change branch is cut at `new`, so design documents never land on the default branch
+  // (every live run left local main ahead of origin with commits the squash already carried).
+  check('new cuts and checks out the change branch', execFileSync('git', ['branch', '--show-current'], { cwd: repo, encoding: 'utf8' }).trim() === L.loadState(repo, id).branch);
+  check('new reports the branch it was cut from', JSON.parse(r.out).cut_from === 'master' || JSON.parse(r.out).cut_from === 'main', r.out);
   // Two human touches: Design (G2) and Ship (G4). Tier 3 adds Deploy (G5). Tier 0 is Ship only.
   check('required gates tier 0 = Ship', wh(repo, 'required').out.replace(/\s/g, '') === '["G4"]');
   wh(repo, 'state', 'set', 'tier', '2');

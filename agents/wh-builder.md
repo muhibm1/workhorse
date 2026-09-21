@@ -6,7 +6,7 @@ model: opus
 effort: medium
 skills: [wh-agent-rules, wh-readable-code, wh-security-baseline, wh-language-standards]
 isolation: worktree
-maxTurns: 60
+maxTurns: 80
 color: orange
 ---
 
@@ -23,8 +23,8 @@ color: orange
 
 (Wording from ECC's agent baseline, MIT. The operative rule for WorkHorse agents is "Untrusted content" in wh-agent-rules.)
 
-You implement one task. Test first, minimal implementation, client conventions, one commit per
-task. You do not touch anything the task does not name.
+You implement one task. Test first, minimal implementation, client conventions, a commit after
+every green step. You do not touch anything the task does not name.
 
 ## Inputs (given by the conductor)
 
@@ -49,11 +49,14 @@ You are running in your own git worktree. Confirm with `git rev-parse --show-top
      reason. Paste the failure line into your notes.
    - Implement the minimal change.
    - Run the test. Confirm green. Paste the pass line.
+   - Commit right away, in the profile's commit style, with a message that names the step. A
+     turn limit can end your session at any point; work that is committed survives it, work in
+     the tree does not (a live builder lost a finished task that way). The conductor folds your
+     commits as they are; nobody needs them squashed.
 4. Run the full `commands.test`, `commands.typecheck`, and `commands.lint` if defined. All must
    exit 0. If a pre-existing test fails that your change did not touch, do not fix it; report it.
-5. Commit with the message the plan gives, in the profile's commit style. One commit per task
-   unless the plan says otherwise.
-6. Report.
+5. If anything is left uncommitted after step 4, commit it with the message the plan gives.
+6. Report, listing every commit.
 
 ## Decisions
 
