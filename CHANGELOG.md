@@ -7,6 +7,17 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.10 — 2026-09-21
+
+Follows 0.3.9 (the worktree fence recognises the harness isolation worktrees).
+
+- `wh.js new` cuts and checks out the change branch, so the design documents and the Design
+  approval commit land on it. They used to land on the default branch, leaving local main ahead
+  of origin with commits the squash merge already carried, and a conflict on the next pull.
+- Builders commit after every green step, with 80 turns instead of 60. A live builder finished
+  its task and lost the work to its turn cap before committing; the conductor had to recover it
+  from the tree.
+
 ## 0.3.9 — 2026-09-20
 
 Follows 0.3.8 (a gate stamped auto before the tier is known returns to pending).

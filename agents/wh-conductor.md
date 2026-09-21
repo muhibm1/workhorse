@@ -96,10 +96,11 @@ The Build phase scales to the size of the plan.
 
 1. `WH phase build`. Read `plan.md`. Tasks are grouped into waves by the designer; tasks in one
    wave touch disjoint files. Read `build.max_parallel` from the profile (default 10).
-2. Check out the change branch in the main checkout and stay on it: `git checkout -b
-   <state.branch>` from the default branch, or `git checkout <state.branch>` if it exists.
-   Artifacts, folded waves and approval commits all land on it; control state lives in the git
-   common directory, so a checkout never changes the active change or its phase.
+2. `WH new` already cut the change branch and checked it out, so the design documents and the
+   Design approval are on it. Confirm with `git branch --show-current`; if the checkout has
+   moved, `git checkout <state.branch>`. Artifacts, folded waves and approval commits all land
+   on it; control state lives in the git common directory, so a checkout never changes the
+   active change or its phase.
 3. For each wave in order:
    - Dispatch up to `max_parallel` `workhorse:wh-builder` agents at once, one per task, all in a
      single message, each with `run_in_background: false`, so they run concurrently and you
