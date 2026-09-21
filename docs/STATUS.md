@@ -67,6 +67,7 @@ Paddock): CI fails otherwise, because Studbook answers release questions from th
   | hello-service, README endpoints section | 0 | 40 | 15 | 1 | done; 11 tests, 3 medium findings fixed before Ship |
   | Portfolio, Node 22.12 pin | 2 | 109 | 90 | 2 | done: PR #11 squash-merged to main (7ea3583), Pages deploy and smoke test green, retro committed; the branch push and merge were the owner's by the profile's own rules (`ask` on push, `prod auto: false`); 4 tasks, 36 new tests, 10 findings fixed, one high caught by the shipper |
   | webapp, moderationApi type fix | 2 | 80 | 90 | 2 | done: PR #2 squash-merged into `v3-integration` (bc78c61), retro committed; 8 reviewers, 9 findings fixed, one pre-existing high accepted with reason |
+  | Portfolio, phone-redaction scanner (run 4, on 0.3.7 to 0.3.9) | 2 | 103 | 90 | 2 | done: PR #15 squash-merged (9d24286), Pages deploy and smoke test green, retro committed; both defects reproduced before design, 34 evals incl. a real junction run, 6 findings fixed, 0 rejections, 5 minutes waiting; 79 of the minutes were spent before the usage-limit cut-off, and two more defects were found and fixed the same day (0.3.8 gate stamped auto before the tier was known; 0.3.9 worktree fence) |
 
   Every touch was one of the two designed ones; no run asked a question mid-way; no Ship
   document was presented with an open finding. Each run over budget exposed a defect that is
