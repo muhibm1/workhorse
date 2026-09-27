@@ -2,7 +2,7 @@
 
 Date: 2026-09-06
 Status: approved design, v1
-Owner: Mohammed (90530587+muhibm1@users.noreply.github.com)
+Owner: Muhammad Muhibullah (90530587+muhibm1@users.noreply.github.com)
 
 ## 1. Purpose
 
