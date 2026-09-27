@@ -88,6 +88,39 @@ Paddock): CI fails otherwise, because Studbook answers release questions from th
   `git push` is the same. The designer (0.3.5) turns the first into a decision the human
   performs; the second is the profile owner's call (Portfolio's rule kept the PR from opening).
 
+## Fix before the next run (studbook MCP server, 2026-09-26 to 27)
+
+The run shipped correct code but took 10 h 20 m wall and 4 h 10 m of agent time against a
+90-minute budget. The owner's rule since then: speed is a defect, not a trade-off. Each item
+below cost measurable time on that run.
+
+1. **Paddock launches refuse the project's venv tools; the same launch from a terminal does not.**
+   Confirmed: identical `--allowedTools` and plugin run `.venv/Scripts/ruff.exe` from a terminal
+   but get "requires approval" when Paddock spawns them. Cause not found (settings file, argument
+   joining, hooks and Git Bash variables ruled out). Cost about 3 h of blocked build.
+2. **Paddock ignores `settings.pluginPath` and uses its bundled plugin**, although the file it
+   reads (`%APPDATA%\Paddock\settings.json`) holds the path. 0.5.1 bundles 0.3.10 as a stopgap.
+3. **Paddock's Resume starts a second conductor while one is running.** It happened twice: two
+   conductors raced on a task worktree. A run needs a lock (pid in the git common directory),
+   and Resume must refuse while it is held.
+4. **Paddock lets the owner approve a gate before it is presented** (G2 was approved before the
+   audit rewrote the brief, so it had to be approved twice). Disable Approve until `presented`.
+5. **Paddock's allowlist editor accepts only a fixed catalog**, so `Bash(env *)` and
+   `Bash(.venv/Scripts/*)` had to be written into the settings file by hand.
+6. **Agents hit their turn caps mid-task** (builder at 60, fixer at 50): each cut-off left
+   uncommitted work and cost a continuation agent. Commit every green step (as builders do since
+   0.3.10) in the fixer too, and raise the caps where the task size warrants.
+7. **A blocked conductor sits silently.** The run waited 2 h for a human who did not know it was
+   blocked. Blocked should notify the way a presented gate does.
+8. **`verify-before-stop` fires in any session whose working folder is the repository**, not only
+   the conductor's, and nags a supervising session to write the verification report.
+9. **The studbook live CI job hid its output and timed out** at 30 minutes (fixed in
+   muhibm1/studbook#7: 60 minutes and streamed output).
+10. **Paddock builds drop their dependencies through the `node_modules` junction** (npm reports
+    them extraneous; the first 0.5.1 exe held 10 of 149 packages). The build script must swap
+    the real folder in, as done by hand for 0.5.1, or install into the tree it builds from.
+11. **studbook's pre-push hook fails in a git worktree** (it writes to `.git/`, a file there).
+
 ## Picking it back up
 
 - **Disk.** `claude plugin install` copies the whole plugin folder into

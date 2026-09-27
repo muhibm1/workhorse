@@ -5,6 +5,15 @@ it shipped (listed by hash) and names the release it follows and what that relea
 releases are in the repository's root `CHANGELOG.md`; each Paddock build bundles the plugin version
 it names.
 
+## 0.5.1 — 2026-09-26
+
+Follows 0.5.0 (the two-gates screens).
+
+- Bundles WorkHorse 0.3.10 instead of 0.3.1. 0.5.0's bundled copy predated the fixes that let a
+  headless run edit a sensitive path its approved Design names (0.3.4) and the other 0.3.x fixes,
+  so a Paddock that fell back to its bundled plugin refused those edits and the run stopped in
+  Build (studbook, 2026-09-26). No app code changed.
+
 ## 0.5.0 — 2026-09-19
 
 Follows 0.4.9 (Refresh reads changelogs).

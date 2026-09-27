@@ -1,0 +1,151 @@
+# WorkHorse client profile. Written once at /workhorse:onboard, edited by humans, read by every agent and hook.
+# Every value here is a fact about THIS client. Label anything not verified with "(believed)".
+# Written by wh-discovery-analyst on 2026-09-27. Evidence for each value: docs/sdlc/codebase-map.md
+# and docs/sdlc/constraints.md. Confirmed at G0 on 2026-09-27: the owner delegated the sign-off ("you do everything"); D1-D7 taken as recommended, D5 done in the G0 commit.
+
+client:
+  name: "WorkHorse (internal)"
+  industry: "internal tooling (developer tools)"
+  engagement_start: "2026-09-27"
+  primary_contact: "owner and sole forward-deployed engineer"
+
+# Autonomy ladder: shadow | assisted | bounded | full. See design doc 4.2. Default bounded.
+autonomy: bounded
+
+stack:
+  languages: [javascript, typescript]
+  frameworks: [claude-code-plugin, electron, react, electron-vite, vite, zustand, vitest, playwright]
+  package_manager: npm
+  database: "none for the plugin; Paddock's Studbook tab connects to an external Postgres (Supabase, us-east-1)"
+  hosting: "local machine: plugin installed at user scope, Paddock as a portable exe; source on GitHub (private)"
+  ci: github-actions
+
+# Commands agents run. Each must be a single command that exits non-zero on failure.
+# All run from the repository root. Confirmed ones were run on 2026-09-27 and exited 0.
+commands:
+  install: "npm --prefix desk ci"           # (believed) not run: it replaces the desk/node_modules junction, see constraints.md
+  typecheck: "npm --prefix desk run typecheck"
+  lint: "npm --prefix desk run lint"
+  format: ""                                # no formatter is configured in the repo
+  test: "npm test && npm --prefix desk test"
+  test_file: "npm --prefix desk test -- {file}"   # {file} must be relative to desk/, e.g. tests/clock.test.ts
+  build: "npm --prefix desk run build"      # (believed) not run: writes desk/resources/plugin and desk/out (both gitignored)
+  e2e: "npm --prefix desk run e2e"          # (believed) not run: needs build first and claude on PATH
+  screenshot: ""
+  security_audit: "npm --prefix desk audit"
+
+conventions:
+  default_branch: master
+  branch_prefix: wh/
+  commit_style: conventional
+  test_globs:                  # files the fixer may NOT edit during a fix loop
+    - "**/*.test.*"
+    - "**/*.spec.*"
+    - "**/__tests__/**"
+    - "**/tests/**"
+    - "**/test/**"
+    - "**/e2e/**"
+    - "desk/fixtures/**"
+  docs_dir: docs
+  style_notes:
+    - "Plugin code (hooks/, scripts/) is zero-dependency CommonJS Node with 'use strict'; never add an npm dependency there"
+    - "Paddock spawns child processes with an explicit argument array, never a shell string"
+    - "Secrets stay in Paddock's main process, encrypted with safeStorage, and are never returned over IPC"
+    - "Pin exact dependency versions; pin GitHub Actions by commit SHA with the tag in a comment"
+    - "A version bump adds a changelog entry first in the file, headed with the version, a spaced em-dash and the date, and a Follows line; tests match that heading"
+    - "Comments state measured facts with their source, and label anything not verified"
+
+# Paths hooks refuse to edit (deny) or ask before editing (ask). Globs, repo-relative.
+protected_paths:
+  - ".github/workflows/**"
+  - ".githooks/**"
+  - "**/*.pem"
+  - "**/*.key"
+  - "**/*.p12"
+  - "**/*.pfx"
+  - ".env*"
+sensitive_paths:
+  - "hooks/**"
+  - "scripts/wh.js"
+  - "skills/approve/**"
+  - ".claude-plugin/**"
+  - "vendor/**"
+  - "ci/**"
+  - ".github/dependabot.yml"
+  - "desk/src/main/settings.ts"
+  - "desk/src/main/index.ts"
+  - "desk/src/main/ipc.ts"
+  - "desk/src/main/studbook/**"
+  - "desk/src/preload/**"
+  - "desk/electron-builder.yml"
+  - "desk/package.json"
+  - "desk/package-lock.json"
+
+# Commands hooks refuse (deny) or ask before running. Substrings, case-insensitive.
+deny_commands:
+  - "git push --force"
+  - "git push -f"
+  - "npm publish"
+  - "gh repo delete"
+  - "gh repo edit --visibility"
+  - "DROP DATABASE"
+  - "bootstrap_db"
+ask_commands:
+  - "claude plugin uninstall"
+  - "claude plugin marketplace"
+  - "electron-builder"
+  - "dist:win"
+  - "npm ci"
+  - "gh api -X"
+
+# Build phase parallelism. Lowered from 10: parallel fan-outs on this machine hit the Claude
+# usage limit (owner's recorded observation); waves of 5 to 7 finish.
+build:
+  max_parallel: 6
+  wave_merge: rebase
+
+# Environment tiers. dev is the local checkout and master on GitHub. There is no staging.
+# prod is the user-scope plugin install that every client session on this machine loads.
+environments:
+  dev: { deploy: "", auto: true }
+  staging: { deploy: "", auto: false }
+  prod: { deploy: "claude plugin install workhorse", auto: false }
+
+# Compliance. Filled by wh-compliance-mapper on 2026-09-27. Flags only: the owner (or a future
+# client's legal/privacy/compliance function) decides which regimes actually bind. See
+# "Compliance controls" in docs/sdlc/constraints.md for the reasoning and evidence.
+compliance:
+  regimes: []   # none confirmed applicable today; see "possibly applicable" list below
+  possibly_applicable:
+    - regime: "gdpr"
+      reason: "Studbook ingest can carry a synced client repo's commit author emails and SDLC prose into Supabase us-east-1 and into Anthropic prompts (K6, codebase-map.md Data inventory). If a synced repo has any EU/UK data subject, GDPR attaches to that data regardless of WorkHorse's own US jurisdiction. Confirm which repos are synced (open question 2, constraints.md) and whether any contain EU/UK personal data."
+    - regime: "soc2"
+      reason: "Not adopted as a regime today (no auditor, no customer contract requiring a report), but the pipeline already produces SOC2-shaped change-management evidence (brief/spec/plan/verification/ship/approvals per change, append-only approvals.md). Confirm with the owner whether this is ever presented to a prospective client as assurance, which would make formal adoption worth doing deliberately rather than incidentally."
+    - regime: "iso27001"
+      reason: "Same reasoning as soc2: no certification sought today, flagged only in case the owner later offers WorkHorse-built pipelines as assurance evidence to a client with an ISO 27001 requirement."
+  not_applicable:
+    - regime: "hipaa"
+      reason: "No health, treatment or payment information in the data inventory (codebase-map.md Data inventory table); nothing in this repo is a covered entity or business associate relationship."
+    - regime: "pci-dss"
+      reason: "No cardholder data path; the repo has no payment processing anywhere in the stack or data inventory."
+    - regime: "financial"
+      reason: "No ledger, balance, pricing or eligibility decision anywhere in the codebase; WorkHorse and Paddock do not move money."
+  special_categories: []   # none identified in this repo's own data (believed: no field or inferable grouping found)
+  data_residency: "Studbook corpus (SDLC docs, commit messages, embeddings) in Supabase Postgres us-east-1 (confirmed, studbook/docs/hosted-config.md per codebase-map.md). Anthropic API and GitHub are US-region processors (believed, no explicit region pin found). No residency requirement is stated because there is no end-user personal data and the owner states US jurisdiction with no end users (constraints.md, Business constraints) -- believed, not a documented legal determination."
+  audit_log_required: true   # already implemented, not regime-driven: approvals.md is an append-only log of who approved what, when, over which artifact hash (confirmed, scripts/wh.js line 325, hooks/tests/run.js). Recorded here so the requirement is not silently dropped in a future edit.
+  retention_notes: "No retention policy in the repo. approvals.md keeps the approver's git email in git history and in the Studbook store permanently (believed). Studbook's Supabase store has no documented retention or deletion job for ingested repo content (K6, codebase-map.md); if GDPR is confirmed applicable to any synced repo's data, this becomes a gap against the GDPR skill's retention control."
+
+# Risk tier overrides. Paths here force at least the given tier regardless of the classifier.
+tier_floor_paths:
+  3: []
+  2: ["hooks/**", "scripts/wh.js", "skills/approve/**", "desk/src/main/settings.ts", "desk/src/main/ipc.ts", "desk/src/main/index.ts", "desk/src/main/studbook/**", "desk/src/preload/**", ".github/**", ".githooks/**"]
+
+# Optional tracker sync. Not configured for this repository.
+tracker:
+  provider: ""
+  database: ""
+  sync_artifacts: false
+  sync_on: [gate, phase]
+
+# Free text the discovery analyst could not fit elsewhere. Kept short.
+notes: "Confirmed 2026-09-27 from the repo root: npm test (224 passed), npm --prefix desk test (278 passed, 1 skipped, 2 files skipped: Studbook parity gates need a live database), typecheck, lint, audit (0 vulnerabilities), claude plugin validate . all exit 0. Believed, not run: install, build, e2e. Releases: plugin = bump .claude-plugin/plugin.json and marketplace.json, add CHANGELOG.md entry, then the owner runs claude plugin install workhorse@workhorse --scope user. Paddock = bump desk/package.json, add desk/CHANGELOG.md entry, then npm --prefix desk run dist:win writes to ~/Paddock-builds. Both are human steps. Studbook proper lives in a separate repo, ~/studbook (muhibm1/studbook), and is out of scope here."
