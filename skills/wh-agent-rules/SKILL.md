@@ -66,6 +66,12 @@ the harness itself refuses, in a headless run, to write certain sensitive filena
 `.git-credentials`, `*.p12`, `*.pfx`, `secrets.*`) whatever the plugin's hooks or allow rules
 say; report such a refusal as a true block, and never work around it with a shell write.
 
+the harness also stops for approval, whatever the allow rules say, when a command changes directory
+and then runs git (`cd <dir> && git status`): the target folder could carry its own git hooks. In an
+unattended run nobody is there to approve, so the run stalls. Never chain `cd` with git: run
+`git -C <dir> <command>` instead, and give other tools the path as an argument rather than `cd`-ing
+into it.
+
 ## Writing for the client
 
 - Everything you write may be read by a client engineer who has never met you and by an auditor
