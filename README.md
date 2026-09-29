@@ -242,6 +242,24 @@ Why two gates: measured from three real changes' own logs (design document, sect
 human waited 41, 10 and 17 hours on runs whose agents worked 7 hours, 3 hours 40 minutes and
 1 hour 45 minutes, and every approval note on the smallest change read "none".
 
+## Running WorkHorse on its own repository
+
+the harness refuses a plugin agent's writes inside the directory the plugin was loaded from
+(confirmed 2026-09-29: a `wh-designer` subagent was refused a one-word probe file that a
+general-purpose subagent in the same folder could write). A change on this repository therefore
+loads the plugin from a separate checkout of `master`:
+
+```
+git worktree add --detach ../WorkHorse-plugin master
+claude -p '/workhorse:run "<problem> -> <outcome>"' --permission-mode acceptEdits \
+  --allowedTools "Agent,Read,Glob,Grep,Edit,Write,Bash(node *),Bash(npm *),Bash(git *),Bash(gh *),Bash(claude plugin validate *)" \
+  --plugin-dir ../WorkHorse-plugin
+```
+
+`Write` and `Edit` must be named in `--allowedTools`; `acceptEdits` alone did not cover the change
+folder in a headless run. Refresh the checkout after each merge
+(`git -C ../WorkHorse-plugin checkout --detach master`). Client repositories need none of this.
+
 ## Known limits
 
 - Approvals are trusted to come from the human because the approve skill is user-invocable
