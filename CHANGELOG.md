@@ -7,6 +7,31 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.13 — 2026-09-29
+
+Follows 0.3.12 (the speed release). Both fixes were applied live during the first measured run
+of 0.3.12 and are ported here with tests.
+
+- `wh.js verify`: a skipped install is never a failure (a full pass without `--install` counts
+  it as skipped, not as "not run"), and a recorded known failure is cited from
+  `.workhorse/known-failures.md` rather than re-run: it was reproduced on the base branch when
+  it was recorded, and re-running it costs time and can have side effects. On the run, Paddock's
+  flaky e2e smoke test failed, wrote `desk/playwright-report/`, and the next lint pass failed on
+  the generated trace files; cited, it no longer runs.
+- `desk/eslint.config.mjs` ignores `playwright-report/**`.
+- Test: every agent that names a Studbook tool passes `own_change_id` and carries the fail-open
+  instruction (the test the Studbook-tools change deferred to keep tier 1).
+- Documented in the README: running WorkHorse on its own repository needs the plugin loaded from
+  a separate checkout (the harness refuses a plugin agent's writes inside the directory the
+  plugin was loaded from), and headless runs name `Write` and `Edit` in `--allowedTools`.
+
+**First measured run of 0.3.12** (the Studbook-tools change, tier 1, 2 files): build 90 s,
+each full `wh.js verify` 48 to 78 s, three reviewers 77 s, each fix under a minute, Ship
+presented 23 minutes after Design approval including 5 minutes of operator interventions. The
+clock's 45 minutes against the 30-minute budget include 21 minutes of false starts before the
+design existed, all the harness permission edges (the self-modification refusal and two
+allowlist gaps), none of them pipeline time. Per-agent table in that change's `retro.md`.
+
 ## 0.3.12 — 2026-09-29
 
 Follows 0.3.11 (agents use `git -C` instead of `cd && git`).

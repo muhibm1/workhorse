@@ -832,6 +832,32 @@ console.log('wh.js verify, fold, lock, clock --by-agent (0.3.12)');
   check('by-agent charges intervals to the reporting agent', mins['build/wh-builder'] === 20 && mins['build/conductor'] === 5 && mins['verify/wh-verifier'] === 5);
   check('by-agent skips dead time and gaps', mins['verify/conductor'] === undefined && mins['review/wh-shipper'] === 1);
   check('clock --by-agent prints the table', /By agent/.test(wh(rr, 'clock', '--by-agent').out));
+
+  // 0.3.13: a skipped install is not a failure, and a recorded known failure is cited, not re-run
+  fs.writeFileSync(prof, fs.readFileSync(prof, 'utf8').replace(/^(\s*)install:.*$/m, '$1install: "node ok.js"'));
+  fs.writeFileSync(path.join(rr, 'bad.js'), "process.exit(1);\n"); // lint red, but recorded as a known failure above
+  const marker = '# marker: this log must not be rewritten by a cited known failure\n';
+  fs.writeFileSync(path.join(vdir, 'verify-logs', 'lint.log'), marker);
+  const v5 = JSON.parse(wh(rr, 'verify', '--final').out);
+  const inst = v5.checks.find((c) => c.check === 'install');
+  const lint5 = v5.checks.find((c) => c.check === 'lint');
+  check('a full pass without --install is green with install skipped', v5.checks_green === true && /skipped/.test(inst.status));
+  check('a recorded known failure is cited, not re-run', /cited not re-run/.test(lint5.status) && fs.readFileSync(path.join(vdir, 'verify-logs', 'lint.log'), 'utf8') === marker);
+  check('--install runs the install command', /passed/.test(JSON.parse(wh(rr, 'verify', '--install', '--only', 'install').out).checks.find((c) => c.check === 'install').status));
+}
+
+console.log('agents that name a Studbook tool fail open');
+{
+  const dir = path.join(PLUGIN, 'agents');
+  const naming = fs.readdirSync(dir).filter((f) => f.endsWith('.md') && /mcp__studbook__/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
+  check('at least the designer and the discovery analyst name the tools', naming.includes('wh-designer.md') && naming.includes('wh-discovery-analyst.md'));
+  for (const f of naming) {
+    const body = fs.readFileSync(path.join(dir, f), 'utf8');
+    // The discovery analyst runs at onboarding, before any change exists, so it has no own
+    // change id to pass; every agent that works inside a change must pass it.
+    if (f !== 'wh-discovery-analyst.md') check(`${f} passes own_change_id`, /own_change_id/.test(body));
+    check(`${f} carries the fail-open instruction`, /continue without it|carry on without/.test(body) && /absent, refused|unavailable|other than `ok`/.test(body));
+  }
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

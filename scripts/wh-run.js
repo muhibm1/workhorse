@@ -111,7 +111,24 @@ function verify(L, root, id, state, opts) {
     const wanted = only ? only.includes(check) : (check !== 'install' || opts.install);
     if (!wanted) {
       const prev = previous && previous.checks.find((r) => r.check === check && r.exit !== undefined);
-      rows.push(prev ? { ...prev, status: `${prev.status} (previous pass)` } : { check, command, status: 'not run this pass' });
+      // install is skipped on purpose (slow, and in some repos destructive: it replaces a
+      // node_modules junction); a skipped install is never a failure. Every other check that
+      // has not run yet counts against green, so --only narrows the work, never the bar.
+      const status = prev ? `${prev.status} (previous pass)` : (check === 'install' ? 'skipped (runs with --install)' : 'not run this pass');
+      rows.push(prev ? { ...prev, status } : { check, command, status });
+      continue;
+    }
+    // A recorded known failure is cited, never re-run: it was reproduced on the base branch when
+    // it was recorded, and re-running it costs time and can have side effects (a failed Playwright
+    // run writes a report that the next lint pass then chokes on, 2026-09-29).
+    const recorded = known.find((k) => k.check === check);
+    if (recorded) {
+      rows.push({
+        check, command, exit: 'known', seconds: 0, log: 'verify-logs/known-failures',
+        status: `known failure (base ${recorded.base}), cited not re-run`,
+        measured: `${check}: known failure, cited from .workhorse/known-failures.md (base ${recorded.base}: ${recorded.reason}).`,
+        first_error: null,
+      });
       continue;
     }
     const r = runShell(root, command, check === 'e2e' ? timeoutMs * 3 : timeoutMs);

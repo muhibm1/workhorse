@@ -114,9 +114,16 @@ below cost measurable time on that run; the status is as of 0.3.12 (2026-09-29).
 | 16 | Designer on Fable, 600 lines of documents for a five-file change | **Fixed 0.3.12**: Opus; tier 0-1 documents sized down, no auditor at tier 0-1 |
 | 17 | Studbook queries take 3.2 s, 90% in the CPU reranker | **Measured 2026-09-29, no change shipped.** On the dev split (n=34, pool 10, same store): `bge-reranker-base` 2,725 ms/query, recall@5 0.853, coverage@5 0.794; MiniLM-L-6 750 ms but recall 0.824 / coverage 0.706; MiniLM-L-12 1,298 ms, 0.824 / 0.735; bge with passages cut to 384 tokens 0.824, to 256 tokens 0.765. Torch threads: 16 against the default 8 is within noise (2,623 vs 2,762 ms) on this 16-core machine. ONNX Runtime (which Paddock's TypeScript port uses for the same weights) cannot load in this venv on this machine: 1.30 segfaults on import, 1.22 fails DLL initialisation. Every faster option measured so far costs recall; the quality-preserving ones left are a hosted reranker (Cohere or Voyage, roughly 100-300 ms, new vendor and key, numbers re-baselined) or a GPU. Owner's call. |
 
-**Not yet measured.** 0.3.12 was written by hand against the run's numbers, not proven on a
-run; the next change through the pipeline is the first measurement, and `wh.js clock --by-agent`
-now reports the table above automatically. Revert point: tag `v0.3.11-baseline`, branch
+**Measured once, 2026-09-29** (the Studbook-tools change, tier 1, two files, merged as #17):
+from Design approval to Ship presented, 23 minutes, of which about 5 were operator
+interventions on permission edges; build 90 s, full `wh.js verify` 48 to 78 s, three reviewers
+77 s, each fix under a minute, one review-fix loop. The clock's 45 minutes against the
+30-minute budget include 21 minutes of false starts before any design existed: the harness
+refuses a plugin agent's writes inside the loaded plugin's own directory (fixed by loading the
+plugin from a separate checkout), plus two allowlist gaps (`Write`/`Edit`, `claude plugin
+validate`), now baked into the launcher. Compared with the MCP-server run (4 h 10 m for five
+files at tier 2), the pipeline itself is roughly ten times faster per file; one run is not a
+trend. Revert point: tag `v0.3.11-baseline`, branch
 `baseline/0.3.11`, and `Desktop/workhorse-0.3.11-baseline.zip`.
 
 ## Picking it back up
