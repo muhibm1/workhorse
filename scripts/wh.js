@@ -23,12 +23,22 @@
 //   wh.js status [--json] [--metrics]       human-readable status
 //   wh.js scaffold <template> [--out path]  render a template with state placeholders
 //   wh.js digest [--json] [--all]           emit the tracker sync payload (one change, or every change)
+//   wh.js verify [--only a,b] [--install] [--final] [--timeout MIN]
+//                                           run the profile's checks, write verify-logs/ and the Checks
+//                                           table of verification.md; exit 1 when a check failed
+//   wh.js fold --tasks 1,2 [--wave N]       fold task branches into the change branch in order, remove
+//                                           their worktrees and branches; exit 2 on a conflict
+//   wh.js lock acquire|release|status       one conductor per repository (stale after 30 idle minutes)
+//   wh.js blocked "<reason>"                log a block, notify the desktop, release the lock
+//   wh.js notify "<title>" "<body>"         desktop notification, best effort
+//   wh.js clock --by-agent                  minutes per agent, from the conductor log
 //   wh.js plugin-root                       print the plugin root path
 'use strict';
 const fs = require('fs');
 const crypto = require('crypto');
 const path = require('path');
 const L = require(path.join(__dirname, '..', 'hooks', 'scripts', 'lib.js'));
+const R = require(path.join(__dirname, 'wh-run.js'));
 
 const PLUGIN_ROOT = path.resolve(__dirname, '..');
 const TEMPLATES = path.join(PLUGIN_ROOT, 'templates');
@@ -276,6 +286,8 @@ switch (cmd) {
       // Exits non-zero when nothing is staged; then there is nothing left to record.
       L.git(root, ['commit', '-q', '-m', `chore(sdlc): close ${id}`, '--', ...paths]);
       committed = L.git(root, ['log', '-1', '--format=%h', '--', ...paths]) || null;
+      R.lockRelease(L, root);
+      R.notify(`WorkHorse: ${state.title || id} is done`, 'The change closed; the retro runs in the background.');
     }
     out(committed ? { phase: p, committed } : { phase: p });
     break;
@@ -376,7 +388,93 @@ switch (cmd) {
     // The CLI adds the phase itself; drop one the caller included, which doubled it in live logs.
     const msg = args.join(' ').replace(/\s+/g, ' ').trim().replace(new RegExp(`^${state.phase}\\s*\\|\\s*`), '');
     if (!msg) die('usage: wh.js log "<agent> | <result>"');
+    R.lockTouch(L, root); // every row proves the run is alive; the lock goes stale without them
     out(appendLog(root, id, state, msg));
+    break;
+  }
+
+  case 'blocked': {
+    // A blocked run used to sit silently until someone looked (2 hours on the studbook run).
+    const root = requireRoot();
+    const { id, state } = requireActive(root);
+    const reason = args.join(' ').replace(/\s+/g, ' ').trim();
+    if (!reason) die('usage: wh.js blocked "<what is needed, from whom>"');
+    const line = appendLog(root, id, state, `conductor | blocked: ${reason}`);
+    R.lockRelease(L, root);
+    R.notify(`WorkHorse: ${state.title || id} is blocked`, reason);
+    out(line);
+    break;
+  }
+
+  case 'notify': {
+    const [title, body] = args;
+    if (!title) die('usage: wh.js notify "<title>" "<body>"');
+    out({ sent: R.notify(title, body || '') });
+    break;
+  }
+
+  case 'lock': {
+    const root = requireRoot();
+    const sub = args.shift();
+    if (sub === 'acquire') {
+      const r = R.lockAcquire(L, root, flag('--holder') || 'conductor', hasFlag('--force'));
+      if (!r.ok) die(`a run already holds the lock (${r.held_by}, since ${r.since}, last activity ${r.last_activity_minutes_ago} min ago). Stop it or wait; pass --force only if you are sure it is dead.`, 3);
+      out(r);
+    } else if (sub === 'release') out(R.lockRelease(L, root));
+    else if (sub === 'status') out(R.readLock(L, root) || { held: false });
+    else die('usage: wh.js lock acquire [--holder name] [--force] | release | status');
+    break;
+  }
+
+  case 'verify': {
+    const root = requireRoot();
+    const { id, state } = requireActive(root);
+    const opts = {
+      only: flag('--only'), install: hasFlag('--install'), final: hasFlag('--final'),
+      timeoutMinutes: Number(flag('--timeout') || 10),
+      template: fs.readFileSync(path.join(TEMPLATES, 'verification.md'), 'utf8'),
+    };
+    const summary = R.verify(L, root, id, state, opts);
+    if (opts.final && summary.checks_green) {
+      setPath(state, 'verification.status', 'green');
+      setPath(state, 'verification.at', L.nowIso());
+      L.saveState(root, id, state);
+    } else if (!summary.checks_green) {
+      setPath(state, 'verification.status', 'red');
+      L.saveState(root, id, state);
+    }
+    appendLog(root, id, state, `wh.js verify | ${summary.checks_green ? 'checks green' : `red: ${summary.failed.join(', ')}`} at ${summary.commit.slice(0, 7)} (${summary.defined} defined${opts.only ? `, only ${opts.only}` : ''})`);
+    out({
+      checks_green: summary.checks_green, commit: summary.commit.slice(0, 12), failed: summary.failed,
+      checks: summary.checks.map((c) => ({ check: c.check, status: c.status, exit: c.exit, seconds: c.seconds, log: c.log, first_error: c.first_error || undefined })),
+      verification_status: (state.verification || {}).status || 'none',
+    });
+    if (!summary.checks_green) process.exit(1);
+    break;
+  }
+
+  case 'fold': {
+    const root = requireRoot();
+    const { id, state } = requireActive(root);
+    const wave = flag('--wave');
+    const tasks = (flag('--tasks') || '').split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0);
+    if (!tasks.length) die('usage: wh.js fold --tasks 1,2 [--wave N]');
+    const profile = L.loadProfile(root);
+    const strategy = (profile.build && profile.build.wave_merge) === 'merge' ? 'merge' : 'rebase';
+    let r;
+    try { r = R.fold(L, root, id, state, tasks, strategy); } catch (e) { die(e.message); }
+    if (!r.ok) {
+      appendLog(root, id, state, `conductor | fold conflict on task ${r.task} (${r.branch}): ${r.conflict_files.join(', ') || 'see git'}; aborted, branch left for a builder to resolve`);
+      out(r);
+      process.exit(2);
+    }
+    state.build = state.build || {};
+    const done = new Set([...(state.build.tasks_done || []), ...r.folded.filter((f) => f.status !== 'no branch').map((f) => f.task)]);
+    state.build.tasks_done = [...done].sort((a, b) => a - b);
+    if (wave) state.build.wave = Number(wave);
+    L.saveState(root, id, state);
+    appendLog(root, id, state, `conductor | wave ${wave || '?'} folded by ${strategy}: ${r.folded.map((f) => `T${f.task} ${f.status}${f.commits ? ` (${f.commits})` : ''}`).join(', ')}; head ${r.head}; worktrees and task branches removed`);
+    out(r);
     break;
   }
 
@@ -400,6 +498,9 @@ switch (cmd) {
     state.presented[g] = L.nowIso();
     L.saveState(root, id, state);
     appendLog(root, id, state, `conductor | ${g} ${L.GATE_NAMES[g]} presented`);
+    // The run stops here for the human: free the lock and say so on the desktop.
+    R.lockRelease(L, root);
+    R.notify(`WorkHorse: ${L.GATE_NAMES[g]} gate ready`, `${state.title || id}: /workhorse:approve ${g}`);
     out([
       `${L.GATE_NAMES[g]} (${g}) is waiting on you. Tier ${L.effectiveTier(state)}. Packet: docs/sdlc/${id}/${GATE_PACKET[g]}`,
       sectionText(packet, /^#{1,6}.*(short version|tl;dr)/i, 900),
@@ -414,6 +515,11 @@ switch (cmd) {
     const root = requireRoot();
     const { id, state } = requireActive(root);
     const c = clockFor(root, id, state);
+    if (hasFlag('--by-agent')) {
+      const rows = R.minutesByAgent(L, readArtifact(root, id, 'conductor-log.md'));
+      out(hasFlag('--json') ? { clock: c, by_agent: rows } : `${L.formatClock(c)}\n${R.formatByAgent(rows)}`);
+      break;
+    }
     out(hasFlag('--json') ? c : L.formatClock(c));
     break;
   }

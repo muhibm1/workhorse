@@ -6,7 +6,7 @@ model: opus
 effort: medium
 skills: [wh-agent-rules, wh-readable-code, wh-security-baseline, wh-language-standards]
 isolation: worktree
-maxTurns: 80
+maxTurns: 120
 color: orange
 ---
 
@@ -23,8 +23,11 @@ color: orange
 
 (Wording from ECC's agent baseline, MIT. The operative rule for WorkHorse agents is "Untrusted content" in wh-agent-rules.)
 
-You implement one task. Test first, minimal implementation, client conventions, a commit after
-every green step. You do not touch anything the task does not name.
+You implement one task, or the two tasks of a small wave in order (the conductor hands a wave of
+one or two tasks to a single builder, because a second cold context re-reads the repository for
+nothing). Test first, minimal implementation, client conventions, a commit after every green
+step. You do not touch anything the task does not name. With two tasks, finish and commit the
+first entirely before reading the second's files; both go on the one task branch you were given.
 
 ## Inputs (given by the conductor)
 

@@ -257,7 +257,17 @@ console.log('verify-before-stop');
 {
   wh(repo, 'phase', 'build');
   wh(repo, 'state', 'set', 'verification.status', 'red');
+  // Without a run lock there is no run to hold (0.3.12): a person's own session is let go.
   let r = hook('verify-before-stop.js', { ...base, hook_event_name: 'Stop' });
+  check('lets a session stop when no run holds the lock', r.decision !== 'block');
+  wh(repo, 'lock', 'acquire', '--holder', 'test');
+  // The lock records the session that took it; a different session is let go, the same one is held.
+  const lockPath = path.join(L.stateRoot(repo), 'run.lock');
+  const lk = JSON.parse(fs.readFileSync(lockPath, 'utf8')); lk.session = 'sess-run'; fs.writeFileSync(lockPath, JSON.stringify(lk));
+  r = hook('verify-before-stop.js', { ...base, hook_event_name: 'Stop', session_id: 'sess-other' });
+  check('lets another session stop while a run holds the lock', r.decision !== 'block');
+  base.session_id = 'sess-run';
+  r = hook('verify-before-stop.js', { ...base, hook_event_name: 'Stop' });
   check('blocks stop in build when red', r.decision === 'block');
   r = hook('verify-before-stop.js', { ...base, hook_event_name: 'Stop', stop_hook_active: true });
   check('does not loop when stop_hook_active', r.decision !== 'block');
@@ -703,6 +713,125 @@ console.log('legacy state migration');
   check('legacy state is still read', wh(lg, 'state', 'get', 'phase').out === 'review');
   check('legacy state is migrated into the git common dir',
     fs.existsSync(path.join(lg, '.git', 'workhorse', 'changes', lid, 'state.json')));
+}
+
+console.log('wh.js verify, fold, lock, clock --by-agent (0.3.12)');
+{
+  const R = require(path.join(PLUGIN, 'scripts', 'wh-run.js'));
+  const rr = path.join(tmp, 'runrepo');
+  fs.mkdirSync(rr, { recursive: true });
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: rr });
+  execFileSync('git', ['config', 'user.email', 'tester@example.com'], { cwd: rr });
+  execFileSync('git', ['config', 'user.name', 'Tester'], { cwd: rr });
+  fs.writeFileSync(path.join(rr, 'README.md'), 'fixture\n');
+  fs.writeFileSync(path.join(rr, 'ok.js'), "console.log('Ran 3 tests in 0.01s');console.log('OK (skipped=1)');\n");
+  fs.writeFileSync(path.join(rr, 'bad.js'), "console.log('2 problems (1 error, 1 warning)');process.exit(1);\n");
+  wh(rr, 'init');
+  const prof = path.join(rr, '.workhorse', 'profile.yml');
+  fs.writeFileSync(prof, fs.readFileSync(prof, 'utf8')
+    .replace(/^(\s*)test:.*$/m, '$1test: "node ok.js"')
+    .replace(/^(\s*)lint:.*$/m, '$1lint: "node bad.js"'));
+  execFileSync('git', ['add', '.'], { cwd: rr });
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: rr });
+  wh(rr, 'new', 'run change', '--tier', '1');
+  const cid = wh(rr, 'active').out;
+  const vdir = path.join(rr, 'docs', 'sdlc', cid);
+
+  // measure(): the sentences a person asks about later
+  check('measure reads unittest totals', /3 tests, all passed \(skipped=1\)/.test(R.measure('test', 'x', 'Ran 3 tests in 0.2s\n\nOK (skipped=1)\n', 0)));
+  check('measure reads vitest totals', /12 passed, 0 failed, 1 skipped/.test(R.measure('test', 'x', ' Tests  12 passed | 1 skipped (13)', 0)));
+  check('measure reads eslint problems', /2 errors, 1 warnings/.test(R.measure('lint', 'x', '✖ 3 problems (2 errors, 1 warning)', 1)));
+  check('measure reads ruff clean', /Lint: 0 errors/.test(R.measure('lint', 'x', 'All checks passed!', 0)));
+  check('measure reads pip-audit clean', /0 known vulnerabilities/.test(R.measure('security_audit', 'x', 'No known vulnerabilities found', 0)));
+
+  // verify: runs the defined checks, writes the evidence, reports red on a failure
+  const v1 = wh(rr, 'verify');
+  const j1 = JSON.parse(v1.out);
+  check('verify exits 1 when a check fails', v1.code === 1);
+  check('verify names the failed check', j1.failed.length === 1 && j1.failed[0] === 'lint');
+  check('verify writes a log per check', fs.existsSync(path.join(vdir, 'verify-logs', 'lint.log')) && fs.existsSync(path.join(vdir, 'verify-logs', 'test.log')));
+  check('verify writes summary.json', fs.existsSync(path.join(vdir, 'verify-logs', 'summary.json')));
+  const md1 = fs.readFileSync(path.join(vdir, 'verification.md'), 'utf8');
+  check('verification.md says red', /^Status: red/m.test(md1));
+  check('verification.md has the checks table with the exit code', /\| lint \| `node bad\.js` \| 1 \| `verify-logs\/lint\.log` \| failed \|/.test(md1));
+  check('verification.md has a measured sentence per check', /Test suite: 3 tests, all passed/.test(md1) && /Lint: 1 errors, 1 warnings/.test(md1));
+  check('undefined checks are listed, not passed', /\| build \|  \| \| \| no check defined \|/.test(md1));
+  check('verify records red in state', wh(rr, 'state', 'get', 'verification.status').out === 'red');
+  // --only narrows the work, never the bar
+  const v2 = JSON.parse(wh(rr, 'verify', '--only', 'test', '--final').out);
+  check('--only keeps the earlier failure on the books', v2.checks_green === false && v2.failed.includes('lint'));
+  check('--final does not go green over a carried failure', wh(rr, 'state', 'get', 'verification.status').out === 'red');
+  // fix the lint, then a full final pass is green and records it
+  fs.writeFileSync(path.join(rr, 'bad.js'), "console.log('All checks passed!');\n");
+  const v3 = JSON.parse(wh(rr, 'verify', '--final').out);
+  check('a full pass with every check passing is green', v3.checks_green === true);
+  check('--final records green in state', wh(rr, 'state', 'get', 'verification.status').out === 'green');
+  check('verification.md says green', /^Status: green/m.test(fs.readFileSync(path.join(vdir, 'verification.md'), 'utf8')));
+  // a known failure is cited, not failed
+  fs.writeFileSync(path.join(rr, 'bad.js'), "process.exit(1);\n");
+  wh(rr, 'known-failure', 'add', 'lint', '--command', 'node bad.js', '--base', 'abc1234', '--reason', 'red on main before this change');
+  const v4 = JSON.parse(wh(rr, 'verify', '--only', 'lint').out);
+  check('a recorded known failure keeps the checks green', v4.checks_green === true && /known failure/.test(v4.checks.find((c) => c.check === 'lint').status));
+
+  // fold: task branches land in order, worktrees and branches go away, a conflict aborts cleanly
+  execFileSync('git', ['add', '-A'], { cwd: rr });
+  execFileSync('git', ['commit', '-q', '-m', 'artifacts'], { cwd: rr });
+  const branch = wh(rr, 'state', 'get', 'branch').out;
+  for (const n of [1, 2]) {
+    execFileSync('git', ['checkout', '-q', '-b', `${branch}-t${n}`, branch], { cwd: rr });
+    fs.writeFileSync(path.join(rr, `t${n}.txt`), `task ${n}\n`);
+    execFileSync('git', ['add', '.'], { cwd: rr });
+    execFileSync('git', ['commit', '-q', '-m', `feat: task ${n}`], { cwd: rr });
+  }
+  execFileSync('git', ['checkout', '-q', branch], { cwd: rr });
+  const f1 = JSON.parse(wh(rr, 'fold', '--tasks', '1,2,3', '--wave', '1').out);
+  check('fold lands both tasks in order', f1.ok === true && f1.folded[0].status === 'folded' && f1.folded[1].status === 'folded');
+  check('fold reports a missing task branch without failing', f1.folded[2].status === 'no branch');
+  check('folded commits are on the change branch', /task 2/.test(execFileSync('git', ['log', '--oneline', '-2'], { cwd: rr, encoding: 'utf8' })) && fs.existsSync(path.join(rr, 't1.txt')));
+  check('fold deletes the task branches', spawnSync('git', ['rev-parse', '--verify', '-q', `${branch}-t1`], { cwd: rr }).status !== 0);
+  check('fold records tasks_done and the wave', wh(rr, 'state', 'get', 'build.wave').out === '1' && wh(rr, 'state', 'get', 'build.tasks_done').out.replace(/\s/g, '') === '[1,2]');
+  // conflict: two branches editing the same line
+  execFileSync('git', ['checkout', '-q', '-b', `${branch}-t4`, branch], { cwd: rr });
+  fs.writeFileSync(path.join(rr, 'README.md'), 'from t4\n');
+  execFileSync('git', ['commit', '-q', '-am', 'feat: t4'], { cwd: rr });
+  execFileSync('git', ['checkout', '-q', branch], { cwd: rr });
+  fs.writeFileSync(path.join(rr, 'README.md'), 'from main\n');
+  execFileSync('git', ['commit', '-q', '-am', 'chore: main moved'], { cwd: rr });
+  const f2 = wh(rr, 'fold', '--tasks', '4');
+  check('a conflict exits 2 and names the file', f2.code === 2 && /README\.md/.test(f2.out));
+  // The log row for the conflict is the one expected change; nothing may be mid-merge or staged.
+  const st = execFileSync('git', ['status', '--porcelain'], { cwd: rr, encoding: 'utf8' }).split(/\r?\n/).filter((l) => l && !/conductor-log\.md$/.test(l));
+  check('a conflict leaves the tree clean', st.length === 0 && !fs.existsSync(path.join(rr, '.git', 'CHERRY_PICK_HEAD')), st.join('; '));
+  check('a conflict keeps the task branch for a builder', spawnSync('git', ['rev-parse', '--verify', '-q', `${branch}-t4`], { cwd: rr }).status === 0);
+
+  // lock
+  check('lock acquire succeeds when free', wh(rr, 'lock', 'acquire', '--holder', 'a').code === 0);
+  check('a second acquire is refused with exit 3', wh(rr, 'lock', 'acquire', '--holder', 'b').code === 3);
+  check('lock status shows the holder', /"holder": "a"/.test(wh(rr, 'lock', 'status').out));
+  check('log refreshes the lock', (() => { wh(rr, 'log', 'wh-builder | still going'); return Date.parse(JSON.parse(wh(rr, 'lock', 'status').out).updated) >= Date.now() - 5000; })());
+  check('release frees it', wh(rr, 'lock', 'release').code === 0 && wh(rr, 'lock', 'acquire', '--holder', 'c').code === 0);
+  check('--force takes a held lock', wh(rr, 'lock', 'acquire', '--holder', 'd', '--force').code === 0);
+  wh(rr, 'lock', 'release');
+  check('blocked releases the lock and logs the reason', (() => {
+    wh(rr, 'lock', 'acquire');
+    const r = wh(rr, 'blocked', 'needs the NPM_TOKEN secret from the owner');
+    const log = fs.readFileSync(path.join(vdir, 'conductor-log.md'), 'utf8');
+    return r.code === 0 && /blocked: needs the NPM_TOKEN/.test(log) && !fs.existsSync(R.lockFile(L, rr));
+  })());
+
+  // clock --by-agent
+  const byAgent = R.minutesByAgent(L, [
+    '2026-01-01T10:00:00Z | build | conductor | wave 1 dispatched',
+    '2026-01-01T10:20:00Z | build | wh-builder | T1 green',
+    '2026-01-01T10:25:00Z | build | conductor | wave 1 folded',
+    '2026-01-01T10:30:00Z | verify | wh-verifier | green',
+    '2026-01-01T14:30:00Z | verify | conductor | resumed after usage limit',
+    '2026-01-01T14:31:00Z | review | wh-shipper | ship.md written',
+  ].join('\n'));
+  const mins = Object.fromEntries(byAgent.map((r) => [`${r.phase}/${r.agent}`, r.minutes]));
+  check('by-agent charges intervals to the reporting agent', mins['build/wh-builder'] === 20 && mins['build/conductor'] === 5 && mins['verify/wh-verifier'] === 5);
+  check('by-agent skips dead time and gaps', mins['verify/conductor'] === undefined && mins['review/wh-shipper'] === 1);
+  check('clock --by-agent prints the table', /By agent/.test(wh(rr, 'clock', '--by-agent').out));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

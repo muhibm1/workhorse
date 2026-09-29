@@ -12,6 +12,14 @@ if (input.stop_hook_active) return L.emit({});
 
 const ctx = L.loadContext(input.cwd);
 if (!ctx.root || !ctx.state) return L.emit({});
+
+// Only the session running the change is held to its verification. The run lock records the
+// session that took it; any other session in the same repository (a person supervising from
+// another window, a script) is let go. Without a lock there is no run, so nothing to hold.
+const R = require(path.join(__dirname, '..', '..', 'scripts', 'wh-run.js'));
+const lock = R.readLock(L, ctx.root);
+if (!lock) return L.emit({});
+if (lock.session && input.session_id && lock.session !== input.session_id) return L.emit({});
 const phase = ctx.state.phase;
 if (phase !== 'build' && phase !== 'verify') return L.emit({});
 
