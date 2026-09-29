@@ -112,7 +112,7 @@ below cost measurable time on that run; the status is as of 0.3.12 (2026-09-29).
 | 14 | Eight reviewers on a five-file change; a full re-review after every fix | **Fixed 0.3.12**: reviewers by tier; re-check by the reviewers whose findings were fixed |
 | 15 | One cold builder per task (about 12 minutes before the first edit each) | **Fixed 0.3.12**: a wave of one or two tasks goes to one builder |
 | 16 | Designer on Fable, 600 lines of documents for a five-file change | **Fixed 0.3.12**: Opus; tier 0-1 documents sized down, no auditor at tier 0-1 |
-| 17 | Studbook queries take 3.2 s, 90% in the CPU reranker | Open: Track B (reranker swap or quantisation, measured on the dev set) |
+| 17 | Studbook queries take 3.2 s, 90% in the CPU reranker | **Measured 2026-09-29, no change shipped.** On the dev split (n=34, pool 10, same store): `bge-reranker-base` 2,725 ms/query, recall@5 0.853, coverage@5 0.794; MiniLM-L-6 750 ms but recall 0.824 / coverage 0.706; MiniLM-L-12 1,298 ms, 0.824 / 0.735; bge with passages cut to 384 tokens 0.824, to 256 tokens 0.765. Torch threads: 16 against the default 8 is within noise (2,623 vs 2,762 ms) on this 16-core machine. ONNX Runtime (which Paddock's TypeScript port uses for the same weights) cannot load in this venv on this machine: 1.30 segfaults on import, 1.22 fails DLL initialisation. Every faster option measured so far costs recall; the quality-preserving ones left are a hosted reranker (Cohere or Voyage, roughly 100-300 ms, new vendor and key, numbers re-baselined) or a GPU. Owner's call. |
 
 **Not yet measured.** 0.3.12 was written by hand against the run's numbers, not proven on a
 run; the next change through the pipeline is the first measurement, and `wh.js clock --by-agent`
