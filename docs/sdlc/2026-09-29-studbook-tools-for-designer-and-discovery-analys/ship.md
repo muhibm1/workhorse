@@ -88,3 +88,12 @@ Approve to merge, or reject with notes to send it back. After approval, bump to 
 /workhorse:approve G4
 /workhorse:approve G4 --reject "notes"
 ```
+
+## Deploy record
+
+| Environment | Command | Exit code | UTC |
+|---|---|---|---|
+| merge | `gh pr merge 17 --squash` (merge commit 2842166, state MERGED, confirmed) | 0 | 2026-09-29T21:01:19Z |
+| dev | not run: profile `deploy` is empty (dev is master, updated by the merge) | n/a | n/a |
+| staging | not run: `auto: false` and no deploy command | n/a | n/a |
+| prod | production: not automatic in this profile. Owner bumps to 0.3.13, adds the changelog entry and reinstalls the plugin by hand (D3) | n/a | n/a |

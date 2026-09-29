@@ -34,3 +34,8 @@
 2026-09-29T17:50:49.830Z | review | wh.js verify | checks green at c319f00 (6 defined)
 2026-09-29T17:52:07.612Z | review | wh-verifier | green at c319f00, bug re-check closed
 2026-09-29T17:53:46.022Z | review | wh-shipper | ship.md written, PR https://github.com/muhibm1/workhorse/pull/17
+2026-09-29T17:54:43.006Z | review | wh-shipper | ship.md written, PR 17 opened
+2026-09-29T17:54:43.218Z | review | conductor | G4 Ship presented
+2026-09-29T21:01:08.136Z | deploy | conductor | resumed at deploy after G4 approved
+2026-09-29T21:01:35.136Z | deploy | wh-shipper | PR 17 merged (2842166), no automatic deploy commands in profile, deploy record written
+2026-09-29T21:01:47.416Z | done | conductor | deploy recorded, PR 17 merged, done
