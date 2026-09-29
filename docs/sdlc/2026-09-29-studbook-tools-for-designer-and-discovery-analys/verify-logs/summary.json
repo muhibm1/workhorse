@@ -1,0 +1,79 @@
+{
+  "commit": "c319f0053fe328a2304f351706bd7082e9d8e5cf",
+  "at": "2026-09-29T17:50:49.801Z",
+  "branch": "wh/2026-09-29-studbook-tools-for-designer-and-discovery-analys",
+  "checks_green": true,
+  "defined": 6,
+  "failed": [],
+  "checks": [
+    {
+      "check": "install",
+      "command": "npm --prefix desk ci",
+      "status": "skipped (runs with --install)"
+    },
+    {
+      "check": "typecheck",
+      "command": "npm --prefix desk run typecheck",
+      "exit": 0,
+      "seconds": 4.9,
+      "log": "verify-logs/typecheck.log",
+      "status": "passed",
+      "measured": "Type check: 0 errors (`npm --prefix desk run typecheck`).",
+      "first_error": null
+    },
+    {
+      "check": "lint",
+      "command": "npm --prefix desk run lint",
+      "exit": 0,
+      "seconds": 3.2,
+      "log": "verify-logs/lint.log",
+      "status": "passed",
+      "measured": "Lint: 0 errors (`npm --prefix desk run lint`).",
+      "first_error": null
+    },
+    {
+      "check": "test",
+      "command": "npm test && npm --prefix desk test",
+      "exit": 0,
+      "seconds": 32.5,
+      "log": "verify-logs/test.log",
+      "status": "passed",
+      "measured": "Test suite: 278 passed, 0 failed, 1 skipped (`npm test && npm --prefix desk test`).",
+      "first_error": null
+    },
+    {
+      "check": "build",
+      "command": "npm --prefix desk run build",
+      "exit": 0,
+      "seconds": 6.1,
+      "log": "verify-logs/build.log",
+      "status": "passed",
+      "measured": "Build: succeeded (`npm --prefix desk run build`).",
+      "first_error": null
+    },
+    {
+      "check": "e2e",
+      "command": "npm --prefix desk run e2e",
+      "exit": "known",
+      "seconds": 0,
+      "log": "verify-logs/known-failures",
+      "status": "known failure (base f06c635), cited not re-run",
+      "measured": "e2e: known failure, cited from .workhorse/known-failures.md (base f06c635: believed, not verified at base: smoke.spec.ts locators 'Studbook' and fleet card are ambiguous (strict mode, 2 elements); this change touches only agents/*.md and no file under desk/).",
+      "first_error": null
+    },
+    {
+      "check": "security_audit",
+      "command": "npm --prefix desk audit",
+      "exit": 0,
+      "seconds": 1.5,
+      "log": "verify-logs/security_audit.log",
+      "status": "passed",
+      "measured": "Dependency audit: 0 vulnerabilities (`npm --prefix desk audit`).",
+      "first_error": null
+    },
+    {
+      "check": "screenshot",
+      "status": "no check defined"
+    }
+  ]
+}
