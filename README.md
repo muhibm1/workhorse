@@ -124,7 +124,7 @@ agent can approve.
 
 | Agent | Does |
 |-------|------|
-| wh-conductor | Drives the six phases, dispatches the others, keeps state through the CLI, stops only at G2, G4 and (tier 3) G5. |
+| wh-conductor | Drives the six phases, dispatches the others, keeps state through the CLI (`wh.js fold`, `wh.js verify`, `wh.js lock` do the mechanical work), stops only at G2, G4 and (tier 3) G5. |
 | wh-discovery-analyst | Onboarding: audits the repository and the business workflow, writes the profile, codebase map, constraints and client CLAUDE.md. |
 | wh-compliance-mapper | Onboarding: decides which compliance regimes apply and which controls each phase must honour. |
 | wh-designer | Design: in one session turns "problem -> outcome" into the tier, `spec.md` with ADRs, `evals.md`, `plan.md` in file-disjoint waves (every eval case has a task), and `brief.md`. Never stops to ask. |
@@ -132,7 +132,7 @@ agent can approve.
 | wh-eval-designer | Design, tier 2+: reviews `evals.md`, adds the edge, failure and adversarial cases worth having, and the matching plan steps. |
 | wh-builder | Build: one task from the plan, test-first, in its own worktree on a task branch; up to `max_parallel` at once. |
 | wh-polish | Build: one pass over the whole diff after the last wave for naming, structure, dead code and needless abstraction; keeps tests green. |
-| wh-verifier | Verify: runs every profile check and every automatable eval case in one session, writes `verification.md`; green only with every check passed or a cited known failure. |
+| wh-verifier | Verify: after `wh.js verify` has run the profile's checks and written their evidence, runs every automatable eval case and completes `verification.md`; green only with every check passed or a cited known failure and every eval category on target. |
 | wh-fixer | Verify and Review: fixes the failures and findings it is given by changing implementation code, never tests. |
 | wh-bug-reviewer | Review: logic errors, edge cases, races, leaks, error handling; only findings with a concrete failure scenario. |
 | wh-conformance-reviewer | Review: maps every requirement to code and test, and every change back to a requirement. |
@@ -185,10 +185,12 @@ CLAUDE.md                   one page, client-facing
 2. **Design document.** At G2 you read `brief.md`: problem, outcome, what changes for people,
    risks and guards, decisions with recommendations, how it will be proved, and the estimate
    against the tier budget. Approve, or reject with notes.
-3. **Build, verify, review.** Builders run the plan's waves in worktrees, polish runs once on
-   the whole diff, the verifier runs the checks and evals and the fixer loops on red (five at
-   most). Reviewers write `reviews/<agent>.md`; every high or medium finding with a concrete fix
-   goes to the fixer and the verifier runs again. Nothing here asks you anything.
+3. **Build, verify, review.** Builders run the plan's waves in worktrees (a small wave goes to
+   one builder), `wh.js fold` lands each wave, polish runs once on the whole diff, `wh.js verify`
+   runs the checks, the verifier runs the evals and the fixer loops on red (five at most).
+   Reviewers, as many as the tier warrants, write `reviews/<agent>.md`; every high or medium
+   finding with a concrete fix goes to the fixer, and only the reviewers whose findings were
+   fixed re-check. Nothing here asks you anything.
 4. **Ship document.** The shipper pushes the branch, opens the PR, and writes `ship.md`: what
    changed in plain words then a diff tour ordered by risk, the proof table with every command
    and exit code, what the reviewers found and how each was resolved, the decisions taken, the

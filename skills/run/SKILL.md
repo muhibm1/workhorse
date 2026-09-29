@@ -12,7 +12,11 @@ resume the active one.
 
 1. If `.workhorse/profile.yml` does not exist, stop and tell the user to run
    `/workhorse:onboard` first.
-2. Dispatch the `wh-conductor` agent with this prompt, verbatim plus the arguments:
+2. Take the run lock: `node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js" lock acquire --holder run`.
+   If it exits 3, another conductor holds it: print its message and stop; do not dispatch a
+   second conductor (two conductors raced on one task worktree on a live run). The lock is
+   released when the conductor presents a gate, reports a block, or reaches done.
+3. Dispatch the `wh-conductor` agent with this prompt, verbatim plus the arguments:
 
    > Run the WorkHorse pipeline. Request: `$ARGUMENTS`. If the request is empty, resume the
    > active change from state.json. Work through the phases (design, build, verify, review,
@@ -20,10 +24,11 @@ resume the active one.
    > the packet presented, at a blocked report, or at done. Never stop to ask a question; take
    > the recommendation and record it as a decision row. Never approve a gate yourself.
 
-3. When the conductor returns, print its final report to the user unchanged, followed by the
-   output of `node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js" status` and then
-   `node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js" clock`.
-4. If the conductor stopped at a gate, name it (Design, Ship, or Deploy), give the packet path
+4. When the conductor returns, release the lock in case it did not
+   (`node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js" lock release`), then print its final report to
+   the user unchanged, followed by the output of `node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js" status`
+   and then `node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js" clock --by-agent`.
+5. If the conductor stopped at a gate, name it (Design, Ship, or Deploy), give the packet path
    (`brief.md`, `ship.md`, or `release.md`), and remind the user of the two commands:
    `/workhorse:approve <G>` and `/workhorse:approve <G> --reject "notes"`.
 

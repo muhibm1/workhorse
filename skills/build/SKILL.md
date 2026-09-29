@@ -13,7 +13,7 @@ allowed-tools: Agent, Read, Bash(node *), Bash(git *)
 
    > Run only the Build phase for the active change, following the Build section of your
    > instructions: waves from plan.md, up to build.max_parallel builders per wave in isolated
-   > worktrees, fold each wave, then wh-polish once on the whole diff after the last wave.
+   > worktrees, fold each wave with `WH fold`, then wh-polish once on the whole diff after the last wave.
    > Stop after polish; do not start Verify.
 
 3. Print the conductor's report, `wh.js status` and `wh.js clock`. Next step: `/workhorse:verify`.

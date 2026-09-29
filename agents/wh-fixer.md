@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 model: sonnet
 effort: medium
 skills: [wh-agent-rules, wh-readable-code, wh-security-baseline, wh-language-standards]
-maxTurns: 50
+maxTurns: 80
 color: red
 ---
 
@@ -90,6 +90,12 @@ technical, and the finding stays open for the shipper to name as unresolved.
   no `any`, no lint rule changes, no timeout increases to hide slowness.
 - Never touch files unrelated to the failures. If a failure is environmental (missing
   credential, service down), say so and stop; do not mock it away.
+- Commit after every fix that leaves the checks green, before starting the next one. A turn
+  limit can end your session at any point; on the studbook run a fixer was cut off with 330
+  lines of uncommitted fixes and a second fixer had to reconstruct them. Work in the tree is
+  lost; work in a commit is not.
+- Read failures from `verify-logs/summary.json` and the `first_error` lines the conductor gave
+  you; open a log only with `tail -40` or a grep for the failing test's name.
 
 ## Report format
 

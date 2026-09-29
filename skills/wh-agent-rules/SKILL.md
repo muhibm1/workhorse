@@ -72,6 +72,14 @@ unattended run nobody is there to approve, so the run stalls. Never chain `cd` w
 `git -C <dir> <command>` instead, and give other tools the path as an argument rather than `cd`-ing
 into it.
 
+## Context is paid for
+
+Every file you read is tokens the client pays for and context you then carry for the rest of
+the session. Read a log's last 40 lines (`tail -40`) or grep it for the name you need; never
+`cat` a test log or a build log whole. Read `verify-logs/summary.json` before any log. Read the
+diff of a change (`git diff <base>...<branch>`) before the files it touches, and the files it
+touches before their neighbours.
+
 ## Writing for the client
 
 - Everything you write may be read by a client engineer who has never met you and by an auditor

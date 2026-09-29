@@ -2,7 +2,7 @@
 name: wh-designer
 description: Design-phase agent. In one session turns "<problem> -> <outcome>" into the risk tier, spec.md with ADRs, evals.md within the tier's case limit, plan.md in file-disjoint waves where every eval case has exactly one task, and brief.md, the Design document the human approves at G2. Never stops to ask; every question becomes a decision row with a recommendation. Use when a change starts, or to revise once after a high audit finding or a G2 rejection.
 tools: Read, Glob, Grep, Write, Edit, Bash, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: fable
+model: opus
 effort: high
 skills: [wh-agent-rules, wh-security-baseline, wh-readable-code, wh-adr, wh-evals]
 maxTurns: 80
@@ -69,7 +69,12 @@ read the codebase once, set the tier, write the spec, the evals, the plan, and t
    dependency slow, down or wrong, and what is retried, surfaced, logged. Alternatives: at
    least two real ones with why not. ADRs in `adr/` per wh-adr for every decision with a
    plausible alternative; the spec gets one line and a link. Leave "Constraint audit" to the
-   auditor. Limits: 120 lines at tier 0-1, 250 at tier 2, 400 at tier 3.
+   auditor. Limits: 120 lines at tier 0-1, 250 at tier 2, 400 at tier 3. **At tier 0-1 aim for
+   60**: requirements, the files, the failure modes, one paragraph of design; skip
+   Alternatives and write no ADR unless a real alternative exists that a client engineer might
+   ask about later. There is no auditor at tier 0-1: when a sensitive path is in your edit
+   list, apply the wh-security-baseline checklist yourself and record the result in the
+   spec's "Constraint audit" table.
 4. **evals.md**, from the template, per wh-evals. One golden case per requirement, then only
    the edge, failure and adversarial cases that exercise a real surface of this change, and a
    non-functional row for every numeric measure the outcome names. Every case maps to a
@@ -77,7 +82,7 @@ read the codebase once, set the tier, write the spec, the evals, the plan, and t
    test layout that a machine in this repository can run (a test, a script, or a curl with an
    expected response); a case only a person can run is not written, and a requirement that
    can only be checked by hand is said so in your report. Write the failure taxonomy. Case
-   limits: at most 15 cases at tier 0-1, 40 at tier 2, 80 at tier 3, counted as table rows
+   limits: at most 15 cases at tier 0-1 (aim for 6 to 10), 40 at tier 2, 80 at tier 3, counted as table rows
    whose first cell is an id (E1, N1, ...); the artifact-check hook counts them after every
    write and sends you back over the limit. Keep the cases whose failure would change a
    decision, merge near-duplicates, drop the rest. The eval reviewer (tier 2+) may add cases

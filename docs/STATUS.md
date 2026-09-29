@@ -92,34 +92,32 @@ Paddock): CI fails otherwise, because Studbook answers release questions from th
 
 The run shipped correct code but took 10 h 20 m wall and 4 h 10 m of agent time against a
 90-minute budget. The owner's rule since then: speed is a defect, not a trade-off. Each item
-below cost measurable time on that run.
+below cost measurable time on that run; the status is as of 0.3.12 (2026-09-29).
 
-1. **Paddock launches refuse the project's venv tools; the same launch from a terminal does not.**
-   Confirmed: identical `--allowedTools` and plugin run `.venv/Scripts/ruff.exe` from a terminal
-   but get "requires approval" when Paddock spawns them. Cause not found (settings file, argument
-   joining, hooks and Git Bash variables ruled out). Cost about 3 h of blocked build.
-2. **Paddock ignores `settings.pluginPath` and uses its bundled plugin**, although the file it
-   reads (`%APPDATA%\Paddock\settings.json`) holds the path. 0.5.1 bundles 0.3.10 as a stopgap.
-3. **Paddock's Resume starts a second conductor while one is running.** It happened twice: two
-   conductors raced on a task worktree. A run needs a lock (pid in the git common directory),
-   and Resume must refuse while it is held.
-4. **Paddock lets the owner approve a gate before it is presented** (G2 was approved before the
-   audit rewrote the brief, so it had to be approved twice). Disable Approve until `presented`.
-5. **Paddock's allowlist editor accepts only a fixed catalog**, so `Bash(env *)` and
-   `Bash(.venv/Scripts/*)` had to be written into the settings file by hand.
-6. **Agents hit their turn caps mid-task** (builder at 60, fixer at 50): each cut-off left
-   uncommitted work and cost a continuation agent. Commit every green step (as builders do since
-   0.3.10) in the fixer too, and raise the caps where the task size warrants.
-7. **A blocked conductor sits silently.** The run waited 2 h for a human who did not know it was
-   blocked. Blocked should notify the way a presented gate does.
-8. **`verify-before-stop` fires in any session whose working folder is the repository**, not only
-   the conductor's, and nags a supervising session to write the verification report.
-9. **The studbook live CI job hid its output and timed out** at 30 minutes (fixed in
-   muhibm1/studbook#7: 60 minutes and streamed output).
-10. **Paddock builds drop their dependencies through the `node_modules` junction** (npm reports
-    them extraneous; the first 0.5.1 exe held 10 of 149 packages). The build script must swap
-    the real folder in, as done by hand for 0.5.1, or install into the tree it builds from.
-11. **studbook's pre-push hook fails in a git worktree** (it writes to `.git/`, a file there).
+| # | Time sink | Status |
+|---|---|---|
+| 1 | Paddock launches refused the project's venv tools (about 3 h blocked) | Retired with Paddock; runs start from a terminal with the user-level allowlist (2026-09-28) |
+| 2 | Paddock ignored `settings.pluginPath` and used its bundled plugin | Retired with Paddock |
+| 3 | Resume started a second conductor while one ran; two raced on a task worktree | **Fixed 0.3.12**: `wh.js lock`; `/workhorse:run` refuses while a run holds it |
+| 4 | A gate could be approved before it was presented | Retired with Paddock; the CLI approve path checks `presented` |
+| 5 | Paddock's allowlist editor accepted only a fixed catalog | Retired with Paddock |
+| 6 | Agents hit turn caps mid-task with uncommitted work | **Fixed 0.3.12**: fixer commits every green fix, caps raised (fixer 80, builder 120) |
+| 7 | A blocked conductor sat silently for 2 h | **Fixed 0.3.12**: `wh.js blocked` logs, notifies the desktop and releases the lock; gates and done notify too |
+| 8 | `verify-before-stop` nagged any session in the repository | **Fixed 0.3.12**: it holds only the session that took the run lock |
+| 9 | studbook's live CI job hid its output and timed out | Fixed in muhibm1/studbook#7 |
+| 10 | Paddock builds dropped dependencies through the `node_modules` junction | Retired with Paddock (documented for anyone building it again) |
+| 11 | studbook's pre-push hook fails in a git worktree | Open (studbook, small) |
+| 12 | The conductor spent 137 of 250 minutes folding, re-probing and deciding, on Opus | **Fixed 0.3.12**: `wh.js fold`, `wh.js verify`; conductor on Sonnet |
+| 13 | The verifier spent 57 minutes on a 45-second suite | **Fixed 0.3.12**: `wh.js verify` runs the checks; the agent runs the evals only |
+| 14 | Eight reviewers on a five-file change; a full re-review after every fix | **Fixed 0.3.12**: reviewers by tier; re-check by the reviewers whose findings were fixed |
+| 15 | One cold builder per task (about 12 minutes before the first edit each) | **Fixed 0.3.12**: a wave of one or two tasks goes to one builder |
+| 16 | Designer on Fable, 600 lines of documents for a five-file change | **Fixed 0.3.12**: Opus; tier 0-1 documents sized down, no auditor at tier 0-1 |
+| 17 | Studbook queries take 3.2 s, 90% in the CPU reranker | Open: Track B (reranker swap or quantisation, measured on the dev set) |
+
+**Not yet measured.** 0.3.12 was written by hand against the run's numbers, not proven on a
+run; the next change through the pipeline is the first measurement, and `wh.js clock --by-agent`
+now reports the table above automatically. Revert point: tag `v0.3.11-baseline`, branch
+`baseline/0.3.11`, and `Desktop/workhorse-0.3.11-baseline.zip`.
 
 ## Picking it back up
 

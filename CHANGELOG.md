@@ -7,6 +7,50 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.12 — 2026-09-29
+
+Follows 0.3.11 (agents use `git -C` instead of `cd && git`).
+
+The speed release. Measured on the studbook MCP-server run of 2026-09-26 (4 h 10 m of agent time
+against a 90-minute budget, about $60 at list price): the conductor spent 137 of 250
+attributable minutes folding, re-probing and deciding; the verifier 57 minutes on a suite that
+runs in 45 seconds; two agents were cut off at their turn caps with uncommitted work; eight
+reviewers read a five-file change; and a blocked run sat unnoticed for two hours. Each item
+below removes one of those.
+
+- `wh.js verify` runs the profile's checks, writes `verify-logs/<check>.log`, `summary.json` and
+  the Checks table and measured sentences of `verification.md`, and exits 1 on a failure. The
+  verifier agent now runs the evals only (Sonnet, low effort, 40 turns) and reads the summary,
+  never the logs. `--only` re-runs named checks and keeps the earlier failures on the books;
+  `--final` records green itself when a change has no eval cases.
+- `wh.js fold --tasks 1,2 --wave N` folds a wave's task branches into the change branch in order
+  (cherry-pick, or merge per the profile), removes the worktrees and task branches, records
+  progress and logs the row; a conflict aborts cleanly, exits 2 and names the task and files.
+- `wh.js lock acquire|release|status`: one conductor per repository. `/workhorse:run` takes the
+  lock; every `wh.js log` row refreshes it; presenting a gate, `wh.js blocked` and `done`
+  release it; it goes stale after 30 idle minutes. `verify-before-stop` now holds only the
+  session that took the lock, so a person supervising from another window is no longer nagged.
+- `wh.js blocked "<reason>"` and desktop notifications: a presented gate, a block and `done`
+  each raise a notification (Windows toast, macOS, Linux), best effort, never an error.
+- `wh.js clock --by-agent` charges every interval of the conductor log to the agent that
+  reported at its end, so each run shows where its minutes went; the conductor prints it at
+  every gate.
+- The conductor runs on Sonnet and never folds, runs a check or reads a whole log itself. A wave
+  of one or two tasks goes to one builder with both tasks (a cold builder context cost about 12
+  minutes before its first edit). Reviewers scale with the tier: 1 / 3 / 6 / all, with 0 / 1 /
+  2 / 4 ECC specialists, reading the diff and the files it touches. After a review fix, only the
+  reviewers whose findings were fixed re-check, once.
+- The designer runs on Opus (Fable is 2.5 times the price per token); at tier 0-1 the spec aims
+  for 60 lines with no ADR unless a real alternative exists, the evals for 6 to 10 cases, and
+  there is no auditor: the designer applies the security checklist itself on a sensitive path.
+- The fixer commits after every green fix (80 turns, from 50); the builder has 120 (from 80).
+- `wh-agent-rules` gains "Context is paid for": `tail -40` a log, never `cat` it; read
+  `summary.json` before any log; read the diff before the files, the files before the neighbours.
+
+Not changed: the gates, the approval record, the clock, the hooks that guard paths and tests.
+Tests: 264 in `hooks/tests/run.js` (from 224), covering verify, fold, lock, blocked and the
+per-agent clock.
+
 ## 0.3.11 — 2026-09-28
 
 Follows 0.3.10 (the change branch is cut at `new`; builders commit every green step).
