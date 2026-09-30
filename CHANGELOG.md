@@ -7,6 +7,27 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.3.14 — 2026-09-29
+
+Follows 0.3.13 (verify cites known failures). Command line and the harness first; Studbook out.
+
+- `scripts/wh-launch.js` starts or resumes an unattended run from a terminal: refuses while
+  another run holds the lock, names every tool a run needs (Write and Edit included), runs in
+  acceptEdits, writes the stream to `.git/workhorse/runs/`, prints each conductor step live, and
+  exits 4 on a usage limit so a wrapper knows to resume. On the plugin's own repository it loads
+  the plugin from a detached checkout beside it, created or refreshed on every run. `npm link`
+  installs it as `workhorse`. This replaces what Paddock's Start and Resume buttons did.
+- The designer runs on Fable again. It absorbed the spec architect and the implementation
+  planner, the two agents that ran on Fable before 0.3.0, and the design decides everything
+  downstream. Fable costs more per token; the rest of the 0.3.12 savings stand.
+- Studbook is out of use: the designer and the discovery analyst no longer list its tools (a
+  test now fails if any agent does), and the designer reads earlier changes' records straight
+  from `docs/sdlc/` when its edit list overlaps theirs.
+- WorkHorse's own profile checks the plugin only (`npm test` and `claude plugin validate .`);
+  Paddock is retired and keeps its separate CI job.
+- Tests: 279 in `hooks/tests/run.js` (from 271), covering the launcher's arguments and plugin
+  checkout, and each agent's model.
+
 ## 0.3.13 — 2026-09-29
 
 Follows 0.3.12 (the speed release). Both fixes were applied live during the first measured run

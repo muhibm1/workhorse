@@ -23,16 +23,18 @@ stack:
 # Commands agents run. Each must be a single command that exits non-zero on failure.
 # All run from the repository root. Confirmed ones were run on 2026-09-27 and exited 0.
 commands:
-  install: "npm --prefix desk ci"           # (believed) not run: it replaces the desk/node_modules junction, see constraints.md
-  typecheck: "npm --prefix desk run typecheck"
-  lint: "npm --prefix desk run lint"
-  format: ""                                # no formatter is configured in the repo
-  test: "npm test && npm --prefix desk test"
-  test_file: "npm --prefix desk test -- {file}"   # {file} must be relative to desk/, e.g. tests/clock.test.ts
-  build: "npm --prefix desk run build"      # (believed) not run: writes desk/resources/plugin and desk/out (both gitignored)
-  e2e: "npm --prefix desk run e2e"          # (believed) not run: needs build first and claude on PATH
+  # Paddock (desk/) is retired (2026-09-29), so a run checks the plugin only: its test runner and
+  # the manifest validation. desk/ keeps its own CI job; `npm --prefix desk test` still runs it.
+  install: ""
+  typecheck: ""
+  lint: "claude plugin validate ."          # manifest, frontmatter and hooks.json validation
+  format: ""
+  test: "npm test"                          # hooks/tests/run.js: hooks, wh CLI, verify, fold, lock, launcher
+  test_file: "npm test"                     # one runner; there is no per-file mode
+  build: ""
+  e2e: ""
   screenshot: ""
-  security_audit: "npm --prefix desk audit"
+  security_audit: ""                        # the plugin has no dependencies
 
 conventions:
   default_branch: master

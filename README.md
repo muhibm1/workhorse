@@ -54,6 +54,28 @@ Or for a one-off session without installing: `claude --plugin-dir ~/WorkHorse`.
 
 Requires Node 18+ on PATH (the hooks and CLI are dependency-free Node scripts).
 
+## Running from the command line
+
+`/workhorse:run` works inside any the harness session. To run a change unattended from a terminal
+(overnight, or while you work on something else), use the launcher:
+
+```bash
+node ~/WorkHorse/scripts/wh-launch.js "<problem> -> <outcome>"
+```
+
+```bash
+node ~/WorkHorse/scripts/wh-launch.js --resume
+```
+
+Run it from inside the client repository. It refuses to start while another run holds the lock,
+names every tool a run needs (`Write` and `Edit` included), runs in `acceptEdits`, writes the full
+stream to `.git/workhorse/runs/<time>.jsonl`, prints each conductor step as it happens, and ends
+with the conductor's report and `wh.js status`. A gate or a block also raises a desktop
+notification. `--allow "Bash(cargo *)"` adds a repository's own build tools; `--quiet` hides the
+live steps. Exit code 4 means a usage limit stopped the run: `--resume` after it resets.
+
+`npm link` in the plugin folder installs it as a `workhorse` command.
+
 ## Quickstart on a client repo
 
 1. `cd` into the client repo and start the harness.
@@ -246,19 +268,11 @@ human waited 41, 10 and 17 hours on runs whose agents worked 7 hours, 3 hours 40
 
 the harness refuses a plugin agent's writes inside the directory the plugin was loaded from
 (confirmed 2026-09-29: a `wh-designer` subagent was refused a one-word probe file that a
-general-purpose subagent in the same folder could write). A change on this repository therefore
-loads the plugin from a separate checkout of `master`:
-
-```
-git worktree add --detach ../WorkHorse-plugin master
-claude -p '/workhorse:run "<problem> -> <outcome>"' --permission-mode acceptEdits \
-  --allowedTools "Agent,Read,Glob,Grep,Edit,Write,Bash(node *),Bash(npm *),Bash(git *),Bash(gh *),Bash(claude plugin validate *)" \
-  --plugin-dir ../WorkHorse-plugin
-```
-
-`Write` and `Edit` must be named in `--allowedTools`; `acceptEdits` alone did not cover the change
-folder in a headless run. Refresh the checkout after each merge
-(`git -C ../WorkHorse-plugin checkout --detach master`). Client repositories need none of this.
+general-purpose subagent in the same folder could write). The launcher handles it: when the
+repository is the plugin itself, it loads the plugin from a detached checkout of the default
+branch beside it (`../WorkHorse-plugin`), creating it the first time and refreshing it on every
+run. Inside an interactive session, start the harness with `--plugin-dir ../WorkHorse-plugin`
+for the same reason. Client repositories need none of this.
 
 ## Known limits
 

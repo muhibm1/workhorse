@@ -846,18 +846,40 @@ console.log('wh.js verify, fold, lock, clock --by-agent (0.3.12)');
   check('--install runs the install command', /passed/.test(JSON.parse(wh(rr, 'verify', '--install', '--only', 'install').out).checks.find((c) => c.check === 'install').status));
 }
 
-console.log('agents that name a Studbook tool fail open');
+console.log('agent models and tools (0.3.14)');
 {
   const dir = path.join(PLUGIN, 'agents');
-  const naming = fs.readdirSync(dir).filter((f) => f.endsWith('.md') && /mcp__studbook__/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
-  check('at least the designer and the discovery analyst name the tools', naming.includes('wh-designer.md') && naming.includes('wh-discovery-analyst.md'));
-  for (const f of naming) {
-    const body = fs.readFileSync(path.join(dir, f), 'utf8');
-    // The discovery analyst runs at onboarding, before any change exists, so it has no own
-    // change id to pass; every agent that works inside a change must pass it.
-    if (f !== 'wh-discovery-analyst.md') check(`${f} passes own_change_id`, /own_change_id/.test(body));
-    check(`${f} carries the fail-open instruction`, /continue without it|carry on without/.test(body) && /absent, refused|unavailable|other than `ok`/.test(body));
-  }
+  const front = (f) => {
+    const m = /^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r\n/g, '\n'));
+    return m ? m[1] : '';
+  };
+  const model = (f) => ((/^model:\s*(\S+)/m.exec(front(f)) || [])[1] || '');
+  // The design stage decides everything downstream; it keeps the strongest model.
+  check('the designer runs on Fable', model('wh-designer.md') === 'fable', model('wh-designer.md'));
+  check('the conductor runs on Sonnet', model('wh-conductor.md') === 'sonnet', model('wh-conductor.md'));
+  // Studbook is out of use (2026-09-29): no agent may list a tool from a server that is not registered,
+  // or every dispatch of it would carry a dead tool name.
+  const naming = fs.readdirSync(dir).filter((f) => f.endsWith('.md') && /mcp__studbook__/.test(front(f)));
+  check('no agent lists a Studbook tool', naming.length === 0, naming.join(', '));
+}
+
+console.log('wh-launch (0.3.14)');
+{
+  const W = require(path.join(PLUGIN, 'scripts', 'wh-launch.js'));
+  const a = W.buildArgs({ request: 'x -> y', pluginDir: '/p', extraTools: 'Bash(cargo *)' });
+  const tools = a[a.indexOf('--allowedTools') + 1].split(',');
+  check('launch names Write and Edit (the change folder is refused otherwise)', tools.includes('Write') && tools.includes('Edit'));
+  check('launch runs in acceptEdits', a[a.indexOf('--permission-mode') + 1] === 'acceptEdits');
+  check('launch adds extra tools once', tools.filter((t) => t === 'Bash(cargo *)').length === 1);
+  check('launch passes the request to /workhorse:run', a[a.indexOf('-p') + 1] === '/workhorse:run "x -> y"');
+  check('resume sends a bare /workhorse:run', W.buildArgs({ resume: true, pluginDir: '/p' })[1] === '/workhorse:run');
+  check('launch loads the given plugin dir', a[a.indexOf('--plugin-dir') + 1] === '/p');
+  const p = W.parseArgv(['--allow', 'Bash(make *)', '--resume', '--max-turns', '50']);
+  check('argv: --allow, --resume, --max-turns', p.allow === 'Bash(make *)' && p.resume && p.maxTurns === 50);
+  check('a client repository loads the plugin in place', W.pluginDirFor(repo).separate === false);
+  const pd = W.pluginDirFor(PLUGIN, { checkout: path.join(tmp, 'plugin-checkout') });
+  check('the plugin repository loads a separate checkout of its default branch', pd.separate === true && fs.existsSync(path.join(pd.dir, '.claude-plugin', 'plugin.json')));
+  spawnSync('git', ['worktree', 'remove', '--force', pd.dir], { cwd: PLUGIN });
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

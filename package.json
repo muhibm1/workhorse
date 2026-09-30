@@ -5,7 +5,13 @@
   "description": "the harness plugin: agentic SDLC for forward-deployed engineering with risk-tiered human gates.",
   "scripts": {
     "test": "node hooks/tests/run.js",
-    "validate": "claude plugin validate ."
+    "validate": "claude plugin validate .",
+    "run": "node scripts/wh-launch.js"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "workhorse": "scripts/wh-launch.js"
+  }
 }
