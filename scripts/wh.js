@@ -874,6 +874,12 @@ function buildDigest(root, id, state) {
       ? gateHere
       : null;
 
+  // The age counts from the present stamp, the moment the human could first act (ADR 0001).
+  // humanGate is non-null only when presentedAfterPacket parsed that stamp, so it is set here.
+  const presentedAt = humanGate ? state.presented[humanGate] : null;
+  const waitingSince = presentedAt && Number.isFinite(Date.parse(presentedAt)) ? presentedAt : null;
+  const waitingMinutes = waitingSince ? Math.max(0, Math.floor((Date.now() - Date.parse(waitingSince)) / 60000)) : null;
+
   // Problem and outcome live at the top of the brief now; older changes still have intent.md.
   const intentMd = readArtifact(root, id, 'brief.md') || readArtifact(root, id, 'intent.md');
   const verification = state.verification || {};
@@ -901,6 +907,8 @@ function buildDigest(root, id, state) {
     status_label: phase === 'done' ? 'Done' : phase.charAt(0).toUpperCase() + phase.slice(1),
     waiting_on: humanGate ? 'You (' + humanGate + ')' : (phase === 'done' ? 'Nobody' : 'Agents'),
     blocking_gate: humanGate,
+    gate_waiting_since: waitingSince,
+    gate_waiting_minutes: waitingMinutes,
     gates,
     gate_names: L.GATE_NAMES,
     required_human_gates: required,

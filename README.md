@@ -69,7 +69,7 @@ CLI (`gh auth login`) for gates on GitHub. `workhorse doctor` checks all of it.
 | You type | What happens |
 |----------|--------------|
 | `workhorse "<problem> -> <outcome>"` | Starts a change in this repository and follows it live until the first gate |
-| `workhorse status` | Every change in every repository you have used: what is running, what waits on you |
+| `workhorse status` | Every change in every repository you have used: what is running, what waits on you, and for how long |
 | `workhorse approve [notes]` | Approves the gate that is waiting and continues the run |
 | `workhorse reject "<what to change>"` | Sends it back; the agents rework it and present it again |
 | `workhorse resume` | Continues a stopped run (after a usage limit, a block, or a decision made on GitHub) |

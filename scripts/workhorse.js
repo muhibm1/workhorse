@@ -4,6 +4,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const L = require('../hooks/scripts/lib.js');
 const { spawn, spawnSync } = require('child_process');
 
 const HERE = __dirname;
@@ -121,7 +122,8 @@ function status() {
     if (!live.length) continue;
     say(`${path.basename(repo)}  (${repo})`);
     for (const d of live) {
-      const who = d.blocking_gate ? `${GATE_WORDS[d.blocking_gate]} is waiting on YOU` : `agents working (${d.phase})`;
+      const waitedFor = typeof d.gate_waiting_minutes === 'number' ? ` for ${L.fmtAge(d.gate_waiting_minutes)}` : '';
+      const who = d.blocking_gate ? `${GATE_WORDS[d.blocking_gate]} is waiting on YOU${waitedFor}` : `agents working (${d.phase})`;
       const lock = whJson(repo, ['lock', 'status']);
       const running = lock && lock.holder ? 'running' : (d.blocking_gate ? '' : 'stopped: workhorse resume');
       say(`  ${d.title}`);

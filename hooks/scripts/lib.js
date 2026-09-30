@@ -537,6 +537,19 @@ function fmtMinutes(m) {
   return n >= 60 ? `${Math.floor(n / 60)} h ${String(n % 60).padStart(2, '0')} m` : `${n} m`;
 }
 
+/** A gate's waiting time as `12m`, `3h 12m` or `2d 4h`; `fmtMinutes` stays for sums. */
+function fmtAge(minutes) {
+  const total = Math.floor(Number(minutes));
+  if (!Number.isFinite(total) || total < 0) return '0m';
+  if (total < 60) return `${total}m`;
+  if (total < 1440) {
+    const minutesLeft = total % 60;
+    return `${Math.floor(total / 60)}h${minutesLeft ? ` ${minutesLeft}m` : ''}`;
+  }
+  const hoursLeft = Math.floor((total % 1440) / 60);
+  return `${Math.floor(total / 1440)}d${hoursLeft ? ` ${hoursLeft}h` : ''}`;
+}
+
 /** One line for status, the Ship document and Paddock. */
 function formatClock(c) {
   if (!c || !c.events) return 'Clock: no events yet';
@@ -651,7 +664,7 @@ module.exports = {
   gitCommonDir, stateRoot, stateFile, activeFile, listChangeIds, isInStateRoot,
   ALL_GATES, GATE_NAMES, TIER_GATES, PHASES, BUDGET_MINUTES, budgetMinutes,
   effectiveTier, requiredGates, gateSatisfied, PHASE_ARTIFACT_GATE,
-  parseConductorLog, parseApprovals, computeClock, formatClock, fmtMinutes,
+  parseConductorLog, parseApprovals, computeClock, formatClock, fmtMinutes, fmtAge,
   knownFailuresFile, parseKnownFailures, loadKnownFailures, addKnownFailure,
   shipBlockers, packetComplete,
   normalize, relToRoot, globToRegex, matchesAny, toolFilePath,
