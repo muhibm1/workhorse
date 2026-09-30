@@ -1,0 +1,54 @@
+{
+  "commit": "5505a8e4ad3a0223fb9cb53435c94b434699a3f8",
+  "at": "2026-09-30T07:26:06.525Z",
+  "branch": "wh/2026-09-30-status-shows-gate-age",
+  "checks_green": true,
+  "defined": 2,
+  "failed": [],
+  "checks": [
+    {
+      "check": "install",
+      "status": "no check defined"
+    },
+    {
+      "check": "typecheck",
+      "status": "no check defined"
+    },
+    {
+      "check": "lint",
+      "command": "claude plugin validate .",
+      "exit": 0,
+      "seconds": 0.6,
+      "log": "verify-logs/lint.log",
+      "status": "passed",
+      "measured": "Lint: 0 errors (`claude plugin validate .`).",
+      "first_error": null
+    },
+    {
+      "check": "test",
+      "command": "npm test",
+      "exit": 0,
+      "seconds": 31.1,
+      "log": "verify-logs/test.log",
+      "status": "passed",
+      "measured": "Test suite: 323 passed, 0 failed, 0 skipped (`npm test`).",
+      "first_error": null
+    },
+    {
+      "check": "build",
+      "status": "no check defined"
+    },
+    {
+      "check": "e2e",
+      "status": "no check defined"
+    },
+    {
+      "check": "security_audit",
+      "status": "no check defined"
+    },
+    {
+      "check": "screenshot",
+      "status": "no check defined"
+    }
+  ]
+}

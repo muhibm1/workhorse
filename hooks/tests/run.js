@@ -433,6 +433,13 @@ console.log('clock');
   const cl = wh(repo, 'clock');
   check('the CLI prints the clock line', cl.code === 0 && /^Clock: /.test(cl.out), cl.err || cl.out);
   check('the CLI prints the clock as JSON', typeof JSON.parse(wh(repo, 'clock', '--json').out).wall_minutes === 'number');
+  check('fmtAge renders three hours as 3h', L.fmtAge(180) === '3h', L.fmtAge(180));
+  const boundaries = [0, 59, 60, 61, 1439].map(L.fmtAge).join('|');
+  check('fmtAge minute and hour boundaries', boundaries === '0m|59m|1h|1h 1m|23h 59m', boundaries);
+  const dayScale = [1440, 1500, 3125, -5, NaN].map(L.fmtAge).join('|');
+  check('fmtAge drops minutes at day scale and floors bad input to 0m', dayScale === '1d|1d 1h|2d 4h|0m|0m', dayScale);
+  const missing = [undefined, null, ''].map(L.fmtAge).join('|');
+  check('fmtAge treats missing input as 0m', missing === '0m|0m|0m', missing);
 }
 
 console.log('known failures');
@@ -993,6 +1000,57 @@ console.log('gates on GitHub (0.4.0)');
     cli(ar, 'status');
     return fs.readFileSync(path.join(tmp, '.workhorse', 'repos.json'), 'utf8').includes(path.basename(ar));
   })());
+
+  console.log('gate age');
+  const agerepo = path.join(tmp, 'agerepo');
+  fs.mkdirSync(agerepo, { recursive: true });
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: agerepo });
+  execFileSync('git', ['config', 'user.email', 'tester@example.com'], { cwd: agerepo });
+  execFileSync('git', ['config', 'user.name', 'Tester'], { cwd: agerepo });
+  fs.writeFileSync(path.join(agerepo, 'README.md'), 'x\n');
+  wh(agerepo, 'init');
+  execFileSync('git', ['add', '.'], { cwd: agerepo });
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: agerepo });
+  wh(agerepo, 'new', 'gate age', '--tier', '1');
+  const ageId = wh(agerepo, 'active').out;
+  fs.writeFileSync(path.join(agerepo, 'docs', 'sdlc', ageId, 'brief.md'), '# B\n\n## Decisions\n\n| # | Decision | Recommendation | Alternative | Why |\n|---|---|---|---|---|\n| D1 | Port | 8080 | 9090 | std |\n\n## Your decision\n\nApprove.\n');
+  const ageDigest = () => JSON.parse(wh(agerepo, 'digest').out);
+  const minutesAgo = (m) => new Date(Date.now() - m * 60000).toISOString();
+
+  const idle = ageDigest();
+  const idleStatus = cli(agerepo, 'status').stdout;
+  check('no age while nothing waits on the human',
+    idle.gate_waiting_since === null && idle.gate_waiting_minutes === null
+      && idleStatus.includes('agents working (design)') && !idleStatus.includes(' for '));
+
+  wh(agerepo, 'present', 'G2');
+  const presentedStamp = minutesAgo(180);
+  wh(agerepo, 'state', 'set', 'presented.G2', presentedStamp);
+  const waiting = ageDigest();
+  check('digest carries when the gate was presented and how long ago',
+    waiting.blocking_gate === 'G2' && waiting.gate_waiting_since === presentedStamp
+      && waiting.gate_waiting_minutes >= 180 && waiting.gate_waiting_minutes < 183);
+  check('status says how long Design has waited', /Design is waiting on YOU for 3h/.test(cli(agerepo, 'status').stdout));
+
+  wh(agerepo, 'approve', 'G2', '--reject', 'age test');
+  wh(agerepo, 'present', 'G2');
+  const represented = ageDigest();
+  check('a re-presented gate counts from the new presentation',
+    represented.blocking_gate === 'G2' && represented.gate_waiting_minutes < 3);
+
+  wh(agerepo, 'state', 'set', 'presented.G2', new Date(Date.now() + 10 * 60000).toISOString());
+  const future = ageDigest();
+  check('a stamp in the future reads as 0m, never negative',
+    future.gate_waiting_minutes === 0 && /Design is waiting on YOU for 0m/.test(cli(agerepo, 'status').stdout));
+
+  wh(agerepo, 'state', 'set', 'presented.G2', 'not-a-date');
+  const corrupt = ageDigest();
+  const corruptRun = cli(agerepo, 'status');
+  check('a corrupted stamp leaves the gate not waiting and nothing crashes',
+    corrupt.blocking_gate === null && corrupt.gate_waiting_minutes === null && corruptRun.status === 0);
+
+  const readmeRow = fs.readFileSync(path.join(PLUGIN, 'README.md'), 'utf8').split('\n').find((l) => l.includes('workhorse status')) || '';
+  check('the README status row says the age is shown', readmeRow.includes('how long'));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
