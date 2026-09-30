@@ -1,13 +1,20 @@
 # WorkHorse
 
-An agentic software delivery lifecycle for forward-deployed engineering, packaged as a the
-harness plugin. Give it a problem and an outcome inside any client repository. Agents design,
-build, verify, review, and ship. You touch a change three times: you ask, you approve the
-Design document, you approve the Ship document. Every step leaves a committed artifact, and a
-clock measures every run against a budget.
+Agents build the change. You decide at two gates, from anywhere.
 
-Built on Anthropic's AI-native SDLC playbook, the FDE audit-evals-deploy loop, and a set of
-security rules distilled from a real production audit.
+WorkHorse is an agentic software delivery lifecycle for forward-deployed engineering, packaged as
+a harness plugin. Give it a problem and an outcome inside any client repository; agents
+design, build, verify, review and ship. You read a one-page Design document and approve it, and
+later a one-page Ship document, from your terminal or by replying `/approve` on the pull request
+from your phone. Every decision is committed with who made it, when, the exact document they
+approved, and a link to where they said so. A clock measures every run against a budget.
+
+```bash
+workhorse "Checkout fails for EU cards -> EU cards pay first time, with a regression test"
+```
+
+Built on Anthropic's AI-native SDLC playbook, the FDE audit-evals-deploy loop, and security rules
+distilled from a real production audit.
 
 ## The loop
 
@@ -40,7 +47,7 @@ question the agents met already has a recommended answer. Approving accepts ever
 recommendation unless your notes say otherwise; no agent stops a run to ask. Approve with one
 command; the approval is committed with who, when, and the artifact hash.
 
-## Install (global, on your machine)
+## Install (once, on your machine)
 
 ```bash
 claude plugin marketplace add ~/WorkHorse
@@ -50,31 +57,72 @@ claude plugin marketplace add ~/WorkHorse
 claude plugin install workhorse@workhorse --scope user
 ```
 
-Or for a one-off session without installing: `claude --plugin-dir ~/WorkHorse`.
-
-Requires Node 18+ on PATH (the hooks and CLI are dependency-free Node scripts).
-
-## Running from the command line
-
-`/workhorse:run` works inside any the harness session. To run a change unattended from a terminal
-(overnight, or while you work on something else), use the launcher:
-
 ```bash
-node ~/WorkHorse/scripts/wh-launch.js "<problem> -> <outcome>"
+cd ~/WorkHorse && npm link
 ```
 
-```bash
-node ~/WorkHorse/scripts/wh-launch.js --resume
-```
+The last line puts `workhorse` on your PATH. Requires Node 18+, git, the harness, and the GitHub
+CLI (`gh auth login`) for gates on GitHub. `workhorse doctor` checks all of it.
 
-Run it from inside the client repository. It refuses to start while another run holds the lock,
-names every tool a run needs (`Write` and `Edit` included), runs in `acceptEdits`, writes the full
-stream to `.git/workhorse/runs/<time>.jsonl`, prints each conductor step as it happens, and ends
-with the conductor's report and `wh.js status`. A gate or a block also raises a desktop
-notification. `--allow "Bash(cargo *)"` adds a repository's own build tools; `--quiet` hides the
-live steps. Exit code 4 means a usage limit stopped the run: `--resume` after it resets.
+## The commands
 
-`npm link` in the plugin folder installs it as a `workhorse` command.
+| You type | What happens |
+|----------|--------------|
+| `workhorse "<problem> -> <outcome>"` | Starts a change in this repository and follows it live until the first gate |
+| `workhorse status` | Every change in every repository you have used: what is running, what waits on you |
+| `workhorse approve [notes]` | Approves the gate that is waiting and continues the run |
+| `workhorse reject "<what to change>"` | Sends it back; the agents rework it and present it again |
+| `workhorse resume` | Continues a stopped run (after a usage limit, a block, or a decision made on GitHub) |
+| `workhorse watch` | Turns an `/approve` on GitHub into a resumed run within a minute. Starts by itself (below); `--stop` stops it |
+| `workhorse log` | Follows the current run step by step |
+| `workhorse doctor` | Checks node, git, claude, gh, this repository, and phone push |
+
+Inside the harness the same run is `/workhorse:run "<problem> -> <outcome>"` and the same approval
+is `/workhorse:approve`.
+
+## Approving from your phone
+
+When a gate is reached, WorkHorse pushes the change branch and posts the gate to its pull request:
+a draft PR at Design, marked ready at Ship. The comment carries the short version, every decision
+with its recommendation, and a link to the full document rendered on GitHub. Answer in the PR:
+
+| Reply | Means |
+|-------|-------|
+| `/approve` | Build (or ship) it exactly as recommended |
+| `/approve D2: use Postgres, we already run it` | Accept the rest, override D2 |
+| `/reject split the migration out first` | Send it back with that instruction |
+| An approving review / "Request changes" | Same as `/approve` / `/reject` with the review text |
+
+Only the logins in the profile's `github.approvers` may decide (default: the account `gh` is signed
+in as); a decision made before the gate was presented, or a review of a different commit, does not
+count. The background watcher (or the next `workhorse resume`) records the decision through the same
+path as a terminal approval, with `Who: github:<login>` and a `Source:` link to the comment, and
+replies on the PR that it was recorded. GitHub's own app notifies you of PRs you open, so no extra
+setup is needed.
+
+**Phone push (optional).** For a notification the moment a gate is waiting, install the ntfy app,
+subscribe to a private topic name only you know, and put it in `~/.workhorse/config.json` as
+`{ "ntfy_topic": "<your topic>" }`. WorkHorse sends the gate name, the change title and the PR link;
+nothing else. ntfy is a third party; leave it unset to keep everything on GitHub.
+
+**The watcher starts by itself.** Every the harness session opened in a WorkHorse repository
+makes sure one `workhorse watch` is running in the background, and `workhorse watch --at-login`
+adds a hidden Windows Startup entry so it also runs when the harness is closed
+(`--not-at-login` removes it). It spends no tokens: each minute it reads local state, and only
+while a gate is waiting does it read the pull request through `gh`. Claude runs only when your
+decision resumes the run. `workhorse doctor` shows whether it is running; its log is
+`~/.workhorse/watch.log`. The computer has to be on and awake for the run to continue.
+
+**No GitHub?** Set `github.approvals: false` in the profile and approve in the terminal.
+
+## Running unattended
+
+`workhorse "<problem> -> <outcome>"` refuses to start while another run holds the repository's lock,
+names every tool a run needs, runs in `acceptEdits`, writes the full stream to
+`.git/workhorse/runs/`, prints each conductor step as it happens, and exits at a gate with the
+PR link. `--allow "Bash(cargo *)"` adds a repository's own build tools. Exit code 4 means a usage
+limit stopped the run: `workhorse resume` after it resets. With the watcher running, a change
+moves forward whenever you approve, wherever you are.
 
 ## Quickstart on a client repo
 

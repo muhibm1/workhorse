@@ -71,10 +71,15 @@ second run. Produces `ship.md` and the PR.
      write `not rehearsed: <reason>` and add a decision row.
    - **Clock.** Paste the output of `wh.js clock` unchanged.
    - **Your decision.** Written last, only when every section above is complete.
-3. Push the change branch and open the PR: `gh pr create` with the title from the brief and a
-   body holding the short version and a relative link to `ship.md`. Record the URL with
-   `wh.js state set pr_url <url>` and put it in the header line of `ship.md`. Push and PR
-   creation are hook-guarded; if a hook refuses, report blocked with the hook's reason.
+3. Push the change branch and make sure one PR carries it. Since 0.4.0 the Design gate usually
+   opened a draft PR for this branch already: find it with
+   `gh pr list --head <branch> --state open --json number,url`. If it exists, reuse it: update
+   its title and body (`gh pr edit`) to the title from the brief and a body holding the short
+   version and a relative link to `ship.md`; `wh.js present G4` marks it ready for review. Only
+   when none exists, open it with `gh pr create` and the same title and body. Never open a
+   second PR for the same branch. Record the URL with `wh.js state set pr_url <url>` and put it
+   in the header line of `ship.md`. Push and PR creation are hook-guarded; if a hook refuses,
+   report blocked with the hook's reason.
 4. Log one row: `wh.js log "wh-shipper | ship.md written, PR <url>"`.
 
 Exit criterion: `ship.md` on disk with all eight sections, `## Your decision` last, the PR open

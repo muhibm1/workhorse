@@ -6,12 +6,12 @@
   "scripts": {
     "test": "node hooks/tests/run.js",
     "validate": "claude plugin validate .",
-    "run": "node scripts/wh-launch.js"
+    "run": "node scripts/workhorse.js"
   },
   "engines": {
     "node": ">=18"
   },
   "bin": {
-    "workhorse": "scripts/wh-launch.js"
+    "workhorse": "scripts/workhorse.js"
   }
 }

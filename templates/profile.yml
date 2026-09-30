@@ -97,6 +97,14 @@ tier_floor_paths:
   3: ["**/migrations/**", "**/payments/**"]
   2: ["**/auth/**", "**/*.sql", "infra/**"]
 
+# Gates on GitHub (0.4.0). When a gate is presented, the change branch is pushed and its pull
+# request carries the gate document (a draft at Design, ready for review at Ship). Approve from
+# any device by replying /approve, /approve D2: <choice>, or /reject <what to change>; an
+# approving review or "request changes" counts too. Only the logins below may decide.
+github:
+  approvals: true              # false: gates stay local; approve with `workhorse approve`
+  approvers: []                # GitHub logins; empty means the account `gh` is signed in as
+
 # Optional tracker sync. Leave provider empty for repo-only. The repo stays authoritative; the
 # tracker is a one-way mirror so non-engineers can see phase, tier, and what needs a human.
 # Create the database once with /workhorse:sync --setup, then paste its id here.
