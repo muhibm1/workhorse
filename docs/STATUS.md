@@ -1,18 +1,23 @@
 # Where things stand
 
-Last updated 2026-09-19. The state of WorkHorse (the plugin), Paddock (the desktop app) and
-Studbook (the record's question answering, inside Paddock), what is open, and what to do when
-picking this back up. Studbook's own detail is in `studbook/docs/status.md`.
+Last updated 2026-09-29. The state of WorkHorse (the plugin), Paddock (the desktop app, retired)
+and Studbook (paused), what is open, and what to do when picking this back up. Studbook's own
+detail is in `studbook/docs/status.md`.
 
 ## In one paragraph
 
-All three are functionally complete and in daily-usable shape. WorkHorse 0.3.0 is the current
-source (two gates and a clock; install it to replace 0.2.14 at user scope); Paddock 0.4.9 is the
-current portable build (`~/Paddock-builds/Paddock-0.5.0-portable.exe`, bundling plugin 0.3.1) and shows the two-gate
-model until 0.5.0; Studbook's pipeline is finished, measured on a held-out split, and runs inside
-Paddock with its Python reference held to it by exact parity checks. Both repositories have CI on
-every push, branch protection, pre-push hooks, Dependabot and changelogs. What is left is the
-three proving runs, Paddock 0.5.0, and a few decisions that belong to the owner.
+WorkHorse 0.4.0 is terminal-first: one `workhorse` command starts, resumes, approves and watches
+changes, and each gate is posted to the change's pull request so it can be answered with
+`/approve` or `/reject` from a phone. Paddock is retired as of 0.3.14 (its CI still runs) and
+Studbook is out of use; both stay in their repositories. The sections below from 2026-09-19 and
+2026-09-26 are kept as the record and describe the Paddock and Studbook work as it stood then.
+
+## What changed on 2026-09-29
+
+- 0.3.12 to 0.3.14: runs about ten times faster (verify summary, known failures cited, the run
+  lock), `wh-launch.js` for unattended runs, the designer back on Fable, Studbook tools removed.
+- 0.4.0: the `workhorse` CLI and GitHub gates (see `CHANGELOG.md`). Confirmed end to end on a
+  throwaway pull request; not yet used on a real change.
 
 ## What changed on 2026-09-19
 
@@ -31,7 +36,7 @@ full list.
 
 | Piece | Version | Where |
 |---|---|---|
-| WorkHorse plugin | 0.3.0 | source is this repository; 0.2.14 is what is installed at user scope until reinstalled |
+| WorkHorse plugin | 0.4.0 | source is this repository; installed at user scope with `claude plugin update workhorse@workhorse` |
 | Paddock | 0.5.0 | `~/Paddock-builds/Paddock-0.5.0-portable.exe`, bundling plugin 0.3.1 (0.3.3 is installed at user scope); 0.5.0 (Design / Ship / Deploy gate screens, the clock on the Run screen) is the next release |
 | Studbook | reference implementation + eval harness | `~\studbook`, private repo `muhibm1/studbook` |
 

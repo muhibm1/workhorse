@@ -7,6 +7,42 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.4.0 — 2026-09-29
+
+Follows 0.3.14 (command line and the harness first; Studbook out). One command, and gates you
+answer from your phone.
+
+- `workhorse` is the command: `workhorse "<problem> -> <outcome>"` starts a change, and `status`,
+  `approve [notes]`, `reject "<notes>"`, `resume`, `watch`, `log` and `doctor` cover the rest.
+  `npm link` puts it on the PATH. It remembers every repository it ran in, so `status` shows all
+  of them, and an unknown command exits 2 with the help.
+- Gates are posted to GitHub. Presenting a gate commits the change's documents, pushes the
+  branch, opens a draft pull request at Design (marked ready at Ship) and comments the gate with
+  its decisions and a link to the document on the change branch. `/approve`, `/approve D2: ...`
+  or `/reject <notes>` in the PR (or an approving review, or "request changes") decides it.
+  Only `profile.github.approvers` count (default: the `gh` login); a decision made before the
+  gate was presented, or a review of a different commit, does not.
+- `wh.js github-sync` reads the PR and records the decision through `wh.js approve`, now with
+  `--by github:<login>` and `--source <comment url>` in `approvals.md`, then replies on the PR
+  that it was recorded. `workhorse resume` syncs first; `workhorse watch` polls every minute and
+  resumes the run. Subagents may not run `github-sync` (bash-guard), same as `approve`.
+- An approval that names a decision ID in its notes no longer also records "recommendation
+  accepted" for that ID.
+- The shipper reuses the pull request the Design gate opened instead of opening a second one.
+- The watcher starts by itself: the SessionStart hook keeps one detached `workhorse watch`
+  alive (a pid file with a heartbeat, so a second session reuses it), and `workhorse watch
+  --at-login` adds a hidden Windows Startup entry. `--background`, `--stop` and
+  `--not-at-login` complete it; `doctor` and `status` say whether it is running. It calls no
+  model: Claude runs only when a recorded decision resumes the run.
+- Optional phone push through ntfy (`~/.workhorse/config.json` `ntfy_topic`, or
+  `WORKHORSE_NTFY_TOPIC`): sends the gate name, change title and PR link only. ntfy is a third
+  party and a new subprocessor for whoever turns it on; it is off unless configured.
+  `github.approvals: false` in the profile keeps every gate local.
+- Tests: 312 in `hooks/tests/run.js` (from 279), covering decision parsing, approver and timing
+  rules, the audit fields, the sync with nothing waiting, the CLI, the watcher and the guard. Confirmed end to
+  end once on a throwaway pull request (muhibm1/workhorse#21, closed): the gate comment posted,
+  a reply of `/approve D1: ...` was recorded as `github:muhibm1` with its link.
+
 ## 0.3.14 — 2026-09-29
 
 Follows 0.3.13 (verify cites known failures). Command line and the harness first; Studbook out.

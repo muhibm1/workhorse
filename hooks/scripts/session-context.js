@@ -7,6 +7,17 @@ const input = L.readStdinJson();
 const ctx = L.loadContext(input.cwd);
 if (!ctx.root || !ctx.profile) return L.emit({});
 
+// Keep one background `workhorse watch` alive, so a /approve from a phone resumes the run without
+// anyone starting a watcher (0.4.0). It spends no tokens until a decision is recorded. Detached,
+// so it outlives this session; off in the hook tests and in CI.
+if (!process.env.WORKHORSE_NO_WATCH && !process.env.CI) {
+  try {
+    const W = require('../../scripts/workhorse.js');
+    W.remember(ctx.root);
+    W.ensureWatcher();
+  } catch (e) { /* never block a session over the watcher */ }
+}
+
 const p = ctx.profile;
 const lines = [];
 lines.push(`[WorkHorse] Client: ${(p.client && p.client.name) || 'unnamed'} (${(p.client && p.client.industry) || 'industry unset'}). Autonomy: ${p.autonomy || 'bounded'}.`);

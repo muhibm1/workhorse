@@ -78,7 +78,7 @@ function buildArgs({ request, resume, pluginDir, extraTools, maxTurns }) {
   const prompt = resume ? '/workhorse:run' : `/workhorse:run "${String(request).replace(/"/g, '\\"')}"`;
   return [
     '-p', prompt, '--output-format', 'stream-json', '--verbose', '--include-hook-events',
-    '--permission-mode', 'acceptEdits', '--allowedTools', [...new Set(tools)].join(','),
+    '--permission-mode', 'auto', '--allowedTools', [...new Set(tools)].join(','),
     '--plugin-dir', pluginDir, '--max-turns', String(maxTurns || 400),
   ];
 }
@@ -116,6 +116,13 @@ function main() {
   }
   const repo = findRepo(process.cwd());
   if (!repo) { process.stderr.write('wh-launch: no .workhorse/profile.yml here or above; run /workhorse:onboard first.\n'); process.exit(2); }
+  // Remembered so `workhorse status` and `workhorse watch` cover every repository you run in.
+  try { require('./workhorse.js').remember(repo); } catch (e) { /* not fatal */ }
+  if (o.resume) {
+    // A decision left on the gate's pull request is recorded before the conductor looks at state.
+    const sync = whJson(repo, ['github-sync']);
+    if (sync && sync.recorded) process.stdout.write(`GitHub: ${sync.gate} ${sync.decision === 'reject' ? 'rejected' : 'approved'} by @${sync.by}; recorded.\n`);
+  }
 
   const lock = whJson(repo, ['lock', 'status']);
   if (lock && lock.holder) {

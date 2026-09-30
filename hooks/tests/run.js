@@ -2,6 +2,7 @@
 // Hook and CLI tests. Builds a throwaway repo under the OS temp dir, feeds each hook sample
 // JSON on stdin, and asserts the decision. Run: node hooks/tests/run.js
 'use strict';
+process.env.WORKHORSE_NO_WATCH = '1'; // session-context.js would otherwise start a real watcher
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -190,6 +191,12 @@ console.log('bash-guard');
   check('denies -f push', decision(hook('bash-guard.js', bash('git push -f'))) === 'deny');
   check('denies push to main', decision(hook('bash-guard.js', bash('git push origin main'))) === 'deny');
   check('allows push to change branch', decision(hook('bash-guard.js', bash('git push -u origin wh/2026-x'))) === 'none');
+  // 0.4.0: every way of recording a decision is the human's, not a subagent's
+  const sub = { agent_id: 'a1', agent_type: 'workhorse:wh-builder' };
+  check('denies workhorse approve from a subagent', decision(hook('bash-guard.js', bash('workhorse approve', sub))) === 'deny');
+  check('denies workhorse reject from a subagent', decision(hook('bash-guard.js', bash('node scripts/workhorse.js reject "x"', sub))) === 'deny');
+  check('denies wh.js github-sync from a subagent', decision(hook('bash-guard.js', bash('node "/p/scripts/wh.js" github-sync', sub))) === 'deny');
+  check('allows workhorse status from a subagent', decision(hook('bash-guard.js', bash('workhorse status', sub))) === 'none');
   check('denies rm -rf /', decision(hook('bash-guard.js', bash('rm -rf /'))) === 'deny');
   check('denies profile deny_commands', decision(hook('bash-guard.js', bash('terraform destroy -auto-approve'))) === 'deny');
   check('asks profile ask_commands', decision(hook('bash-guard.js', bash('terraform apply'))) === 'ask');
@@ -315,7 +322,7 @@ console.log('digest');
   const early = wh(repo, 'present', 'G4');
   check('present refuses a gate whose packet is missing', early.code !== 0 && /no "## Your decision"/.test(early.err), early.err);
   const pres = wh(repo, 'present', 'G2');
-  check('present prints the gate name, the packet and the commands', pres.code === 0 && /Design \(G2\) is waiting on you/.test(pres.out) && /approve G2 --accept-all/.test(pres.out), pres.err || pres.out);
+  check('present prints the gate name, the packet and the commands', pres.code === 0 && /Design \(G2\) is waiting on you/.test(pres.out) && /workhorse approve/.test(pres.out) && /GitHub: /.test(pres.out), pres.err || pres.out);
   check('present logs a clock row', /G2 Design presented/.test(fs.readFileSync(path.join(ddir, 'conductor-log.md'), 'utf8')));
   check('a presented brief at tier 1 waits on the human at Design', d().waiting_on === 'You (G2)' && d().blocking_gate === 'G2');
   const g2 = wh(repo, 'approve', 'G2', 'build it');
@@ -869,7 +876,7 @@ console.log('wh-launch (0.3.14)');
   const a = W.buildArgs({ request: 'x -> y', pluginDir: '/p', extraTools: 'Bash(cargo *)' });
   const tools = a[a.indexOf('--allowedTools') + 1].split(',');
   check('launch names Write and Edit (the change folder is refused otherwise)', tools.includes('Write') && tools.includes('Edit'));
-  check('launch runs in acceptEdits', a[a.indexOf('--permission-mode') + 1] === 'acceptEdits');
+  check('launch runs in auto mode', a[a.indexOf('--permission-mode') + 1] === 'auto');
   check('launch adds extra tools once', tools.filter((t) => t === 'Bash(cargo *)').length === 1);
   check('launch passes the request to /workhorse:run', a[a.indexOf('-p') + 1] === '/workhorse:run "x -> y"');
   check('resume sends a bare /workhorse:run', W.buildArgs({ resume: true, pluginDir: '/p' })[1] === '/workhorse:run');
@@ -880,6 +887,112 @@ console.log('wh-launch (0.3.14)');
   const pd = W.pluginDirFor(PLUGIN, { checkout: path.join(tmp, 'plugin-checkout') });
   check('the plugin repository loads a separate checkout of its default branch', pd.separate === true && fs.existsSync(path.join(pd.dir, '.claude-plugin', 'plugin.json')));
   spawnSync('git', ['worktree', 'remove', '--force', pd.dir], { cwd: PLUGIN });
+}
+
+console.log('gates on GitHub (0.4.0)');
+{
+  const G = require(path.join(PLUGIN, 'scripts', 'wh-github.js'));
+  const presentedAt = '2026-09-30T10:00:00Z';
+  const base = { presentedAt, presentedHead: 'abc', approvers: ['owner', 'client-lead'] };
+  const c = (login, body, at) => ({ login, body, created_at: at, url: `https://gh/c/${at}` });
+  const rv = (login, state, at, commit, body) => ({ login, state, body: body || '', submitted_at: at, commit_id: commit, url: `https://gh/r/${at}` });
+  let d = G.readDecision({ ...base, comments: [c('owner', '/approve', '2026-09-30T10:05:00Z')], reviews: [] });
+  check('/approve from an approver is an approval', d && d.decision === 'approve' && d.by === 'owner' && d.notes === '');
+  d = G.readDecision({ ...base, comments: [c('Owner', '/approve D2: take the alternative, cheaper', '2026-09-30T10:05:00Z')], reviews: [] });
+  check('/approve carries notes and matches logins case-insensitively', d && d.notes === 'D2: take the alternative, cheaper');
+  d = G.readDecision({ ...base, comments: [c('owner', '/reject split the migration into two changes', '2026-09-30T10:05:00Z')], reviews: [] });
+  check('/reject carries the notes', d && d.decision === 'reject' && /split the migration/.test(d.notes));
+  d = G.readDecision({ ...base, comments: [c('owner', '/reject', '2026-09-30T10:05:00Z')], reviews: [] });
+  check('a bare /reject still records a reason', d && d.decision === 'reject' && d.notes.length > 0);
+  d = G.readDecision({ ...base, comments: [c('stranger', '/approve', '2026-09-30T10:05:00Z')], reviews: [] });
+  check('someone who is not an approver cannot approve', d === null);
+  d = G.readDecision({ ...base, comments: [c('owner', '/approve', '2026-09-30T09:59:00Z')], reviews: [] });
+  check('a decision from before the gate was presented does not count', d === null);
+  d = G.readDecision({ ...base, comments: [c('owner', `${G.MARKER}\n/approve`, '2026-09-30T10:05:00Z')], reviews: [] });
+  check("WorkHorse's own gate comment never counts as a decision", d === null);
+  d = G.readDecision({ ...base, comments: [c('owner', 'looks good, /approve later', '2026-09-30T10:05:00Z')], reviews: [] });
+  check('only a comment that starts with the command counts', d === null);
+  d = G.readDecision({ ...base, comments: [], reviews: [rv('client-lead', 'APPROVED', '2026-09-30T10:06:00Z', 'abc')] });
+  check('an approving review on the presented commit is an approval', d && d.decision === 'approve' && d.by === 'client-lead');
+  d = G.readDecision({ ...base, comments: [], reviews: [rv('client-lead', 'APPROVED', '2026-09-30T10:06:00Z', 'def')] });
+  check('a review of a different commit does not count', d === null);
+  d = G.readDecision({ ...base, comments: [], reviews: [rv('client-lead', 'CHANGES_REQUESTED', '2026-09-30T10:06:00Z', 'abc', 'rename the flag')] });
+  check('request changes is a rejection with its notes', d && d.decision === 'reject' && d.notes === 'rename the flag');
+  d = G.readDecision({ ...base, comments: [c('owner', '/approve', '2026-09-30T10:05:00Z'), c('owner', '/reject wait, the budget is wrong', '2026-09-30T10:07:00Z')], reviews: [] });
+  check('the latest decision wins', d && d.decision === 'reject');
+  const body = G.gateComment({ gate: 'G2', title: 'Add health check', tier: 1, summary: 'Short.', decisions: [{ id: 'D1', decision: 'Port', recommendation: '8080' }], packetPath: 'docs/sdlc/x/brief.md' });
+  check('the gate comment carries the marker, the decisions and the commands', body.startsWith(G.MARKER) && body.includes('(docs/sdlc/x/brief.md)') && /D1\*\* Port/.test(body) && /\/approve/.test(body) && /\/reject/.test(body));
+  check('GitHub approvals are off for a repository whose origin is not GitHub', G.enabled(L, repo, {}) === false);
+  check('the profile can turn GitHub approvals off', G.enabled(L, PLUGIN, { github: { approvals: false } }) === false);
+  check('approvers come from the profile when listed', G.approvers(repo, { github: { approvers: ['@Owner', 'b'] } }).join() === 'owner,b');
+
+  // approve: the audit record names the real approver and links to the decision
+  const ar = path.join(tmp, 'approverepo');
+  fs.mkdirSync(ar, { recursive: true });
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: ar });
+  execFileSync('git', ['config', 'user.email', 'tester@example.com'], { cwd: ar });
+  execFileSync('git', ['config', 'user.name', 'Tester'], { cwd: ar });
+  fs.writeFileSync(path.join(ar, 'README.md'), 'x\n');
+  wh(ar, 'init');
+  execFileSync('git', ['add', '.'], { cwd: ar });
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: ar });
+  wh(ar, 'new', 'github gate', '--tier', '1');
+  const aid = wh(ar, 'active').out;
+  fs.writeFileSync(path.join(ar, 'docs', 'sdlc', aid, 'brief.md'), '# B\n\n## Decisions\n\n| # | Decision | Recommendation | Alternative | Why |\n|---|---|---|---|---|\n| D1 | Port | 8080 | 9090 | std |\n| D2 | Store | sqlite | pg | small |\n\n## Your decision\n\nApprove.\n');
+  const ap = wh(ar, 'approve', 'G2', '--accept-all', '--by', 'github:owner', '--source', 'https://github.com/o/r/pull/1#issuecomment-9', 'D2: pg, we already run it');
+  const rec = fs.readFileSync(path.join(ar, 'docs', 'sdlc', aid, 'approvals.md'), 'utf8');
+  check('a GitHub approval records who and where', ap.code === 0 && /- Who: github:owner/.test(rec) && /- Source: https:\/\/github\.com\/o\/r\/pull\/1#issuecomment-9/.test(rec), ap.err);
+  check('an override in the notes is not contradicted by accept-all', /D1: recommendation accepted/.test(rec) && !/D2: recommendation accepted/.test(rec) && /D2: pg, we already run it/.test(rec));
+  check('github-sync with no gate waiting records nothing', /"recorded": false/.test(wh(ar, 'github-sync').out));
+
+  // the workhorse command
+  const W = path.join(PLUGIN, 'scripts', 'workhorse.js');
+  const cli = (cwd, ...a) => spawnSync(process.execPath, [W, ...a], { cwd, encoding: 'utf8', env: { ...process.env, USERPROFILE: tmp, HOME: tmp } });
+  check('workhorse with no arguments prints help', /workhorse "<problem> -> <outcome>"/.test(cli(ar).stdout));
+  check('workhorse rejects an unknown command', cli(ar, 'frobnicate').status === 2);
+  check('workhorse approve with nothing waiting says so', /nothing is waiting on you/.test(cli(ar, 'approve').stderr));
+  check('workhorse reject needs notes', (() => {
+    const r = cli(ar, 'reject');
+    return r.status === 2 && /nothing is waiting|say what to change/.test(r.stderr);
+  })());
+  check('workhorse outside a repository points at onboarding', /onboard/.test(cli(tmp, 'approve').stderr));
+  const cliEnv = { ...process.env, USERPROFILE: tmp, HOME: tmp, APPDATA: path.join(tmp, 'appdata') };
+  const cliw = (...a) => spawnSync(process.execPath, [W, ...a], { cwd: tmp, encoding: 'utf8', env: cliEnv });
+  check('watch --background starts one watcher and a second call reuses it', (() => {
+    const a = cliw('watch', '--background');
+    const pidFile = path.join(tmp, '.workhorse', 'watch.json');
+    const until = Date.now() + 5000;
+    while (!fs.existsSync(pidFile) && Date.now() < until) spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},200)']);
+    const b = cliw('watch', '--background');
+    const stop = cliw('watch', '--stop');
+    return /Watching in the background/.test(a.stdout) && /Already watching/.test(b.stdout) && /Stopped the watcher/.test(stop.stdout);
+  })());
+  check('watch --stop with nothing running says so', /No watcher is running/.test(cliw('watch', '--stop').stdout));
+  check('watch --at-login writes a hidden Startup entry, and --not-at-login removes it', (() => {
+    const f = path.join(tmp, 'appdata', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'workhorse-watch.vbs');
+    cliw('watch', '--at-login');
+    const body = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
+    cliw('watch', '--not-at-login');
+    return /watch --background", 0, False/.test(body) && !fs.existsSync(f);
+  })());
+  check('opening a the harness session starts the watcher, unless WORKHORSE_NO_WATCH is set', (() => {
+    const input = JSON.stringify({ cwd: ar, hook_event_name: 'SessionStart' });
+    const pidFile = path.join(tmp, '.workhorse', 'watch.json');
+    const env = { ...cliEnv, CI: '' };
+    spawnSync(process.execPath, [path.join(SCRIPTS, 'session-context.js')], { input, encoding: 'utf8', env: { ...env, WORKHORSE_NO_WATCH: '1' } });
+    const quiet = !fs.existsSync(pidFile);
+    delete env.WORKHORSE_NO_WATCH;
+    spawnSync(process.execPath, [path.join(SCRIPTS, 'session-context.js')], { input, encoding: 'utf8', env });
+    const until = Date.now() + 5000;
+    while (!fs.existsSync(pidFile) && Date.now() < until) spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},200)']);
+    const started = fs.existsSync(pidFile);
+    cliw('watch', '--stop');
+    return quiet && started;
+  })());
+  check('workhorse remembers the repositories it is used in', (() => {
+    cli(ar, 'status');
+    return fs.readFileSync(path.join(tmp, '.workhorse', 'repos.json'), 'utf8').includes(path.basename(ar));
+  })());
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

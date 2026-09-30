@@ -9,8 +9,11 @@ const cmd = String((input.tool_input && input.tool_input.command) || '');
 if (!cmd) return L.emit({});
 const lc = cmd.toLowerCase();
 
-// Approvals are a human act. A subagent can never record one.
-if (/wh\.js["']?\s+approve\b/.test(lc) || /approve\.js/.test(lc)) {
+// Approvals are a human act. A subagent can never record one, by any of the commands that record
+// one: wh.js approve, the `workhorse approve|reject` command (0.4.0), or a GitHub sync, which
+// records whatever an approver wrote on the pull request.
+if (/wh\.js["']?\s+(approve|github-sync)\b/.test(lc) || /approve\.js/.test(lc)
+  || /\bworkhorse(\.js)?["']?\s+(approve|reject)\b/.test(lc)) {
   if (input.agent_id || input.agent_type) {
     return L.deny('Gate approvals may only be recorded by the human via /workhorse:approve in the main session, never from a subagent.');
   }

@@ -237,10 +237,14 @@ When a required gate is reached:
    packet only". For G4, `WH digest --json` must show `ship_blockers` empty; if not, fix the
    cause first (not green: back to Verify; a blocker in the findings: fixer, Verify, shipper).
 2. Run `WH present <G>`. It refuses an incomplete packet or a Ship document with a blocker,
-   sets a rejected gate back to pending, stamps the gate as presented (until then the digest,
-   Paddock and the clock do not count it as waiting on the human, which matters during a
-   revision round), and prints the gate name, tier, packet path, short version, every decision
-   with its recommendation, the clock line, and the two commands.
+   sets a rejected gate back to pending, stamps the gate as presented (until then the digest
+   and the clock do not count it as waiting on the human, which matters during a revision
+   round), commits the change's documents, pushes the branch and posts the gate to its pull
+   request (a draft at Design, marked ready at Ship) so the human can answer from any device,
+   raises a desktop and phone notification, releases the run lock, and prints the gate name,
+   tier, packet path, short version, every decision with its recommendation, the clock line,
+   the pull request link and the commands. A GitHub failure is reported in that output and
+   never stops the gate: the terminal path still works.
 3. Print that output to the user unchanged.
 4. End your turn. Do not poll. Do not proceed.
 

@@ -29,7 +29,9 @@ resume the active one.
    the user unchanged, followed by the output of `node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js" status`
    and then `node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js" clock --by-agent`.
 5. If the conductor stopped at a gate, name it (Design, Ship, or Deploy), give the packet path
-   (`brief.md`, `ship.md`, or `release.md`), and remind the user of the two commands:
-   `/workhorse:approve <G>` and `/workhorse:approve <G> --reject "notes"`.
+   (`brief.md`, `ship.md`, or `release.md`) and the pull request link if the gate was posted,
+   and tell the user the three ways to answer: reply `/approve` or `/reject <notes>` on the pull
+   request (from any device), `workhorse approve` / `workhorse reject "<notes>"` in a terminal,
+   or `/workhorse:approve <G>` here.
 
 Do not run any phase agent directly from this skill; the conductor owns sequencing.

@@ -303,9 +303,38 @@ function lockRelease(L, root) {
 /** A desktop notification, best effort and never an error: a run that stops at a gate or a
  *  block sat unnoticed for hours before this. Windows uses the WinRT toast API through
  *  PowerShell (no module to install); macOS osascript; Linux notify-send. */
-function notify(title, body) {
+/** The user's WorkHorse settings: ~/.workhorse/config.json, overridden by environment variables.
+ *  Only personal delivery settings live here; everything about a repository is in its profile. */
+function userConfig() {
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.workhorse', 'config.json'), 'utf8')); } catch (e) { /* none */ }
+  if (process.env.WORKHORSE_NTFY_TOPIC) cfg.ntfy_topic = process.env.WORKHORSE_NTFY_TOPIC;
+  if (process.env.WORKHORSE_NTFY_SERVER) cfg.ntfy_server = process.env.WORKHORSE_NTFY_SERVER;
+  return cfg;
+}
+
+/** A push to the phone through ntfy (https://ntfy.sh, or a self-hosted server), only when the user
+ *  has set a topic. It carries the title, one line, and the pull request link: no document text,
+ *  no code. Opt-in because it sends those words to a third party. */
+function phonePush(title, body, url) {
+  const cfg = userConfig();
+  if (!cfg.ntfy_topic) return false;
+  const server = String(cfg.ntfy_server || 'https://ntfy.sh').replace(/\/+$/, '');
+  const target = `${server}/${encodeURIComponent(cfg.ntfy_topic)}`;
+  const script = [
+    "const u=new URL(process.argv[1]);const h={'Title':process.argv[2],'Tags':'horse'};",
+    "if(process.argv[4])h['Click']=process.argv[4];",
+    "const r=require(u.protocol==='http:'?'http':'https').request(u,{method:'POST',headers:h,timeout:8000},(s)=>{s.resume();s.on('end',()=>process.exit(s.statusCode<300?0:1));});",
+    "r.on('error',()=>process.exit(1));r.on('timeout',()=>{r.destroy();process.exit(1);});r.end(process.argv[3]);",
+  ].join('');
+  const r = spawnSync(process.execPath, ['-e', script, target, String(title).replace(/[^\x20-\x7e]/g, ' ').slice(0, 120), String(body).slice(0, 300), url || ''], { timeout: 12000, windowsHide: true });
+  return r.status === 0;
+}
+
+function notify(title, body, url) {
   const t = String(title).slice(0, 80);
   const b = String(body).slice(0, 240);
+  try { phonePush(t, b, url); } catch (e) { /* best effort */ }
   try {
     if (process.platform === 'win32') {
       const esc = (s) => s.replace(/'/g, "''");
@@ -361,5 +390,5 @@ function formatByAgent(rows) {
 
 module.exports = {
   CHECK_ORDER, verify, measure, checksTable, fold, removeWorktreeFor,
-  lockAcquire, lockTouch, lockRelease, readLock, lockFile, notify, minutesByAgent, formatByAgent, runShell, shellFor,
+  lockAcquire, lockTouch, lockRelease, readLock, lockFile, notify, phonePush, userConfig, minutesByAgent, formatByAgent, runShell, shellFor,
 };

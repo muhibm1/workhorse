@@ -32,6 +32,7 @@
 //   wh.js blocked "<reason>"                log a block, notify the desktop, release the lock
 //   wh.js notify "<title>" "<body>"         desktop notification, best effort
 //   wh.js clock --by-agent                  minutes per agent, from the conductor log
+//   wh.js github-sync                       record a /approve or /reject left on the gate's pull request
 //   wh.js plugin-root                       print the plugin root path
 'use strict';
 const fs = require('fs');
@@ -39,6 +40,7 @@ const crypto = require('crypto');
 const path = require('path');
 const L = require(path.join(__dirname, '..', 'hooks', 'scripts', 'lib.js'));
 const R = require(path.join(__dirname, 'wh-run.js'));
+const G = require(path.join(__dirname, 'wh-github.js'));
 
 const PLUGIN_ROOT = path.resolve(__dirname, '..');
 const TEMPLATES = path.join(PLUGIN_ROOT, 'templates');
@@ -324,6 +326,10 @@ switch (cmd) {
     const { id, state } = requireActive(root);
     const reject = hasFlag('--reject');
     const acceptAll = hasFlag('--accept-all');
+    // Who decided and where, when it was not this terminal: `github:<login>` and the comment or
+    // review URL. The audit record names the real approver and links to the decision itself.
+    const by = flag('--by');
+    const source = flag('--source');
     const g = args.shift();
     if (!L.ALL_GATES.includes(g)) die('usage: wh.js approve <G1..G5> [--reject | --accept-all] [notes]');
     let notes = args.join(' ').trim();
@@ -334,7 +340,7 @@ switch (cmd) {
       if (blockers.length) die(`cannot approve G4 (Ship): ${blockers.join('; ')}. The conductor must fix and re-verify before presenting the Ship document.`);
     }
     if (!reject) notes = requireDecisionsAnswered(readArtifact(root, id, GATE_PACKET[g]), notes, acceptAll);
-    const who = L.git(root, ['config', 'user.email']) || process.env.USER || process.env.USERNAME || 'unknown';
+    const who = (typeof by === 'string' && by) || L.git(root, ['config', 'user.email']) || process.env.USER || process.env.USERNAME || 'unknown';
 
     // Pin what is being decided before recording the decision. Without this the recorded commit
     // was simply HEAD, which did not contain the packet: agents write artifacts but nothing had
@@ -363,6 +369,7 @@ switch (cmd) {
       `- Packet: \`${packetRel}\` sha256 \`${packetSha || 'missing: no packet file existed at decision time'}\``,
       `- Tier at decision: ${L.effectiveTier(state)}${state.tier_override !== null && state.tier_override !== undefined ? ' (override)' : ''}`,
       `- Notes: ${notes || 'none'}`,
+      ...(typeof source === 'string' && source ? [`- Source: ${source}`] : []),
       '',
     ].join('\n');
     const af = path.join(L.changeDir(root, id), 'approvals.md');
@@ -498,16 +505,63 @@ switch (cmd) {
     state.presented[g] = L.nowIso();
     L.saveState(root, id, state);
     appendLog(root, id, state, `conductor | ${g} ${L.GATE_NAMES[g]} presented`);
-    // The run stops here for the human: free the lock and say so on the desktop.
+    // 0.4.0: the gate document goes to the pull request, so it can be read and answered from any
+    // device. Best effort: without GitHub the terminal path below is unchanged.
+    const summary = sectionText(packet, /^#{1,6}.*(short version|tl;dr)/i, 900);
+    const hub = G.presentOnGitHub(L, root, id, state, g, {
+      tier: L.effectiveTier(state), summary, decisions: decisionItems(packet),
+      packetPath: `docs/sdlc/${id}/${GATE_PACKET[g]}`, clock: L.formatClock(clockFor(root, id, state)),
+    });
+    if (hub.url) {
+      state.github = state.github || {};
+      state.github.pr_number = hub.number;
+      state.github.presented_head = { ...(state.github.presented_head || {}), [g]: hub.head };
+      state.pr_url = state.pr_url || hub.url;
+      L.saveState(root, id, state);
+      appendLog(root, id, state, `conductor | ${g} ${L.GATE_NAMES[g]} posted to ${hub.url}`);
+    }
+    // The run stops here for the human: free the lock and say so on the desktop (and the phone).
     R.lockRelease(L, root);
-    R.notify(`WorkHorse: ${L.GATE_NAMES[g]} gate ready`, `${state.title || id}: /workhorse:approve ${g}`);
+    R.notify(`WorkHorse: ${L.GATE_NAMES[g]} is waiting on you`, `${state.title || id}${hub.url ? ` - reply /approve on ${hub.url}` : ': workhorse approve'}`, hub.url);
     out([
       `${L.GATE_NAMES[g]} (${g}) is waiting on you. Tier ${L.effectiveTier(state)}. Packet: docs/sdlc/${id}/${GATE_PACKET[g]}`,
-      sectionText(packet, /^#{1,6}.*(short version|tl;dr)/i, 900),
+      summary,
       ...decisionRows(packet, 20).map((d) => `  ${d}`),
       L.formatClock(clockFor(root, id, state)),
-      `Approve: /workhorse:approve ${g} --accept-all    Reject: /workhorse:approve ${g} --reject "notes"`,
+      hub.url ? `On GitHub: ${hub.url} (reply /approve or /reject <notes>)` : `GitHub: ${hub.skipped}`,
+      `Terminal: workhorse approve    workhorse reject "<what to change>"`,
     ].join('\n'));
+    break;
+  }
+
+  case 'github-sync': {
+    // Record a decision made on GitHub for the gate that is waiting. Run by `workhorse resume`
+    // and `workhorse watch` before a conductor starts, never by an agent.
+    const root = requireRoot();
+    const { id, state } = requireActive(root);
+    const profile = L.loadProfile(root);
+    const waiting = ['G2', 'G4', 'G5'].find((g) => L.requiredGates(state, profile).includes(g)
+      && (state.gates || {})[g] === 'pending' && presentedAfterPacket(root, id, state, g));
+    if (!waiting) { out({ recorded: false, reason: 'no gate is waiting on a decision' }); break; }
+    const number = state.github && state.github.pr_number;
+    if (!number) { out({ recorded: false, gate: waiting, reason: 'the gate was not posted to GitHub' }); break; }
+    const conv = G.fetchConversation(root, number);
+    const d = G.readDecision({
+      ...conv, presentedAt: state.presented[waiting],
+      presentedHead: state.github.presented_head && state.github.presented_head[waiting],
+      approvers: G.approvers(root, profile),
+    });
+    if (!d) { out({ recorded: false, gate: waiting, pr: number, reason: 'no /approve or /reject from an approver yet' }); break; }
+    const a = [path.join(__dirname, 'wh.js'), 'approve', waiting, '--by', `github:${d.by}`, '--source', d.url];
+    if (d.decision === 'reject') a.push('--reject', d.notes);
+    else { a.push('--accept-all'); if (d.notes) a.push(d.notes); }
+    const r = require('child_process').spawnSync(process.execPath, a, { cwd: root, encoding: 'utf8' });
+    if (r.status !== 0) {
+      G.postComment(root, number, `Could not record that decision: ${(r.stderr || '').replace(/^wh: /, '').trim().slice(0, 600)}`);
+      die(`could not record the GitHub decision: ${(r.stderr || '').trim()}`);
+    }
+    G.postComment(root, number, `Recorded: **${L.GATE_NAMES[waiting]} ${d.decision === 'reject' ? 'rejected' : 'approved'}** by @${d.by}. ${d.decision === 'reject' ? 'The agents will rework it and present it again.' : 'The run continues.'}`);
+    out({ recorded: true, gate: waiting, decision: d.decision, by: d.by, source: d.url });
     break;
   }
 
@@ -762,8 +816,11 @@ function requireDecisionsAnswered(packetMd, notes, acceptAll) {
   const items = decisionItems(packetMd);
   if (items.length === 0) return notes;
   if (acceptAll) {
-    const prefix = items.map((d) => `${d.id}: recommendation accepted`).join('; ');
-    return notes ? `${prefix}. ${notes}` : prefix;
+    // Accept every recommendation the notes do not decide themselves: "/approve D2: the
+    // alternative" accepts the rest and records the override for D2, not a contradiction.
+    const named = (d) => new RegExp(`\\b${d.id}\\b`, 'i').test(notes || '');
+    const prefix = items.filter((d) => !named(d)).map((d) => `${d.id}: recommendation accepted`).join('; ');
+    return [prefix, notes].filter(Boolean).join('. ');
   }
   const missing = items.filter((d) => !new RegExp(`\\b${d.id}\\b`, 'i').test(notes));
   if (missing.length) {
