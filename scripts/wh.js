@@ -26,6 +26,11 @@
 //   wh.js verify [--only a,b] [--install] [--final] [--timeout MIN]
 //                                           run the profile's checks, write verify-logs/ and the Checks
 //                                           table of verification.md; exit 1 when a check failed
+//   wh.js review-fix start|check|reopen     count and scope the review fix loop: `start` before each
+//                                           fixer (exit 3 once two rounds are used), `check` after it
+//                                           (exit 2 when a fix commit changed source with no test;
+//                                           prints the diff the re-check reads), `reopen` to send the
+//                                           same round back to the fixer for the missing tests
 //   wh.js fold --tasks 1,2 [--wave N]       fold task branches into the change branch in order, remove
 //                                           their worktrees and branches; exit 2 on a conflict
 //   wh.js lock acquire|release|status       one conductor per repository (stale after 30 idle minutes)
@@ -377,7 +382,13 @@ switch (cmd) {
     fs.appendFileSync(af, block);
     state.gates = state.gates || {};
     state.gates[g] = status;
-    if (reject) state.last_rejection = { gate: g, notes, at };
+    if (reject) {
+      state.last_rejection = { gate: g, notes, at };
+      // A person sent it back: their notes get fix rounds of their own, whatever the reviewers used.
+      if (state.review_fix && state.review_fix.rounds && state.review_fix.rounds.length) {
+        state.review_fix = { rounds: [], before_rejection: (state.review_fix.before_rejection || 0) + state.review_fix.rounds.length };
+      }
+    }
     L.saveState(root, id, state);
     // Commit the approval so the audit trail is in git history.
     // state.json is machine state kept outside git; approvals.md is the audit record.
@@ -482,6 +493,37 @@ switch (cmd) {
     L.saveState(root, id, state);
     appendLog(root, id, state, `conductor | wave ${wave || '?'} folded by ${strategy}: ${r.folded.map((f) => `T${f.task} ${f.status}${f.commits ? ` (${f.commits})` : ''}`).join(', ')}; head ${r.head}; worktrees and task branches removed`);
     out(r);
+    break;
+  }
+
+  case 'review-fix': {
+    const root = requireRoot();
+    const { id, state } = requireActive(root);
+    const sub = args.shift();
+    if (sub === 'start') {
+      const r = R.reviewFixStart(L, root, state);
+      if (!r.ok) {
+        appendLog(root, id, state, `conductor | fix round refused: ${R.MAX_FIX_ROUNDS} used; open findings go to the Ship document`);
+        out(r);
+        process.exit(3);
+      }
+      L.saveState(root, id, state);
+      if (!r.resumed) appendLog(root, id, state, `conductor | fix round ${r.round} of ${R.MAX_FIX_ROUNDS} opened at ${r.base.slice(0, 7)}`);
+      out(r);
+    } else if (sub === 'check') {
+      const r = R.reviewFixCheck(L, root, state, L.loadProfile(root));
+      if (!r.ok) die(r.reason);
+      L.saveState(root, id, state);
+      appendLog(root, id, state, `conductor | fix round ${r.round}: ${r.commits.length} commit(s) ${r.base}..${r.head}, ${r.untested.length} without a test; re-check reads ${r.recheck.files.length} file(s)`);
+      out(r);
+      if (r.untested.length) process.exit(2);
+    } else if (sub === 'reopen') {
+      const rounds = (state.review_fix && state.review_fix.rounds) || [];
+      if (!rounds.length) die('no fix round to reopen');
+      delete rounds[rounds.length - 1].head;
+      L.saveState(root, id, state);
+      out({ ok: true, round: rounds.length, base: rounds[rounds.length - 1].base });
+    } else die('usage: wh.js review-fix start | check | reopen');
     break;
   }
 

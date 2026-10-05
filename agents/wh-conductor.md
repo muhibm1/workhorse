@@ -182,18 +182,37 @@ eight did.
    reviewer is told: write `docs/sdlc/<id>/reviews/<agent>.md`; review
    `git diff <default>...<branch>` and the files it touches; read nothing else unless a finding
    needs it; report only findings you can state as a failure scenario.
-2. Read every report. If any has a high or medium finding with a concrete fix, dispatch ONE
+2. Read every report. If any has a high or medium finding with a concrete fix: run
+   `WH review-fix start` (it records the head the fixer starts from), then dispatch ONE
    `wh-fixer` in mode `review` with the whole list, in `WH mode normal` (not `fix`: review
    findings are often in test files, and the reviewer has already judged them; the test lock is
    for the verify loop, where a red test must not be edited green). Findings without a fix, and
    lows, are notes for the shipper. Never hand a fixable finding to the human, and never route a
    review fix to a builder: the fixer is the one agent for it.
-3. After the fixer: `WH verify` (the script, all checks), then `wh-verifier --only` for the eval
-   cases the fixed files implement; then a **re-check, not a re-review**: dispatch only the
-   reviewers whose findings were fixed, each with its own report and the fixer's commits, told
-   to confirm each of its findings closed or reopen it, and to raise a new finding only in code
-   the fix changed. One re-check round; a finding still open after it goes to the Ship document
-   as unresolved.
+3. After the fixer, in this order:
+   1. `WH review-fix check`. It lists the round's commits and prints the re-check's diff. Exit 2
+      means a fix commit changed source with no test in it: run `WH review-fix reopen`, send the
+      fixer back once with exactly those commits to add the regression test and a negative case
+      for each, and check again. A commit still untested after that is named to the shipper.
+   2. `WH verify` (the script, all checks), then `wh-verifier --only` for the eval cases the
+      fixed files implement.
+   3. A **re-check, not a re-review**. Dispatch only the reviewers whose findings were fixed,
+      at most three (those whose fixed findings ranked highest), in one message. Each gets its
+      own report, the fixer's report, and the `recheck.diff` command and `recheck.files` list
+      from the check's output, and is told: read that diff and those files only, never the
+      change's whole diff again; confirm each of your findings closed or reopen it; for every
+      fix, try the inputs next to the one it names (the same key repeated, the opposite branch,
+      the same call reached by another path, the fix's own failure); raise a new finding only
+      in lines that diff changed. On three live runs a fix introduced the next defect, and one
+      re-check that re-read a whole change with seven reviewers took 77 minutes.
+   4. A re-check that reopens a finding or raises a new high or medium with a fix gets one
+      more round: `WH review-fix start`, the fixer with only those findings, `WH review-fix
+      check`, `WH verify`, then only the reviewer that raised each one confirms it on round
+      two's diff. There is no third round: `WH review-fix start` exits 3, and every finding
+      still open goes to the Ship document as unresolved, for the human to decide. Two rounds
+      is the limit even when a third looks small. A rejection at Ship is different: the
+      human's notes open a fresh count (`WH approve --reject` resets it), and their fix runs
+      through the same start, check and re-check.
 4. Dispatch `wh-shipper` in mode `ship` with `verify-logs/summary.json`, `verification.md` and
    every report. It pushes the branch, opens the PR, and writes `ship.md` with the clock pasted
    in and `## Your decision` last. Then present G4 (see Gates) and STOP.

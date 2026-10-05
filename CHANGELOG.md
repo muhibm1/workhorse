@@ -7,6 +7,41 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.4.1 — 2026-10-05
+
+Follows 0.4.0 (the `workhorse` command and gates on GitHub). The review fix loop is counted and
+scoped, and evals must cover the failure paths that shipped past a green verify. Both come from
+four measured AgentOps runs (2026-10-01 and 02): review took 110 of 212 and 78 of 219
+agent-minutes at tier 3, a review fix introduced the next defect in three runs of four, one
+re-check re-ran seven reviewers over a whole change for 77 minutes, and two high findings sat
+under 64 of 64 passing eval cases.
+
+- `wh.js review-fix start | check | reopen`. `start` records the head before each fixer and
+  refuses a third round (exit 3): two fix rounds, then open findings go to the Ship document.
+  `check` lists the round's commits, fails (exit 2) when a commit changed source with no test
+  file in it, and prints the exact diff the re-check reads. Documentation-only commits are
+  exempt. Test files are the profile's `conventions.test_globs` plus the common test paths
+  (`tests/`, `*.test.*`, `test_*.py`, `*_test.*` and the like). A rejection at a gate resets the count: the human's notes get
+  their own rounds.
+- The conductor's Review step uses it: the re-check goes to at most three of the reviewers
+  whose findings were fixed, reads the round's diff and files only, and tries the inputs next
+  to each fix. A second round is confirmed only by the reviewer that raised the finding.
+- The fixer ships a regression test and a negative case in the same commit as every fix, and
+  reports what else its change altered.
+- `evals.md` gains a "Side effects and records" table, required by the artifact-check hook at
+  tier 2 and above: for every call that writes, sends, applies or deletes, a case for a crash
+  between the effect and its record, the effect failing or unknown, a repeat of the key, and
+  the verifying read failing; for every approval, authorization or idempotency record, a case
+  where it is replayed against another subject. `None: <why>` when the change has neither.
+  The designer fills it, the eval designer checks it against the code's own list, and the
+  wh-evals skill explains it.
+- The bug and security reviewers rate a finding about a trusted record by the claim it
+  breaks, not by reachability: unbound to its subject is high at least.
+- Tests: 346 in `hooks/tests/run.js` (from 323). Not yet measured on a run: the next tier 2
+  or 3 change is the first evidence that review time and fix regressions fall.
+- Not in this release, from the same runs: gates approved unread, the merge the shipper cannot
+  perform, dead headless runs going unnoticed, and tier 3 scope against its budget.
+
 ## 0.4.0 — 2026-09-29
 
 Follows 0.3.14 (command line and the harness first; Studbook out). One command, and gates you

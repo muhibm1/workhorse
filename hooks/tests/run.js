@@ -1053,6 +1053,88 @@ console.log('gates on GitHub (0.4.0)');
   check('the README status row says the age is shown', readmeRow.includes('how long'));
 }
 
+console.log('review fix rounds and side-effect evals (0.4.1)');
+{
+  // Four measured runs: a review fix introduced the next defect in three of them, and review
+  // took half of each tier-3 run. The loop is counted and scoped by wh.js, not by the conductor.
+  const fr = path.join(tmp, 'fixrepo');
+  fs.mkdirSync(path.join(fr, 'src'), { recursive: true });
+  fs.mkdirSync(path.join(fr, 'tests'), { recursive: true });
+  const g = (...a) => execFileSync('git', a, { cwd: fr, encoding: 'utf8' }).trim();
+  g('init', '-q', '-b', 'main'); g('config', 'user.email', 'tester@example.com'); g('config', 'user.name', 'Tester');
+  fs.writeFileSync(path.join(fr, 'src', 'a.js'), 'module.exports = 1;\n');
+  wh(fr, 'init');
+  g('add', '.'); g('commit', '-q', '-m', 'init');
+  wh(fr, 'new', 'fix loop', '--tier', '2');
+  const fid = wh(fr, 'active').out;
+  const commit = (files, msg) => {
+    for (const [rel, text] of Object.entries(files)) fs.writeFileSync(path.join(fr, rel), text);
+    g('add', '.'); g('commit', '-q', '-m', msg);
+  };
+  const json = (r) => { try { return JSON.parse(r.out); } catch (e) { return {}; } };
+
+  check('review-fix check before start says to start first', wh(fr, 'review-fix', 'check').code !== 0);
+  const s1 = wh(fr, 'review-fix', 'start');
+  check('review-fix start opens round 1 at the current head', s1.code === 0 && json(s1).round === 1 && json(s1).base === g('rev-parse', 'HEAD'), s1.out + s1.err);
+  check('starting again before a check reuses the round (a resumed run spends nothing)', json(wh(fr, 'review-fix', 'start')).resumed === true);
+
+  commit({ 'src/a.js': 'module.exports = 2;\n' }, 'fix(review): source only');
+  commit({ 'README.md': 'docs only\n' }, 'fix(review): readme wording');
+  const c1 = wh(fr, 'review-fix', 'check');
+  const j1 = json(c1);
+  check('a fix commit that changed source with no test fails the check', c1.code === 2 && j1.untested.length === 1 && /source only/.test(j1.untested[0].subject), c1.out + c1.err);
+  check('a documentation-only fix needs no test', j1.commits.length === 2 && !j1.untested.some((u) => /readme/.test(u.subject)));
+  check('the check prints the diff the re-check reads', /^git diff [0-9a-f]{12}\.\.[0-9a-f]{12}$/.test(j1.recheck.diff) && j1.recheck.files.includes('src/a.js'), JSON.stringify(j1.recheck));
+
+  check('reopen sends the same round back to the fixer', json(wh(fr, 'review-fix', 'reopen')).round === 1 && json(wh(fr, 'review-fix', 'start')).resumed === true);
+  commit({ 'src/a.js': 'module.exports = 3;\n', 'tests/a.test.js': '// regression and negative case\n' }, 'fix(review): with tests');
+  const c2 = wh(fr, 'review-fix', 'check');
+  // Per commit, by design: the first commit is still listed, so the shipper can name it.
+  check('a fix commit carrying a test file passes on its own', json(c2).commits.find((c) => /with tests/.test(c.subject)).tests.length === 1 && json(c2).untested.length === 1, c2.out);
+
+  const s2 = wh(fr, 'review-fix', 'start');
+  check('a second round opens, with none left after it', s2.code === 0 && json(s2).round === 2 && json(s2).rounds_left === 0, s2.out);
+  commit({ 'src/a.js': 'module.exports = 4;\n', 'tests/b.test.js': '// case\n' }, 'fix(review): round two');
+  const c3 = wh(fr, 'review-fix', 'check');
+  check('round two is scoped to its own commits', c3.code === 0 && json(c3).commits.length === 1 && json(c3).round === 2, c3.out);
+  const s3 = wh(fr, 'review-fix', 'start');
+  check('a third fix round is refused with exit 3', s3.code === 3 && /go to ship\.md as unresolved/.test(s3.out + s3.err), s3.out + s3.err);
+  // A person's rejection gets rounds of its own.
+  wh(fr, 'gate', 'G4', 'pending');
+  const rej = wh(fr, 'approve', 'G4', '--reject', 'fix the replay');
+  const s4 = wh(fr, 'review-fix', 'start');
+  check('a gate rejection resets the fix rounds', rej.code === 0 && s4.code === 0 && json(s4).round === 1, rej.err + s4.out + s4.err);
+  wh(fr, 'review-fix', 'check');
+  const flog = fs.readFileSync(path.join(fr, 'docs', 'sdlc', fid, 'conductor-log.md'), 'utf8');
+  check('rounds and the refusal are in the conductor log', /fix round 1 of 2 opened/.test(flog) && /fix round refused/.test(flog));
+
+  // evals.md at tier 2+: the side effects table is required
+  const put = (text) => {
+    const f = path.join(fr, 'docs', 'sdlc', fid, 'evals.md');
+    fs.writeFileSync(f, text);
+    return hook('artifact-check.js', { session_id: 's', cwd: fr, hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: f } });
+  };
+  const rows = '# Evals\n\n| ID | Category | Given |\n|---|---|---|\n| E1 | golden | x |\n';
+  const bare = put(rows);
+  check('tier-2 evals without a side effects section are sent back', bare.decision === 'block' && /Side effects and records/.test(bare.reason || ''), JSON.stringify(bare));
+  check('tier-2 evals with the section pass', put(rows + '\n## Side effects and records\n\nNone: this change only reads.\n').decision === undefined);
+  wh(fr, 'state', 'set', 'tier', '1');
+  check('tier-1 evals are not asked for the section', put(rows).decision === undefined);
+  check('the evals template carries the section', /^## Side effects and records/m.test(fs.readFileSync(path.join(PLUGIN, 'templates', 'evals.md'), 'utf8')));
+
+  // The agents are told the same thing the script enforces.
+  const agent = (f) => fs.readFileSync(path.join(PLUGIN, 'agents', f), 'utf8');
+  const cond = agent('wh-conductor.md');
+  check('the conductor opens and checks every fix round', /WH review-fix start/.test(cond) && /WH review-fix check/.test(cond) && /There is no third round/.test(cond));
+  check('the re-check reads the round diff, with at most three reviewers', /recheck\.diff/.test(cond) && /at most three/.test(cond));
+  check('the fixer ships a regression test and a negative case with each fix', /regression test/.test(agent('wh-fixer.md')) && /negative case/.test(agent('wh-fixer.md')));
+  check('reviewers rate a trusted record by the claim it breaks', /claim it breaks/.test(agent('wh-bug-reviewer.md')) && /claim it breaks/.test(agent('wh-security-reviewer.md')));
+  check('the designer and eval designer fill the side effects table', /Side effects and records/.test(agent('wh-designer.md')) && /Side effects and records/.test(agent('wh-eval-designer.md')));
+  check('the evals skill names the four failure cases and the replay case',
+    /crash between the effect and the record/.test(fs.readFileSync(path.join(PLUGIN, 'skills', 'wh-evals', 'SKILL.md'), 'utf8'))
+    && /replayed against a\s+different subject/.test(fs.readFileSync(path.join(PLUGIN, 'skills', 'wh-evals', 'SKILL.md'), 'utf8')));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

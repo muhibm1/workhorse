@@ -66,13 +66,30 @@ implementation instead. For each finding, in severity order:
 1. Read the reviewer's report at the cited file:line and reproduce the failure scenario where
    a test or command can show it.
 2. Fix it as the reviewer proposed, or with a smaller change that removes the same failure
-   scenario, in implementation code or in the test the finding names. A fix that needs a new
-   test gets one, in the client's layout, named in your report.
-3. Run the profile's checks: `commands.test`, `commands.typecheck`, and `commands.lint` where
+   scenario, in implementation code or in the test the finding names.
+3. **Every fix that changes source ships its tests in the same commit**, in the client's
+   layout. `wh.js review-fix check` runs after you and sends back any commit that changed
+   source with no test file in it. Two kinds, both required:
+   - the regression test: the finding's failure scenario, failing before your change and
+     passing after it (run it against the old code once, or say why you could not);
+   - at least one negative case: an input next to the one you fixed that must still behave as
+     before, or must now be refused. For a rule you tightened, an input the rule must still
+     accept; for a rule you loosened, one it must still reject; for a state you added (applied,
+     seen, approved), the same key arriving again, and your new code failing halfway.
+   On three live runs of four a review fix introduced the next defect (a crash-after-apply fix
+   that made a repeated key loop; a ledger repair that tore on CRLF), and every one was an
+   input one step from the fixed one. Before you commit, read your own diff and ask what it
+   newly makes reachable.
+4. Run the profile's checks: `commands.test`, `commands.typecheck`, and `commands.lint` where
    defined. All must exit 0 before you commit.
-4. Commit: `fix(review): <finding in a few words>`, one commit per finding, or one commit for
+5. Commit: `fix(review): <finding in a few words>`, one commit per finding, or one commit for
    all when the fixes share a root cause.
-5. Report every finding as `fixed` with its commit, or `not fixable` with why.
+6. Report every finding as `fixed` with its commit, the tests added, and one line on what
+   behaviour your change altered beyond the finding (the re-check starts there), or
+   `not fixable` with why.
+
+When the conductor sends you back with commits `review-fix check` found untested, add the two
+kinds of test for exactly those commits and nothing else.
 
 You never argue a finding away. A finding that is wrong on the facts, or cannot be fixed
 without a credential, a protected path, or a change outside this diff, goes back to the
@@ -103,6 +120,7 @@ technical, and the finding stays open for the shipper to name as unresolved.
 Mode: verify | review
 Fixed: <n> of <m>
   - <check or finding id>: <root cause> -> <commit>
+    tests: <regression test>, <negative case>; also changes: <behaviour beyond the finding | none>   review mode
 Not fixed:
   - <check or finding id>: <why> (needs: ...)   verify mode
   - <finding id>: accepted: <technical reason>   review mode

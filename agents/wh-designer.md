@@ -84,7 +84,15 @@ read the codebase once, set the tier, write the spec, the evals, the plan, and t
    requirement id, has a numeric target, and names an "Implemented as" path in the client's
    test layout that a machine in this repository can run (a test, a script, or a curl with an
    expected response); a case only a person can run is not written, and a requirement that
-   can only be checked by hand is said so in your report. Write the failure taxonomy. Case
+   can only be checked by hand is said so in your report. Write the failure taxonomy. At tier
+   2 and above fill the template's "Side effects and records" table per wh-evals: a row for
+   every call in your edit list that writes, sends, applies or deletes, and for every
+   approval, authorization or idempotency record the change trusts, each cell naming the case
+   that proves it (crash between effect and record, effect fails or unknown, repeat of the
+   key, verifying read fails, record replayed against another subject) or why it cannot
+   happen; the hook sends back an `evals.md` without the section. In the spec, a requirement
+   about such a record says what it is bound to ("the approval names the thread and the
+   action", not "an approval must exist"). Case
    limits: at most 15 cases at tier 0-1 (aim for 6 to 10), 40 at tier 2, 80 at tier 3, counted as table rows
    whose first cell is an id (E1, N1, ...); the artifact-check hook counts them after every
    write and sends you back over the limit. Keep the cases whose failure would change a

@@ -22,6 +22,17 @@ becomes a permanent test. Targets are numbers.
 |----|----------|-------|------|------|---------------------|----------------|
 | E1 | golden | | | | R1 | tests/... |
 
+## Side effects and records
+
+Required at tier 2 and above. One row per call in this change that writes, sends, applies or
+deletes something, and per approval, authorization or idempotency record it trusts. Each cell
+names the case that proves it, or says why it cannot happen here. With neither kind in the
+change, replace the table with `None: <why>`.
+
+| Effect or record | Crash between effect and record | Effect fails or outcome unknown | Repeat of the same key | Verifying read fails | Replayed against another subject |
+|------------------|---------------------------------|---------------------------------|------------------------|----------------------|----------------------------------|
+| | | | | | |
+
 ## Non-functional
 
 | ID | Measure | Target | How measured |

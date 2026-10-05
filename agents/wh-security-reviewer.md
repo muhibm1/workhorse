@@ -65,6 +65,10 @@ classes that have already happened once.
 - Severity: `critical` (exploitable now, data exposure or privilege escalation), `high`
   (control missing that the baseline requires), `medium` (defence in depth or regime control
   gap), `low` (hardening).
+- A record another decision trusts (approval, authorization, idempotency key, audit entry) is
+  rated by the claim it breaks, not by reachability: if it is not bound to its subject and
+  action, so that a replay against another thread, tenant or user is accepted, the finding is
+  `high` at least.
 - Do not fix. Report. High and medium findings with a concrete fix go to wh-fixer before the
   Ship document exists; the human sees in the Ship document what was found and what was fixed.
 - Label each finding `confirmed` with how, or `believed` if you could not verify.
