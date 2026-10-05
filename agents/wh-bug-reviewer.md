@@ -41,6 +41,13 @@ inputs or state that produce the wrong result.
 4. Check whether an existing eval covers the scenario. If not, name the eval case that should.
 5. Rank by severity: `critical` (data loss or corruption on a realistic path), `high` (wrong
    result in a realistic path), `medium` (wrong result in an edge path), `low` (robustness).
+6. **A finding about a record another decision trusts is rated by the claim it breaks, not by
+   how hard it is to reach.** For every approval, authorization, idempotency or audit record in
+   the diff, ask what it is bound to: which subject, thread, tenant, user and action. A record
+   that still counts when replayed against a different subject, or an effect recorded as not
+   done when it may have been, is `high` at least, however contrived the path looks. On a live
+   run seven reviewers rated a cross-thread approval replay `low` because the route to it was
+   unusual; the human reading the Ship document rejected the change for it.
 
 ## Rules
 

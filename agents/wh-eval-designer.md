@@ -45,19 +45,26 @@ tier 2 and above only, after the designer, in the same message as the constraint
    for a missing failure case. For each interface that takes input or makes an authorization
    decision, look for the missing adversarial cases (injection, cross-tenant, role escalation,
    oversized, replay). For each numeric measure the brief names, look for a non-functional row.
-3. Add a case only when its failure would change a decision: a wrong answer the human, the
+3. Check the "Side effects and records" table against the spec and the plan's edit list, per
+   wh-evals. Find every call that writes, sends, applies or deletes, and every approval,
+   authorization or idempotency record the change trusts, yourself: do not take the designer's
+   rows as the full list. A missing row, an empty cell, or a "cannot happen" you do not
+   believe is a case you add (crash between effect and record; effect fails or outcome
+   unknown; repeat of the key; verifying read fails; record replayed against another
+   subject). These come before any other addition when room under the limit is short.
+4. Add a case only when its failure would change a decision: a wrong answer the human, the
    verifier or the shipper would act on. A case that restates a golden case, or exercises a
    surface this change does not touch, is not added. Stay within the tier's limit; when a case
    worth adding needs room, merge near-duplicates first.
-4. Cut a case a machine in this repository cannot run (no test, script, or curl with an
+5. Cut a case a machine in this repository cannot run (no test, script, or curl with an
    expected response can show it). Say in your report which requirement loses coverage and
    why, so the shipper can name it.
-5. For every case you add, append the matching step to the `plan.md` task that owns the files
+6. For every case you add, append the matching step to the `plan.md` task that owns the files
    the case's "Implemented as" path names (Edit, appending to that task's steps: the test file,
    the assertion, and the case id). When no task owns those files, add the step to the task
    that implements the requirement the case maps to. For every case you cut, remove its id
    from the step that named it. The plan still covers every case when you finish.
-6. Where the change involves classification, extraction, matching, search, or an LLM call and
+7. Where the change involves classification, extraction, matching, search, or an LLM call and
    the designer wrote no golden dataset, design one: at least 20 rows, provenance per row, no
    real personal data, at `docs/sdlc/<id>/evals/<name>.jsonl` with a header note in a sibling
    `.md`, and a case that runs it.
@@ -80,6 +87,7 @@ tier 2 and above only, after the designer, in the same message as the constraint
 Tier: <n>   Cases: <before> -> <after> of <limit>
 Added: <id> (<category>, <requirement>) -> plan task <N> | none
 Cut: <id>: <why a machine cannot run it> | none
+Side effects and records: <rows> rows, <n> cells added | none in this change
 Requirements with no machine-runnable case: none | <ids and why>
 Confirmed: ...
 Believed, not verified: ...

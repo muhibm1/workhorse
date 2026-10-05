@@ -21,6 +21,30 @@ For each requirement in `spec.md`, write cases in four categories:
 | Failure | Each dependency slow, down, or returning garbage; bad input; timeouts | 100% correct handling |
 | Adversarial | Injection, authorization bypass across tenants and roles, oversized input, replay | 100% rejected |
 
+## Side effects and records
+
+A green verify proves what the cases cover. On a live run two high findings sat under 64 of 64
+passing cases, because the cases covered the happy path and the failures the code declared,
+and no case stopped the program halfway. At tier 2 and above, `evals.md` carries a "Side
+effects and records" table (the artifact-check hook requires the section), with a row for:
+
+- **every call that changes something outside the process**: a write, a send, an apply, a
+  delete, a payment, a migration. Each needs a Failure case for
+  - a crash between the effect and the record of it (on restart the action is treated as
+    possibly done, never as not done);
+  - the effect raising, timing out, or returning an outcome nobody can read (unknown is not
+    false, and not success);
+  - the same key or request arriving again (applied once, and a repeat ends, it does not loop);
+  - the read that verifies the effect failing (a failed read is never reported as healthy).
+- **every record another decision trusts**: an approval, an authorization, an idempotency key,
+  an audit entry. Each needs an Adversarial case in which the record is replayed against a
+  different subject (another thread, tenant, user, action, or a copy of the original) and is
+  refused. A record that is not bound to what it approves approves everything.
+
+A cell that cannot happen in this change says why in a few words. A change with no side effect
+and no trusted record replaces the table with `None: <why>`. These cases count toward the
+tier's limit and outrank a second golden case for the same requirement.
+
 Add non-functional rows where the brief has numeric success metrics: latency percentile,
 throughput, cost per operation, error budget.
 

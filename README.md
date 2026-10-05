@@ -203,7 +203,7 @@ agent can approve.
 | wh-builder | Build: one task from the plan, test-first, in its own worktree on a task branch; up to `max_parallel` at once. |
 | wh-polish | Build: one pass over the whole diff after the last wave for naming, structure, dead code and needless abstraction; keeps tests green. |
 | wh-verifier | Verify: after `wh.js verify` has run the profile's checks and written their evidence, runs every automatable eval case and completes `verification.md`; green only with every check passed or a cited known failure and every eval category on target. |
-| wh-fixer | Verify and Review: fixes the failures and findings it is given by changing implementation code, never tests. |
+| wh-fixer | Verify and Review: fixes the failures and findings it is given by changing implementation code; in Review every fix ships a regression test and a negative case, in at most two rounds. |
 | wh-bug-reviewer | Review: logic errors, edge cases, races, leaks, error handling; only findings with a concrete failure scenario. |
 | wh-conformance-reviewer | Review: maps every requirement to code and test, and every change back to a requirement. |
 | wh-security-reviewer | Review: OWASP categories, the security baseline and the compliance controls; mandatory at tier 2 and above. |

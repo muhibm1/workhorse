@@ -71,6 +71,12 @@ if (name === 'evals.md') {
   if (cases > max) {
     return L.emit({ decision: 'block', reason: `[workhorse] ${rel} has ${cases} cases; the limit at tier ${tier} is ${max}. Keep the cases that would change a decision if they failed, merge near-duplicates, and drop any case a machine cannot run.` });
   }
+  // 0.4.1: at tier 2+ the evals must say what each side effect and each trusted record is proved
+  // against. Two high findings shipped past a green verify because no case crashed between an
+  // effect and its record, or failed the read that verifies it.
+  if (tier >= 2 && cases > 0 && !/^## Side effects and records/m.test(text)) {
+    return L.emit({ decision: 'block', reason: `[workhorse] ${rel} has no "## Side effects and records" section. At tier ${tier}, list every call in this change that writes, sends, applies or deletes, and every approval, authorization or idempotency record it trusts, with the case ids that prove: a crash between the effect and its record; the effect failing or its outcome unknown; a repeat of the same key; the verifying read failing; the record replayed against a different subject. Write "None: <why>" when the change has neither. See the wh-evals skill and templates/evals.md.` });
+  }
 }
 
 if (name === 'ship.md' && L.packetComplete(text)) {

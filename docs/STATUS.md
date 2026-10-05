@@ -1,6 +1,6 @@
 # Where things stand
 
-Last updated 2026-09-29. The state of WorkHorse (the plugin), Paddock (the desktop app, retired)
+Last updated 2026-10-05. The state of WorkHorse (the plugin), Paddock (the desktop app, retired)
 and Studbook (paused), what is open, and what to do when picking this back up. Studbook's own
 detail is in `studbook/docs/status.md`.
 
@@ -11,6 +11,16 @@ changes, and each gate is posted to the change's pull request so it can be answe
 `/approve` or `/reject` from a phone. Paddock is retired as of 0.3.14 (its CI still runs) and
 Studbook is out of use; both stay in their repositories. The sections below from 2026-09-19 and
 2026-09-26 are kept as the record and describe the Paddock and Studbook work as it stood then.
+
+## What changed on 2026-10-05
+
+- 0.4.1: the review fix loop is capped at two rounds and scoped to the fix diff
+  (`wh.js review-fix`), every fix carries a regression test and a negative case, and tier 2+
+  evals must cover crash-after-effect, failed reads, repeats and replayed records. Built from
+  the four AgentOps runs; not yet measured on a run.
+- Still open from those runs: gates approved unread (19 to 24 decisions per brief), the
+  shipper's merge being refused so the owner merges by hand, dead headless runs going
+  unnoticed (about 90 minutes lost on increment 4), and tier 3 changes too large for 180 min.
 
 ## What changed on 2026-09-29
 
@@ -36,7 +46,7 @@ full list.
 
 | Piece | Version | Where |
 |---|---|---|
-| WorkHorse plugin | 0.4.0 | source is this repository; installed at user scope with `claude plugin update workhorse@workhorse` |
+| WorkHorse plugin | 0.4.1 | source is this repository; installed at user scope with `claude plugin update workhorse@workhorse` |
 | Paddock | 0.5.0 | `~/Paddock-builds/Paddock-0.5.0-portable.exe`, bundling plugin 0.3.1 (0.3.3 is installed at user scope); 0.5.0 (Design / Ship / Deploy gate screens, the clock on the Run screen) is the next release |
 | Studbook | reference implementation + eval harness | `~\studbook`, private repo `muhibm1/studbook` |
 

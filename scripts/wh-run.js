@@ -388,7 +388,66 @@ function formatByAgent(rows) {
     .concat([`  ${total.toFixed(1).padStart(7)}  total`]).join('\n');
 }
 
+// ---------- review fix rounds (0.4.1) ----------
+//
+// Measured on four AgentOps runs: review took 110 of 212 and 78 of 219 agent-minutes at tier 3,
+// a fix introduced a new defect in three runs of four, and one re-check re-ran seven reviewers
+// over the whole change for 77 minutes. So the fix loop is counted and scoped here, not left to
+// the conductor's judgment: at most MAX_FIX_ROUNDS rounds, every fix commit that changes source
+// carries a test, and the re-check reads the round's diff, never the whole change again.
+
+const MAX_FIX_ROUNDS = 2;
+const DEFAULT_TEST_GLOBS = ['**/tests/**', '**/test/**', '**/__tests__/**', '**/e2e/**', '**/*.test.*', '**/*.spec.*', '**/*_test.*', '**/test_*.py'];
+const NOT_SOURCE_RE = /(^|\/)docs\/|\.(md|mdx|txt|rst|adoc)$|(^|\/)CHANGELOG/i;
+
+/** Open a fix round: record the head the fixer starts from. An unfinished round is reused, so
+ *  a resumed run does not spend a round. Refuses a third. */
+function reviewFixStart(L, root, state) {
+  const rf = state.review_fix || { rounds: [] };
+  const open = rf.rounds.findIndex((r) => !r.head);
+  if (open !== -1) return { ok: true, round: open + 1, base: rf.rounds[open].base, resumed: true, rounds_left: MAX_FIX_ROUNDS - rf.rounds.length };
+  if (rf.rounds.length >= MAX_FIX_ROUNDS) {
+    return { ok: false, round: rf.rounds.length, reason: `${MAX_FIX_ROUNDS} fix rounds are used. Findings still open go to ship.md as unresolved, for the human; do not dispatch another fixer or reviewer.` };
+  }
+  const base = gitRun(root, ['rev-parse', 'HEAD']).out;
+  rf.rounds.push({ base, started: L.nowIso() });
+  state.review_fix = rf;
+  return { ok: true, round: rf.rounds.length, base, rounds_left: MAX_FIX_ROUNDS - rf.rounds.length };
+}
+
+/** Close the open round: what the fixer committed, which commits changed source without a test,
+ *  and the exact diff the re-check reads. */
+function reviewFixCheck(L, root, state, profile) {
+  const rf = state.review_fix;
+  if (!rf || !rf.rounds.length) return { ok: false, reason: 'no fix round is open; run `wh.js review-fix start` before dispatching the fixer' };
+  const idx = rf.rounds.length - 1;
+  const round = rf.rounds[idx];
+  const head = gitRun(root, ['rev-parse', 'HEAD']).out;
+  const configured = (profile && profile.conventions && profile.conventions.test_globs) || [];
+  // The union: a profile's globs lock tests for the fix loop and are often narrower than where tests live.
+  const globs = [...new Set([...configured, ...DEFAULT_TEST_GLOBS])];
+  const log = gitRun(root, ['log', '--reverse', '--format=%H%x09%s', `${round.base}..${head}`]).out;
+  const commits = log.split('\n').filter(Boolean).map((line) => {
+    const [sha, subject] = line.split('\t');
+    const files = gitRun(root, ['diff-tree', '--no-commit-id', '--name-only', '-r', sha]).out.split('\n').filter(Boolean);
+    const tests = files.filter((f) => L.matchesAny(f, globs));
+    const source = files.filter((f) => !tests.includes(f) && !NOT_SOURCE_RE.test(f));
+    return { sha: sha.slice(0, 7), subject, tests, source };
+  });
+  const untested = commits.filter((c) => c.source.length && !c.tests.length).map((c) => ({ sha: c.sha, subject: c.subject, source: c.source }));
+  const files = gitRun(root, ['diff', '--name-only', `${round.base}..${head}`]).out.split('\n').filter(Boolean);
+  round.head = head;
+  round.commits = commits.length;
+  round.untested = untested.length;
+  return {
+    ok: true, round: idx + 1, rounds_left: MAX_FIX_ROUNDS - rf.rounds.length,
+    base: round.base.slice(0, 7), head: head.slice(0, 7), commits, untested,
+    recheck: { diff: `git diff ${round.base.slice(0, 12)}..${head.slice(0, 12)}`, files },
+  };
+}
+
 module.exports = {
+  MAX_FIX_ROUNDS, reviewFixStart, reviewFixCheck,
   CHECK_ORDER, verify, measure, checksTable, fold, removeWorktreeFor,
   lockAcquire, lockTouch, lockRelease, readLock, lockFile, notify, phonePush, userConfig, minutesByAgent, formatByAgent, runShell, shellFor,
 };
