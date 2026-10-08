@@ -46,7 +46,8 @@ packet's decisions; the retro flagged it both times.)
      offer `/workhorse:run`.
    - G5 (Deploy): say the human runs the production step from `release.md`, and offer
      `/workhorse:run` to record the result and close the change.
-   Do not continue automatically; the user may want to read something first.
+   Do not continue automatically; the user may want to read something first. Say that the
+   background watcher resumes the run by itself within about ten minutes if nobody does.
 6. If rejected: dispatch `wh-conductor` with the prompt "Gate <G> was rejected; re-enter its
    phase using the rejection notes in approvals.md as input and present the gate again", and
    print its report.

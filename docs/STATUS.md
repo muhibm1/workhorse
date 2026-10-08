@@ -1,6 +1,6 @@
 # Where things stand
 
-Last updated 2026-10-05. The state of WorkHorse (the plugin), Paddock (the desktop app, retired)
+Last updated 2026-10-07. The state of WorkHorse (the plugin), Paddock (the desktop app, retired)
 and Studbook (paused), what is open, and what to do when picking this back up. Studbook's own
 detail is in `studbook/docs/status.md`.
 
@@ -11,6 +11,12 @@ changes, and each gate is posted to the change's pull request so it can be answe
 `/approve` or `/reject` from a phone. Paddock is retired as of 0.3.14 (its CI still runs) and
 Studbook is out of use; both stay in their repositories. The sections below from 2026-09-19 and
 2026-09-26 are kept as the record and describe the Paddock and Studbook work as it stood then.
+
+## What changed on 2026-10-07
+
+- 0.4.2: the watcher resumes stalled runs (approved and never resumed, dead headless, or
+  blocked on a merge the owner has made), with a cap and a cooldown. Found because the
+  AgentOps run approved on 2026-10-05 sat untouched for two days.
 
 ## What changed on 2026-10-05
 
@@ -46,7 +52,7 @@ full list.
 
 | Piece | Version | Where |
 |---|---|---|
-| WorkHorse plugin | 0.4.1 | source is this repository; installed at user scope with `claude plugin update workhorse@workhorse` |
+| WorkHorse plugin | 0.4.2 | source is this repository; installed at user scope with `claude plugin update workhorse@workhorse` |
 | Paddock | 0.5.0 | `~/Paddock-builds/Paddock-0.5.0-portable.exe`, bundling plugin 0.3.1 (0.3.3 is installed at user scope); 0.5.0 (Design / Ship / Deploy gate screens, the clock on the Run screen) is the next release |
 | Studbook | reference implementation + eval harness | `~\studbook`, private repo `muhibm1/studbook` |
 

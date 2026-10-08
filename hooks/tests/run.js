@@ -1135,6 +1135,44 @@ console.log('review fix rounds and side-effect evals (0.4.1)');
     && /replayed against a\s+different subject/.test(fs.readFileSync(path.join(PLUGIN, 'skills', 'wh-evals', 'SKILL.md'), 'utf8')));
 }
 
+console.log('the watcher resumes stalled runs (0.4.2)');
+{
+  // A Design approval recorded in a terminal sat for two days; a headless run died; a refused
+  // merge blocked every AgentOps run. The decision is pure, so every state is tested here.
+  const W = require(path.join(PLUGIN, 'scripts', 'workhorse.js'));
+  const now = Date.parse('2026-10-07T12:00:00Z');
+  const log = (minAgo, text) => ({ at: now - minAgo * 60000, text: text || '2026-10-07T00:00:00Z | build | conductor | wave 1 folded' });
+  const dg = (o) => Object.assign({ change_id: 'c1', title: 't', phase: 'build', blocking_gate: null, pr_url: 'https://github.com/o/r/pull/1' }, o);
+  const dec = (o) => W.stallDecision(Object.assign({ digest: dg({}), lockHeld: false, lastLog: log(120), prMerged: false, now }, o));
+  check('a run idle for two hours with no gate and no lock is resumed', dec({}).resume === true && dec({}).attempts === 1, JSON.stringify(dec({})));
+  check('a run active three minutes ago is left alone', dec({ lastLog: log(3) }).resume === false);
+  check('a run waiting on a gate is left alone', dec({ digest: dg({ blocking_gate: 'G2' }) }).resume === false);
+  check('a run that holds the lock is left alone', dec({ lockHeld: true }).resume === false);
+  check('a finished change is left alone', dec({ digest: dg({ phase: 'done' }) }).resume === false);
+  check('no conductor log means nothing to resume', dec({ lastLog: null }).resume === false);
+  const blocked = (text) => log(120, `2026-10-07T00:00:00Z | deploy | conductor | blocked: ${text}`);
+  check('a run blocked on a credential is left alone', dec({ lastLog: blocked('needs the STRIPE_KEY from the owner') }).resume === false);
+  check('a run blocked on a merge stays blocked until the PR is merged', dec({ lastLog: blocked('merge of PR https://x by the owner') }).resume === false);
+  check('a run blocked on a merge resumes once the PR is merged', dec({ lastLog: blocked('merge of PR https://x by the owner'), prMerged: true }).resume === true);
+  const prior = (attempts, lastAtMinAgo, lastLog) => ({ attempts, last_at: new Date(now - lastAtMinAgo * 60000).toISOString(), last_log: lastLog === undefined ? log(0).text : lastLog });
+  check('a resume within the cooldown is not repeated', dec({ prior: prior(1, 10) }).resume === false);
+  check('after the cooldown it tries again and counts the attempt', dec({ prior: prior(1, 40) }).resume === true && dec({ prior: prior(1, 40) }).attempts === 2);
+  check('three resumes with no new log line and it stops, naming why', dec({ prior: prior(3, 400) }).resume === false && /needs a look/.test(dec({ prior: prior(3, 400) }).why));
+  check('a new log line resets the attempt count', dec({ prior: prior(3, 400, 'an older line') }).attempts === 1);
+  check('the thresholds are ten minutes, thirty minutes, three tries', W.STALL_MINUTES === 10 && W.RESUME_COOLDOWN_MINUTES === 30 && W.MAX_AUTO_RESUMES === 3);
+
+  const lr = path.join(tmp, 'logrepo');
+  fs.mkdirSync(path.join(lr, 'docs', 'sdlc', 'cx'), { recursive: true });
+  fs.writeFileSync(path.join(lr, 'docs', 'sdlc', 'cx', 'conductor-log.md'), '# Conductor log: cx\n\n2026-10-07T01:00:00.000Z | design | conductor | change created\n2026-10-07T02:30:00.000Z | design | conductor | G2 Design presented\n');
+  const ll = W.lastLogLine(lr, 'cx');
+  check('the log reader returns the last stamped row with its time', ll && ll.at === Date.parse('2026-10-07T02:30:00.000Z') && /G2 Design presented/.test(ll.text), JSON.stringify(ll));
+  check('the log reader returns null without a log', W.lastLogLine(lr, 'nope') === null);
+
+  const agent = (f) => fs.readFileSync(path.join(PLUGIN, 'agents', f), 'utf8');
+  check('the shipper skips an already merged PR and reports a refused merge', /already merged/.test(agent('wh-shipper.md')) && /merge refused/.test(agent('wh-shipper.md')));
+  check('the conductor records a refused merge as a block the watcher clears', /WH blocked "merge of PR/.test(agent('wh-conductor.md')));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

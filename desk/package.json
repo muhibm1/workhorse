@@ -55,7 +55,8 @@
   "overrides": {
     "app-builder-lib": {
       "@noble/hashes": "1.8.0"
-    }
+    },
+    "global-agent": "4.1.3"
   },
   "engines": {
     "node": ">=22.12"
