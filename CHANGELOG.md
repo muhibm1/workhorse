@@ -7,6 +7,27 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.4.2 — 2026-10-07
+
+Follows 0.4.1 (the counted review fix loop). The watcher resumes runs nobody is driving.
+
+- Seen live: a Design approval recorded in a terminal on 2026-10-05 sat for two days because
+  nothing resumed the run; a headless design run died and cost 90 minutes on increment 4; a
+  shipper whose merge the harness refused left every AgentOps run blocked until someone
+  looked. The watcher now resumes the active change when no gate is waiting, no run holds
+  the lock and the conductor log has been quiet for ten minutes: at most three times without
+  a new log line, never more than once in thirty minutes, with a conductor-log row for each
+  automatic resume and a `~/.workhorse/watch-state.json` record. A run blocked on something a
+  person must do is left alone and the watch log says why, once; a run blocked on a merge
+  resumes once `gh` reports the pull request merged.
+- The shipper skips the merge when the PR is already merged, and reports a refused merge as
+  a block instead of stopping the run silently; the conductor records it with `WH blocked`.
+  `/workhorse:approve` says the watcher will continue the run.
+- Tests: 364 in `hooks/tests/run.js` (from 346): the stall decision in every state, the log
+  reader, and the agent wording.
+- Not measured yet. The stalled AgentOps run (`wire-live-anthropic-model-path`) is the first
+  case; the watcher should resume it within ten minutes of this version being installed.
+
 ## 0.4.1 — 2026-10-05
 
 Follows 0.4.0 (the `workhorse` command and gates on GitHub). The review fix loop is counted and

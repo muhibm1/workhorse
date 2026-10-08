@@ -22,8 +22,8 @@ const HELP = `workhorse: agents build the change, you decide at two gates.
   workhorse status                      every change you have running, and what waits on you
   workhorse approve [notes]             approve the gate that is waiting (Design, Ship or Deploy)
   workhorse reject "<what to change>"   send it back to the agents with your notes
-  workhorse watch                       turn /approve on GitHub into a resumed run (starts by itself
-                                        with the harness; --at-login, --stop)
+  workhorse watch                       resume runs: after /approve on GitHub, after a stall, after a
+                                        merge (starts by itself with the harness; --at-login, --stop)
   workhorse log                         follow the current run step by step
   workhorse doctor                      check that this machine and repository are ready
 
@@ -167,6 +167,56 @@ function log() {
 
 const WATCH_FILE = path.join(HOME, 'watch.json');
 const WATCH_LOG = path.join(HOME, 'watch.log');
+const WATCH_STATE = path.join(HOME, 'watch-state.json');
+
+// A run that nobody is driving (0.4.2). Seen live: a Design approval recorded in a terminal sat
+// for two days because nothing resumed the run; a headless design run died and cost 90 minutes;
+// a shipper whose merge the harness refused left the run blocked until someone looked. The
+// watcher now resumes a run that has no gate waiting, no lock holder and no new log line for
+// STALL_MINUTES, at most MAX_AUTO_RESUMES times without progress and never more often than
+// RESUME_COOLDOWN_MINUTES, so a run that cannot proceed is not restarted forever. A run blocked
+// on something a person must do is left alone, except a merge: once the pull request is merged
+// the run resumes and closes out.
+const STALL_MINUTES = 10;
+const RESUME_COOLDOWN_MINUTES = 30;
+const MAX_AUTO_RESUMES = 3;
+
+function lastLogLine(repo, id) {
+  try {
+    const lines = fs.readFileSync(path.join(repo, 'docs', 'sdlc', id, 'conductor-log.md'), 'utf8').split(/\r?\n/).filter((l) => /^\d{4}-\d{2}-\d{2}T\S+ \| /.test(l));
+    if (!lines.length) return null;
+    const last = lines[lines.length - 1];
+    return { at: Date.parse(last.split(' | ')[0]), text: last };
+  } catch (e) { return null; }
+}
+
+function prState(repo, prUrl) {
+  if (!prUrl) return null;
+  const r = spawnSync('gh', ['pr', 'view', prUrl, '--json', 'state', '--jq', '.state'], { cwd: repo, encoding: 'utf8', windowsHide: true });
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
+/** Pure: should the watcher resume this run now, and why or why not. `prior` is what the
+ *  watcher remembers about earlier automatic resumes of this change. */
+function stallDecision({ digest, lockHeld, lastLog, prMerged, now, prior }) {
+  if (!digest || !digest.change_id || digest.phase === 'done') return { resume: false, why: 'nothing in progress' };
+  if (digest.blocking_gate) return { resume: false, why: 'a gate is waiting on a person' };
+  if (lockHeld) return { resume: false, why: 'a run holds the lock' };
+  if (!lastLog) return { resume: false, why: 'no conductor log yet' };
+  const idle = (now - lastLog.at) / 60000;
+  if (idle < STALL_MINUTES) return { resume: false, why: `active ${Math.round(idle)} min ago` };
+  const blocked = /\| blocked:/.test(lastLog.text);
+  if (blocked && !(prMerged && /\b(merge|merged|pull request|PR)\b/i.test(lastLog.text))) return { resume: false, why: 'blocked on something a person must do' };
+  const p = prior || {};
+  const progressed = p.last_log !== lastLog.text;
+  const attempts = progressed ? 0 : (p.attempts || 0);
+  if (attempts >= MAX_AUTO_RESUMES) return { resume: false, why: `resumed ${attempts} times with no progress; needs a look` };
+  if (p.last_at && (now - Date.parse(p.last_at)) / 60000 < RESUME_COOLDOWN_MINUTES) return { resume: false, why: 'resumed recently' };
+  return { resume: true, why: blocked ? 'the pull request is merged' : `no activity for ${Math.round(idle)} min and no gate waiting`, attempts: attempts + 1 };
+}
+
+function loadWatchState() { try { return JSON.parse(fs.readFileSync(WATCH_STATE, 'utf8')); } catch (e) { return {}; } }
+function saveWatchState(s) { try { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(WATCH_STATE, JSON.stringify(s, null, 2) + '\n'); } catch (e) { /* best effort */ } }
 const STARTUP = process.env.APPDATA
   ? path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'workhorse-watch.vbs')
   : null;
@@ -261,19 +311,48 @@ function watch(argv) {
       try { tickRepo(repo); } catch (e) { say(`${stamp()} ${path.basename(repo)}: ${e.message}`); }
     }
   };
-  const tickRepo = (repo) => {
-    const { gate, digest } = waitingGate(repo);
-    if (!gate || !(digest && digest.pr_url)) return;
-    const sync = whJson(repo, ['github-sync']);
-    if (!sync || !sync.recorded) return;
-    say(`${stamp()} ${path.basename(repo)}: ${GATE_WORDS[sync.gate]} ${sync.decision === 'reject' ? 'rejected' : 'approved'} by @${sync.by}. Resuming.`);
-    const lock = whJson(repo, ['lock', 'status']);
-    if (lock && lock.holder) { say(`${stamp()}   a run already holds the lock; not starting another.`); return; }
+  const startResume = (repo) => {
     const runs = path.join(repo, '.git', 'workhorse', 'runs');
     fs.mkdirSync(runs, { recursive: true });
     const out = fs.openSync(path.join(runs, `watch-${Date.now()}.txt`), 'w');
     const child = spawn(process.execPath, [LAUNCH, '--resume', '--quiet'], { cwd: repo, detached: true, stdio: ['ignore', out, out], windowsHide: true });
     child.unref();
+  };
+  const tickRepo = (repo) => {
+    const { gate, digest } = waitingGate(repo);
+    if (gate && digest && digest.pr_url) {
+      const sync = whJson(repo, ['github-sync']);
+      if (!sync || !sync.recorded) return;
+      say(`${stamp()} ${path.basename(repo)}: ${GATE_WORDS[sync.gate]} ${sync.decision === 'reject' ? 'rejected' : 'approved'} by @${sync.by}. Resuming.`);
+      const lock = whJson(repo, ['lock', 'status']);
+      if (lock && lock.holder) { say(`${stamp()}   a run already holds the lock; not starting another.`); return; }
+      startResume(repo);
+      return;
+    }
+    // Nobody is driving the run: approved in a terminal and never resumed, a headless run that
+    // died, or a block on a merge that has since happened.
+    if (!digest || !digest.change_id || digest.phase === 'done' || gate) return;
+    const lock = whJson(repo, ['lock', 'status']);
+    const lastLog = lastLogLine(repo, digest.change_id);
+    const blockedOnMerge = lastLog && /\| blocked:/.test(lastLog.text) && /\b(merge|merged|pull request|PR)\b/i.test(lastLog.text);
+    const prMerged = blockedOnMerge ? prState(repo, digest.pr_url) === 'MERGED' : false;
+    const ws = loadWatchState();
+    const d = stallDecision({ digest, lockHeld: !!(lock && lock.holder), lastLog, prMerged, now: Date.now(), prior: ws[digest.change_id] });
+    if (!d.resume) {
+      // Say it once per change, so the log explains a run that is left alone.
+      const key = `${digest.change_id}:${d.why}`;
+      if (lastLog && (Date.now() - lastLog.at) / 60000 >= STALL_MINUTES && !(ws.said || []).includes(key)) {
+        say(`${stamp()} ${path.basename(repo)}: ${digest.title || digest.change_id} is idle (${d.why}); not resuming.`);
+        ws.said = (ws.said || []).slice(-50).concat([key]);
+        saveWatchState(ws);
+      }
+      return;
+    }
+    say(`${stamp()} ${path.basename(repo)}: ${digest.title || digest.change_id} in ${digest.phase}: ${d.why}. Resuming (${d.attempts} of ${MAX_AUTO_RESUMES}).`);
+    ws[digest.change_id] = { attempts: d.attempts, last_at: new Date().toISOString(), last_log: lastLog.text };
+    saveWatchState(ws);
+    wh(repo, ['log', `watcher | resumed a stalled run: ${d.why} (automatic resume ${d.attempts} of ${MAX_AUTO_RESUMES})`]);
+    startResume(repo);
   };
   const repos = loadRepos();
   say(`Watching ${repos.length} repositor${repos.length === 1 ? 'y' : 'ies'} every ${every / 1000}s for /approve and /reject on gate pull requests. Ctrl+C to stop.`);
@@ -341,4 +420,4 @@ function main(argv) {
 }
 
 if (require.main === module) main(process.argv.slice(2));
-module.exports = { main, HELP, findRepo, loadRepos, remember, ensureWatcher, watcherAlive };
+module.exports = { main, HELP, findRepo, loadRepos, remember, ensureWatcher, watcherAlive, stallDecision, lastLogLine, STALL_MINUTES, RESUME_COOLDOWN_MINUTES, MAX_AUTO_RESUMES };

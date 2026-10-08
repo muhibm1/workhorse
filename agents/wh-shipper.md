@@ -90,7 +90,10 @@ and `pr_url` set; or a blocked report naming the missing piece.
 Runs after G4 is approved. Confirm `wh.js state get gates.G4` is `approved`; if not, stop.
 
 1. Merge the PR with `gh pr merge --squash` unless the profile names another merge style.
-   Merge is hook-guarded; never work around a refusal.
+   Merge is hook-guarded; never work around a refusal. If the PR is already merged (`gh pr
+   view --json state` says `MERGED`: the owner merged it), skip this step and carry on. If the
+   merge is refused, stop and report `merge refused: PR <url> must be merged by the owner`;
+   the conductor records the block, and the watcher resumes the run once the PR is merged.
 2. Deploy to every environment marked `auto: true`, in the profile's order, with its `deploy`
    command. Run the profile's smoke or e2e command after each if one is defined. Read the exit
    code of every command before moving on; stop at the first failure and roll back that

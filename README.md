@@ -105,6 +105,13 @@ subscribe to a private topic name only you know, and put it in `~/.workhorse/con
 `{ "ntfy_topic": "<your topic>" }`. WorkHorse sends the gate name, the change title and the PR link;
 nothing else. ntfy is a third party; leave it unset to keep everything on GitHub.
 
+**The watcher also resumes runs nobody is driving.** A gate approved in a terminal and never
+resumed, a headless run that died, or a run blocked on a merge the owner has since made: when
+no gate is waiting, no run holds the lock and the conductor log has been quiet for ten minutes,
+the watcher resumes the run, at most three times without progress and never more than once in
+thirty minutes. A run blocked on something only a person can do is left alone and the log says
+so.
+
 **The watcher starts by itself.** Every the harness session opened in a WorkHorse repository
 makes sure one `workhorse watch` is running in the background, and `workhorse watch --at-login`
 adds a hidden Windows Startup entry so it also runs when the harness is closed
