@@ -11,7 +11,7 @@ restrict themselves with a `tools:` allowlist (`agents/wh-designer.md` line 4,
 `agents/wh-discovery-analyst.md` line 4). `wh-tracker-sync` takes the other route: it drops the
 allowlist and inherits every MCP tool, because the Notion connector's prefix differs per
 surface. The Studbook server is registered at user scope as `studbook` (confirmed), which gives
-the prefix `mcp__studbook__` (believed, not verified against the harness docs).
+the prefix `mcp__studbook__` (believed, not verified against harness docs).
 
 ## Decision
 
@@ -24,7 +24,7 @@ it registered under another name, simply does not see the tools and continues wi
 | Option | Why not |
 |--------|---------|
 | Remove the allowlist and inherit all MCP tools, as `wh-tracker-sync` does | Hands both agents every MCP server on the machine, including write-capable Supabase, GitHub and Notion tools, for a need that is two read-only tools. |
-| List a wildcard for the server | the harness's support for wildcards in subagent `tools:` is not confirmed; an unsupported pattern would silently grant nothing. |
+| List a wildcard for the server | The harness's support for wildcards in subagent `tools:` is not confirmed; an unsupported pattern would silently grant nothing. |
 
 ## Consequences
 

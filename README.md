@@ -112,7 +112,7 @@ the watcher resumes the run, at most three times without progress and never more
 thirty minutes. A run blocked on something only a person can do is left alone and the log says
 so.
 
-**The watcher starts by itself.** Every the harness session opened in a WorkHorse repository
+**The watcher starts by itself.** Every harness session opened in a WorkHorse repository
 makes sure one `workhorse watch` is running in the background, and `workhorse watch --at-login`
 adds a hidden Windows Startup entry so it also runs when the harness is closed
 (`--not-at-login` removes it). It spends no tokens: each minute it reads local state, and only
@@ -321,7 +321,7 @@ human waited 41, 10 and 17 hours on runs whose agents worked 7 hours, 3 hours 40
 
 ## Running WorkHorse on its own repository
 
-the harness refuses a plugin agent's writes inside the directory the plugin was loaded from
+The harness refuses a plugin agent's writes inside the directory the plugin was loaded from
 (confirmed 2026-09-29: a `wh-designer` subagent was refused a one-word probe file that a
 general-purpose subagent in the same folder could write). The launcher handles it: when the
 repository is the plugin itself, it loads the plugin from a detached checkout of the default

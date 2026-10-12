@@ -2,7 +2,7 @@
   "name": "workhorse-plugin",
   "version": "0.1.0",
   "private": true,
-  "description": "the harness plugin: agentic SDLC for forward-deployed engineering with risk-tiered human gates.",
+  "description": "Agentic SDLC plugin for forward-deployed engineering with risk-tiered human gates.",
   "scripts": {
     "test": "node hooks/tests/run.js",
     "validate": "claude plugin validate .",

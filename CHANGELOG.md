@@ -193,7 +193,7 @@ per-agent clock.
 
 Follows 0.3.10 (the change branch is cut at `new`; builders commit every green step).
 
-- Agents run git in another folder with `git -C <dir>`, never `cd <dir> && git`. the harness asks for
+- Agents run git in another folder with `git -C <dir>`, never `cd <dir> && git`. The harness asks for
   approval on the second form whatever the allow rules say (the target folder could carry its own git
   hooks), and an unattended run has nobody to approve, so it stalled. Confirmed 2026-09-28 in a
   headless run with no permission flags: `cd` then `git` was held for approval; `git -C` ran.
@@ -201,7 +201,7 @@ Follows 0.3.10 (the change branch is cut at `new`; builders commit every green s
 
 ## 0.3.10 — 2026-09-21
 
-Follows 0.3.9 (the worktree fence recognises the harness isolation worktrees).
+Follows 0.3.9 (the worktree fence recognises harness isolation worktrees).
 
 - `wh.js new` cuts and checks out the change branch, so the design documents and the Design
   approval commit land on it. They used to land on the default branch, leaving local main ahead

@@ -104,7 +104,7 @@ Paddock): CI fails otherwise, because Studbook answers release questions from th
   approvals were "made" in a Paddock whose registry held only the example folder; nothing was
   recorded and the runs sat for hours. The Fleet screen now lists the three run repositories;
   registering a repository is the first step of any run driven from Paddock.
-- **the harness refuses some writes headless, whatever the plugin says.** `.npmrc`, `.env*`,
+- **The harness refuses some writes headless, whatever the plugin says.** `.npmrc`, `.env*`,
   keys and credential files need an interactive yes; a profile `ask_commands` entry such as
   `git push` is the same. The designer (0.3.5) turns the first into a decision the human
   performs; the second is the profile owner's call (Portfolio's rule kept the PR from opening).

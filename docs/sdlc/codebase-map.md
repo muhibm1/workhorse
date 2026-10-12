@@ -61,7 +61,7 @@ The plugin's test runner has no per-file mode (confirmed).
 
 ### The plugin path (a WorkHorse run in any repository)
 
-1. The user types a slash command. the harness loads the skill (`skills/<name>/SKILL.md`), which
+1. The user types a slash command. The harness loads the skill (`skills/<name>/SKILL.md`), which
    dispatches agents from `agents/` (confirmed).
 2. Agents read and write state only through `node scripts/wh.js`. Control state lives in
    `.git/workhorse/` (never committed); documents live in `docs/sdlc/<change-id>/` (confirmed,
@@ -95,7 +95,7 @@ The plugin's test runner has no per-file mode (confirmed).
 
 ```mermaid
 flowchart LR
-  U[Owner] -->|slash commands| CC[the harness session]
+  U[Owner] -->|slash commands| CC[harness session]
   U -->|clicks| R[Paddock renderer]
   R -->|IPC via preload| M[Paddock main]
   M -->|spawn claude -p| CC

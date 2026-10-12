@@ -1,6 +1,6 @@
 # {{client_name}}: working in this repository
 
-Keep this file under one page. It is read at the start of every the harness session.
+Keep this file under one page. It is read at the start of every harness session.
 
 ## Commands
 
