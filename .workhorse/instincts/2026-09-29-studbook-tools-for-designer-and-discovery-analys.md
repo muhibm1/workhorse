@@ -33,7 +33,7 @@ scope: project
 Ignore generated report folders in eslint, or run lint before e2e, so a known-failing e2e cannot turn lint red on the next run.
 
 ## Evidence
-- conductor-log.md lines 15-19 and 31: lint red at d77a101 and 7b8cd91 only because desk/playwright-report existed; line 32 operator hot-fix.
+- conductor-log.md lines 15-19 and 31: lint red at 2477175 and 7e463fc only because desk/playwright-report existed; line 32 operator hot-fix.
 
 ## allowlist-eval-commands-up-front
 
@@ -67,5 +67,5 @@ scope: project
 The fixer adds an eval case (a phrase check) for the new wording in the same fix, so a later edit cannot remove it silently.
 
 ## Evidence
-- ship.md "Known gap": no E9 covers the repo-key and retry wording added in 5aa83a1.
-- conductor-log.md lines 28-33: two follow-up fixes (7b8cd91, c319f00) were needed to keep E4, E5, N1 compliant after the first fix.
+- ship.md "Known gap": no E9 covers the repo-key and retry wording added in bef5ed8.
+- conductor-log.md lines 28-33: two follow-up fixes (7e463fc, f63c0f7) were needed to keep E4, E5, N1 compliant after the first fix.

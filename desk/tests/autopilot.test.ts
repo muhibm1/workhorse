@@ -234,7 +234,7 @@ describe('buildGateNotification / postNotification', () => {
   });
 });
 
-describe('fixes for wh-bug-reviewer findings on 4f25dd3', () => {
+describe('fixes for wh-bug-reviewer findings on e2b4ee7', () => {
   it('parses the "resets in" duration form', () => {
     const now = new Date('2026-09-13T12:00:00Z');
     expect(parseLimitReset('limit reached · resets in 3h 20m', now)).toBe((200 + 2) * MIN);

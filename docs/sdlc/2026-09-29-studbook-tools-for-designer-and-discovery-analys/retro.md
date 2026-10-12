@@ -5,7 +5,7 @@ Trigger: G4 approval
 
 ## What happened
 
-Two agent definition files (designer, discovery analyst) gained the exact Studbook tool names and a capped-use bullet. The change shipped as PR 17 (merged as 2842166) at tier 1 with one medium finding fixed and all evals at 100%. It ran over budget mainly because design was blocked three times by the harness refusing writes under `docs/sdlc/<id>/`, and verify blocked twice more on environment issues.
+Two agent definition files (designer, discovery analyst) gained the exact Studbook tool names and a capped-use bullet. The change shipped as PR 17 (merged as 3eb4f23) at tier 1 with one medium finding fixed and all evals at 100%. It ran over budget mainly because design was blocked three times by the harness refusing writes under `docs/sdlc/<id>/`, and verify blocked twice more on environment issues.
 
 ## Clock
 
@@ -18,7 +18,7 @@ Two agent definition files (designer, discovery analyst) gained the exact Studbo
 
 | Phase | Finding | Would a human have caught it? |
 |-------|---------|-------------------------------|
-| review | wh-bug-reviewer medium: unguided `repo` value gives a silent empty result (`agents/wh-discovery-analyst.md:34`), fixed in 5aa83a1 | Unlikely; it depends on Studbook's case-sensitive matching |
+| review | wh-bug-reviewer medium: unguided `repo` value gives a silent empty result (`agents/wh-discovery-analyst.md:34`), fixed in bef5ed8 | Unlikely; it depends on Studbook's case-sensitive matching |
 | verify | Lint red from a stale e2e report folder | Yes, but only after confusion |
 | verify | E8 needed an allowlisted validate command | Yes |
 | review | Conformance: no permanent test, two user-level allow rules needed, deferred version bump | Yes, all were already decisions D1-D3 |

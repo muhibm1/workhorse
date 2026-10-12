@@ -15,7 +15,7 @@ Ran one WorkHorse change end to end with `/workhorse:run`, `/workhorse:approve G
   `3h 12m`, `2d 4h`, counted from the gate's presented stamp. The digest gained
   `gate_waiting_since` and `gate_waiting_minutes`.
 - Merged as [muhibm1/workhorse#23](https://github.com/muhibm1/workhorse/pull/23), merge commit
-  `15b34da`. Verification was green: 323 tests, 11 new. Six reviewers, 0 high or medium
+  `9869a91`. Verification was green: 323 tests, 11 new. Six reviewers, 0 high or medium
   findings, 4 lows accepted at G4.
 - All eight G4 decisions (D1 to D8) were answered "recommendation accepted". Notably D5: no
   version bump in that change, release left manual.
@@ -37,7 +37,7 @@ The repository moved on after this chat, in sessions I did not see. State on thi
 | Item | State |
 | --- | --- |
 | Checked-out branch | `wh/0.4.2-watcher-resumes-stalled-runs`, in sync with its origin branch |
-| Ahead of `origin/master` | one commit, `6dd5b0b feat: WorkHorse 0.4.2, the watcher resumes stalled runs` |
+| Ahead of `origin/master` | one commit, `a3df9f1 feat: WorkHorse 0.4.2, the watcher resumes stalled runs` |
 | Open PR | [muhibm1/workhorse#25](https://github.com/muhibm1/workhorse/pull/25), 0.4.2 |
 | Merged since this chat | #24 (0.4.1, counted review fix loop and failure-path evals) |
 | `.claude-plugin/plugin.json` version | 0.4.2 (CHANGELOG has a `## 0.4.2 — 2026-10-07` entry) |

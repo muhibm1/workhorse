@@ -1,6 +1,6 @@
 # Ship: Studbook tools for designer and discovery analyst
 
-Change id: `2026-09-29-studbook-tools-for-designer-and-discovery-analys` · Tier 1 · Branch `wh/2026-09-29-studbook-tools-for-designer-and-discovery-analys` at `c319f00` · PR https://github.com/muhibm1/workhorse/pull/17
+Change id: `2026-09-29-studbook-tools-for-designer-and-discovery-analys` · Tier 1 · Branch `wh/2026-09-29-studbook-tools-for-designer-and-discovery-analys` at `f63c0f7` · PR https://github.com/muhibm1/workhorse/pull/17
 Prepared 2026-09-29 UTC · Design approved: see [approvals.md](./approvals.md)
 
 This is the Ship document. Approving it merges the change. The only environment marked automatic is `dev`, whose deploy command is empty, so nothing else runs.
@@ -35,7 +35,7 @@ Not in the commit: `desk/studbook-verify.tmp.png` and any `desk/*.tmp.cjs` (conf
 
 Evals: golden 4/4, edge 2/2, failure 1/1, adversarial 1/1, non-functional 1/1, all at 100% target ([verification.md](./verification.md)).
 Not verified: live behaviour of the agents calling Studbook (evals check prose and frontmatter only), and whether the harness names the tools `mcp__studbook__*` (believed, not verified).
-Known pre-existing failures cited from `wh.js known-failure list` (base f06c635, e2e): Paddock's Playwright smoke test is flaky on this machine (locators ambiguous, timeouts), Paddock is retired, and this change touches no file under `desk/`.
+Known pre-existing failures cited from `wh.js known-failure list` (base a7f107e, e2e): Paddock's Playwright smoke test is flaky on this machine (locators ambiguous, timeouts), Paddock is retired, and this change touches no file under `desk/`.
 
 ## What the reviewers found
 
@@ -43,14 +43,14 @@ Reports: [reviews/](./reviews/). No critical or high findings. The one medium is
 
 | Severity | Reviewer | File:line | Finding | Resolution |
 |----------|----------|-----------|---------|------------|
-| medium | wh-bug-reviewer | `agents/wh-discovery-analyst.md:34` | An unguided `repo` value (for example `WorkHorse`) gives a silent empty result | fixed in 5aa83a1; closed on re-check (confirmed) |
+| medium | wh-bug-reviewer | `agents/wh-discovery-analyst.md:34` | An unguided `repo` value (for example `WorkHorse`) gives a silent empty result | fixed in bef5ed8; closed on re-check (confirmed) |
 | low | wh-conformance-reviewer | brief.md D2 | No permanent test in `hooks/tests/run.js`; evals are one-off command checks | accepted: recommendation taken (D2), tier-2 path avoided |
 | low | wh-conformance-reviewer | brief.md D1 | Two user-level allow rules needed for the studbook tools, outside the repo | open by design: needs owner action (D1) |
 | low | wh-conformance-reviewer | brief.md D3-D5 | Version bump deferred, exact-name tool lists, caps 3 and 1 | accepted: recommendations taken |
 | none | ecc-silent-failure-hunter | n/a | 0 findings | n/a |
 
 Known gap, unreviewed as a finding: no E9 eval covers the repo-key and retry wording, so a later edit could remove it unnoticed (raised in the bug re-check). Outside scope: Studbook's case-sensitive `repo` matching lives in the studbook repository.
-Fixer commits: 5aa83a1 (the medium), 7b8cd91 and c319f00 (wording, evals E4, E5 and N1 kept compliant).
+Fixer commits: bef5ed8 (the medium), 7e463fc and f63c0f7 (wording, evals E4, E5 and N1 kept compliant).
 Spec conformance: 7 of 7 requirements traced to code and test. Adoption score: not reported by the reviewers.
 
 ## Decisions
@@ -93,7 +93,7 @@ Approve to merge, or reject with notes to send it back. After approval, bump to 
 
 | Environment | Command | Exit code | UTC |
 |---|---|---|---|
-| merge | `gh pr merge 17 --squash` (merge commit 2842166, state MERGED, confirmed) | 0 | 2026-09-29T21:01:19Z |
+| merge | `gh pr merge 17 --squash` (merge commit 3eb4f23, state MERGED, confirmed) | 0 | 2026-09-29T21:01:19Z |
 | dev | not run: profile `deploy` is empty (dev is master, updated by the merge) | n/a | n/a |
 | staging | not run: `auto: false` and no deploy command | n/a | n/a |
 | prod | production: not automatic in this profile. Owner bumps to 0.3.13, adds the changelog entry and reinstalls the plugin by hand (D3) | n/a | n/a |
