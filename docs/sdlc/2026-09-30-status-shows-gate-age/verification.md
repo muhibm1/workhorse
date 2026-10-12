@@ -3,7 +3,7 @@
 Change id: `2026-09-30-status-shows-gate-age`
 Status: green
 Run at: 2026-09-30T07:26:06.525Z UTC
-Commit: `5505a8e4ad3a`
+Commit: `ed05ceb65d82`
 
 Status is green only when every defined check exited 0 and every eval category met its target.
 "No check defined" rows do not count as passes; they are listed so the gap is visible.

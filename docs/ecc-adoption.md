@@ -70,7 +70,7 @@ AgentShield after this change, same flags: **0 critical, 1 high, 10 medium** (fr
 ## Measured: three reviewers on the same commit
 
 To test whether the ECC specialists earn their place, three reviewers independently reviewed
-the same real change: commit `4f25dd3`, 603 lines of TypeScript adding Paddock's auto-resume,
+the same real change: commit `e2b4ee7`, 603 lines of TypeScript adding Paddock's auto-resume,
 stall watchdog, and phone notifications. The ECC agents ran headless through the installed
 plugin, the same path the conductor uses, which also proved they are dispatchable. Every
 finding was checked against the code before it was fixed.

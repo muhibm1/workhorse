@@ -92,7 +92,7 @@ describe('applyEvent (pure reducer)', () => {
   });
 
   it('a run started by main (an auto-resume) gets a fresh running state on its first event', () => {
-    // Found by wh-bug-reviewer on 4f25dd3: the old state stayed stopped with the limit error, so
+    // Found by wh-bug-reviewer on e2b4ee7: the old state stayed stopped with the limit error, so
     // the resumed run had no Stop button and showed "Last run stopped" throughout.
     let run = createRunState('old');
     run = applyEvent(run, envelope({ t: 'error', message: "You've hit your session limit", at: 1 }, 'repo1', 'old'));

@@ -3,7 +3,7 @@
 Change id: `2026-09-29-studbook-tools-for-designer-and-discovery-analys`
 Status: green
 Run at: 2026-09-29T17:50:49.801Z UTC
-Commit: `c319f0053fe3`
+Commit: `f63c0f796b08`
 
 Status is green only when every defined check exited 0 and every eval category met its target.
 "No check defined" rows do not count as passes; they are listed so the gap is visible.
@@ -16,7 +16,7 @@ Status is green only when every defined check exited 0 and every eval category m
 - Lint: 0 errors (`npm --prefix desk run lint`).
 - Test suite: 278 passed, 0 failed, 1 skipped (`npm test && npm --prefix desk test`).
 - Build: succeeded (`npm --prefix desk run build`).
-- e2e: known failure, cited from .workhorse/known-failures.md (base f06c635: believed, not verified at base: smoke.spec.ts locators 'Studbook' and fleet card are ambiguous (strict mode, 2 elements); this change touches only agents/*.md and no file under desk/). Known failure, (base f06c635), cited not re-run.
+- e2e: known failure, cited from .workhorse/known-failures.md (base a7f107e: believed, not verified at base: smoke.spec.ts locators 'Studbook' and fleet card are ambiguous (strict mode, 2 elements); this change touches only agents/*.md and no file under desk/). Known failure, (base a7f107e), cited not re-run.
 - Dependency audit: 0 vulnerabilities (`npm --prefix desk audit`).
 <!-- wh:verify-end -->
 
@@ -30,13 +30,13 @@ Status is green only when every defined check exited 0 and every eval category m
 | lint | `npm --prefix desk run lint` | 0 | `verify-logs/lint.log` | confirmed |
 | test | `npm test && npm --prefix desk test` | 0 | `verify-logs/test.log` | confirmed |
 | build | `npm --prefix desk run build` | 0 | `verify-logs/build.log` | confirmed |
-| e2e | `npm --prefix desk run e2e` | known | `verify-logs/known-failures` | known failure (base f06c635), cited not re-run |
+| e2e | `npm --prefix desk run e2e` | known | `verify-logs/known-failures` | known failure (base a7f107e), cited not re-run |
 | security_audit | `npm --prefix desk audit` | 0 | `verify-logs/security_audit.log` | confirmed |
 | screenshot |  | | | no check defined |
 
 ## Evals
 
-All cases re-run at HEAD `c319f00` (confirmed, Grep tool and git commands; the bullet window is the lead line plus 7 lines).
+All cases re-run at HEAD `f63c0f7` (confirmed, Grep tool and git commands; the bullet window is the lead line plus 7 lines).
 
 | Category | Cases | Passed | Target | Met |
 |----------|-------|--------|--------|-----|
@@ -56,7 +56,7 @@ All cases re-run at HEAD `c319f00` (confirmed, Grep tool and git commands; the b
 
 ## Known failures
 
-- e2e (`npm --prefix desk run e2e`), base f06c635, cited from `.workhorse/known-failures.md` (two rows). This change touches no file under desk/.
+- e2e (`npm --prefix desk run e2e`), base a7f107e, cited from `.workhorse/known-failures.md` (two rows). This change touches no file under desk/.
 
 No previous change to compare with.
 

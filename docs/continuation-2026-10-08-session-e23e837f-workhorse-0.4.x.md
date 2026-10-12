@@ -8,18 +8,18 @@ on 2026-10-08; anything else is stated from this chat's own work.
 
 | Version | PR | What |
 | --- | --- | --- |
-| 0.4.2 | [#25](https://github.com/muhibm1/workhorse/pull/25), merged `7cf2d1f` | The watcher resumes runs nobody is driving: no gate waiting, no lock holder, conductor log quiet 10 min; at most 3 resumes without progress, never more than once in 30 min; a run blocked on a person is left alone, one blocked on a merge resumes once the PR is merged. Shipper skips an already merged PR and reports a refused merge; conductor records it with `WH blocked`. |
-| 0.4.1 | [#24](https://github.com/muhibm1/workhorse/pull/24), merged `1cb7f2c` | `wh.js review-fix start \| check \| reopen`: two fix rounds at most, every fix commit that changes source carries a test, the re-check reads the round's diff with at most three reviewers; a gate rejection resets the count. `evals.md` needs a "Side effects and records" table at tier 2+ (artifact-check hook). Bug and security reviewers rate a trusted record by the claim it breaks. |
-| 0.4.0 | [#22](https://github.com/muhibm1/workhorse/pull/22), merged `e9bec07` | The `workhorse` command (`"<p> -> <o>"`, status, approve, reject, resume, watch, log, doctor; `npm link`). Gates posted to the change's PR; `/approve` or `/reject` from a phone, read back by `wh.js github-sync`. The watcher starts itself from the SessionStart hook and a Windows Startup entry. Headless runs use `--permission-mode auto`. |
+| 0.4.2 | [#25](https://github.com/muhibm1/workhorse/pull/25), merged `b7d6525` | The watcher resumes runs nobody is driving: no gate waiting, no lock holder, conductor log quiet 10 min; at most 3 resumes without progress, never more than once in 30 min; a run blocked on a person is left alone, one blocked on a merge resumes once the PR is merged. Shipper skips an already merged PR and reports a refused merge; conductor records it with `WH blocked`. |
+| 0.4.1 | [#24](https://github.com/muhibm1/workhorse/pull/24), merged `0e28e9d` | `wh.js review-fix start \| check \| reopen`: two fix rounds at most, every fix commit that changes source carries a test, the re-check reads the round's diff with at most three reviewers; a gate rejection resets the count. `evals.md` needs a "Side effects and records" table at tier 2+ (artifact-check hook). Bug and security reviewers rate a trusted record by the claim it breaks. |
+| 0.4.0 | [#22](https://github.com/muhibm1/workhorse/pull/22), merged `7b2f818` | The `workhorse` command (`"<p> -> <o>"`, status, approve, reject, resume, watch, log, doctor; `npm link`). Gates posted to the change's PR; `/approve` or `/reject` from a phone, read back by `wh.js github-sync`. The watcher starts itself from the SessionStart hook and a Windows Startup entry. Headless runs use `--permission-mode auto`. |
 
 Earlier in the same chat: 0.3.12 (speed), 0.3.13, 0.3.14 (command line first, designer on
 Fable, Studbook out). `CHANGELOG.md` has every entry with the measurements behind it.
 
 ## Where things stand (verified 2026-10-08 03:20 local)
 
-- `~\WorkHorse` is on `master` at `7cf2d1f` (0.4.2 merged, branch deleted),
+- `~\WorkHorse` is on `master` at `b7d6525` (0.4.2 merged, branch deleted),
   clean apart from an untracked `desk/studbook-verify.tmp.png`. `~\WorkHorse-plugin`
-  (the detached checkout used only for runs on the WorkHorse repo itself) is also on `7cf2d1f`.
+  (the detached checkout used only for runs on the WorkHorse repo itself) is also on `b7d6525`.
   Installed plugin: 0.4.2 recorded at user scope; it loads in place from the checkout.
 - The repository setting "Allow auto-merge" is on for `muhibm1/workhorse` (turned on in this
   chat); AgentOps still has it off. The last three CI failures on the 0.4.2 branch were
