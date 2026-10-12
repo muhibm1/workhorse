@@ -32,5 +32,5 @@ No rows. Evidence behind the empty table:
 Findings outside scope: `git ls-files` lists desk/resources/studbook/supabase-ca.pem, a tracked `*.pem` that predates
 this change; the name suggests a public CA certificate (believed, not verified; file not read).
 Not verified: AgentShield scan (the diff touches `hooks/`): `npx -y ecc-agentshield@1.6.0 scan --path hooks ...` was
-refused by the the harness auto-mode permission classifier (untrusted code integration); it needs the human to allow
+refused by the harness auto-mode permission classifier (untrusted code integration); it needs the human to allow
 it or run it. The hooks/tests/run.js suite was not run by this reviewer.

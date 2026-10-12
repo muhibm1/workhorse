@@ -1,6 +1,6 @@
 # Continuation: WorkHorse session e23e837f (0.4.0 to 0.4.2)
 
-Written 2026-10-08 for a fresh the harness session on a new machine. Point the new session at
+Written 2026-10-08 for a fresh harness session on a new machine. Point the new session at
 this file and say "pick up from here". Everything marked *verified* was checked with a command
 on 2026-10-08; anything else is stated from this chat's own work.
 
@@ -101,7 +101,7 @@ Fable, Studbook out). `CHANGELOG.md` has every entry with the measurements behin
   tool.
 - The plugin's bash-guard blocks any command text that looks destructive, including inside a
   prompt string; put such text in a file.
-- the harness refuses a plugin agent's writes inside the directory the plugin was loaded
+- The harness refuses a plugin agent's writes inside the directory the plugin was loaded
   from, so runs on the WorkHorse repo itself use the `WorkHorse-plugin` detached checkout
   (`wh-launch.js` picks it automatically).
 - `npm install --package-lock-only` without `--prefer-offline` hung for a day on this

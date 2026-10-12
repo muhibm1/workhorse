@@ -1,7 +1,7 @@
 # What broke running WorkHorse on AgentOps increment 1
 
 Recorded 2026-10-01 from the first change on a greenfield repository (`muhibm1/agentops`,
-change `2026-10-01-increment-1-scaffold`, tier 2), run from a the harness desktop session that
+change `2026-10-01-increment-1-scaffold`, tier 2), run from a harness desktop session that
 had loaded plugin 0.3.13 while 0.4.0 was installed. Every item below was observed in that session;
 nothing is inferred from documentation. The fix column is a proposal, not a decision.
 
@@ -29,7 +29,7 @@ fact; **low** is noise or wording.
 
 ### 1. The session ran plugin 0.3.13 while 0.4.0 was installed (high)
 
-the harness loads plugins at session start. The session began 2026-09-29; `claude plugin update`
+The harness loads plugins at session start. The session began 2026-09-29; `claude plugin update`
 installed 0.4.0 on 2026-09-30 04:29 UTC. Every `/workhorse:*` skill in the session resolved to
 `plugins/cache/workhorse/workhorse/0.3.13/`, while the `workhorse` CLI used 0.4.0. Nothing warned.
 Consequences: the PR stayed a draft at Ship (the ready-at-Ship step exists only in 0.4.0), and the

@@ -276,7 +276,7 @@ function lockAcquire(L, root, holder, force) {
   }
   const lock = {
     holder: holder || 'conductor', started: L.nowIso(), updated: L.nowIso(), host: os.hostname(),
-    // The the harness session that took the lock; the Stop hook holds only that session.
+    // The harness session that took the lock; the Stop hook holds only that session.
     session: process.env.CLAUDE_CODE_SESSION_ID || null,
   };
   fs.mkdirSync(path.dirname(lockFile(L, root)), { recursive: true });
