@@ -159,7 +159,7 @@ function log() {
 // ---------- the background watcher ----------
 //
 // One watcher per machine, started without anyone thinking about it: the plugin's SessionStart
-// hook calls ensureWatcher() in every the harness session, and `workhorse watch --at-login` adds
+// hook calls ensureWatcher() in every harness session, and `workhorse watch --at-login` adds
 // a Startup entry that does the same at Windows sign-in. It spends no tokens: each tick is a local
 // digest per repository, plus one `gh api` read while a gate is waiting. Claude runs only when a
 // decision was recorded and the run resumes. watch.json is its pid file and heartbeat; a file
@@ -369,7 +369,7 @@ function doctor() {
   check(`node ${process.versions.node}`, nodeMajor >= 18, 'install Node 18 or newer');
   check(`git ${ver('git') || ''}`.trim(), Boolean(ver('git')), 'install git');
   const claude = ver(process.platform === 'win32' ? 'claude.exe' : 'claude');
-  check(`claude ${claude || ''}`.trim(), Boolean(claude), 'install the harness and sign in');
+  check(`claude ${claude || ''}`.trim(), Boolean(claude), 'install the harness CLI and sign in');
   const ghv = ver('gh');
   check(`gh ${ghv ? ghv.replace(/^gh version /, '').split(' ')[0] : ''}`.trim(), Boolean(ghv), 'install the GitHub CLI (gh) to approve gates from GitHub');
   if (ghv) {
