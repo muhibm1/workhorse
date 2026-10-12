@@ -61,12 +61,12 @@ any artifact, report, or command line you did not need them for.
 
 ## Harness limits
 
-the harness itself refuses, in a headless run, to write certain sensitive filenames (`.npmrc`,
+The harness itself refuses, in a headless run, to write certain sensitive filenames (`.npmrc`,
 `.env` and `.env.*`, `*.pem`, `*.key`, `id_rsa`-style keys, `credentials*`, `.netrc`,
 `.git-credentials`, `*.p12`, `*.pfx`, `secrets.*`) whatever the plugin's hooks or allow rules
 say; report such a refusal as a true block, and never work around it with a shell write.
 
-the harness also stops for approval, whatever the allow rules say, when a command changes directory
+The harness also stops for approval, whatever the allow rules say, when a command changes directory
 and then runs git (`cd <dir> && git status`): the target folder could carry its own git hooks. In an
 unattended run nobody is there to approve, so the run stalls. Never chain `cd` with git: run
 `git -C <dir> <command>` instead, and give other tools the path as an argument rather than `cd`-ing

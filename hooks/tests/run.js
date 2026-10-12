@@ -72,7 +72,7 @@ console.log('glob');
 console.log('worktree detection');
 {
   check('recognises the plugin worktree folder', L.isInsideWorktree('C:\\repo\\.worktrees\\t1'));
-  check('recognises the harness isolation worktrees', L.isInsideWorktree('C:\\repo\\.claude\\worktrees\\agent-abc'));
+  check('recognises harness isolation worktrees', L.isInsideWorktree('C:\\repo\\.claude\\worktrees\\agent-abc'));
   check('a plain checkout is not a worktree', !L.isInsideWorktree('C:\\repo'));
 }
 
@@ -982,7 +982,7 @@ console.log('gates on GitHub (0.4.0)');
     cliw('watch', '--not-at-login');
     return /watch --background", 0, False/.test(body) && !fs.existsSync(f);
   })());
-  check('opening a the harness session starts the watcher, unless WORKHORSE_NO_WATCH is set', (() => {
+  check('opening a harness session starts the watcher, unless WORKHORSE_NO_WATCH is set', (() => {
     const input = JSON.stringify({ cwd: ar, hook_event_name: 'SessionStart' });
     const pidFile = path.join(tmp, '.workhorse', 'watch.json');
     const env = { ...cliEnv, CI: '' };

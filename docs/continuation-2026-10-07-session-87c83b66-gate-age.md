@@ -1,6 +1,6 @@
 # Continuation: WorkHorse session 87c83b66 (gate age, then 0.4.1 and 0.4.2)
 
-Written 2026-10-07 for a fresh the harness session on a new machine. Paste or point the new
+Written 2026-10-07 for a fresh harness session on a new machine. Paste or point the new
 session at this file and say "pick up from here". Everything under "Verified" was checked with
 a command on 2026-10-07; everything under "From agent reports" is what the conductor and retro
 agents reported and was not re-read.

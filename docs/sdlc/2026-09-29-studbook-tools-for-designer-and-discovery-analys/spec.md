@@ -32,12 +32,12 @@ the tools are listed by exact name, not inherited, so the agents gain Studbook a
 
 ### Architecture
 
-the harness subagents with a `tools:` allowlist see only the tools listed (confirmed: both
+Harness subagents with a `tools:` allowlist see only the tools listed (confirmed: both
 files list tools explicitly today, `agents/wh-designer.md` line 4 and
 `agents/wh-discovery-analyst.md` line 4). The Studbook MCP server is registered at user scope
 under the name `studbook` as a stdio Python process (confirmed, user `~/.claude.json`, server
 names only read), and exposes `search_record` and `ask_record` (confirmed,
-`studbook/mcp_server/server.py` lines 49 to 74). the harness names such tools
+`studbook/mcp_server/server.py` lines 49 to 74). The harness names such tools
 `mcp__<server>__<tool>` (believed, not verified against docs; consistent with the
 `mcp__plugin_context7_context7__*` names already in both files). The change appends the two
 names to each `tools:` line and adds one Inputs bullet per agent. No script, hook, skill or
