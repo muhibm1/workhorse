@@ -38,6 +38,10 @@
 //   wh.js notify "<title>" "<body>"         desktop notification, best effort
 //   wh.js clock --by-agent                  minutes per agent, from the conductor log
 //   wh.js github-sync                       record a /approve or /reject left on the gate's pull request
+//   wh.js cost [add <usd>]                  the active change's cost at list price, as headless runs report it
+//   wh.js ledger [--repo <path>[#<ref>]]... [--out <dir>] [--json]
+//                                           every change in every repository, its clock recomputed from
+//                                           the committed record (see scripts/wh-ledger.js)
 //   wh.js plugin-root                       print the plugin root path
 'use strict';
 const fs = require('fs');
@@ -155,6 +159,51 @@ function stateVars(root, id, state) {
 
 switch (cmd) {
   case 'plugin-root': out(PLUGIN_ROOT); break;
+
+  case 'cost': {
+    // The launcher adds each headless run's reported cost to the active change, so the change's
+    // metrics.json can say what it cost. `cost add <usd>`; `cost` alone prints the running total.
+    const root = requireRoot();
+    const { id, state } = requireActive(root);
+    if (args[0] === 'add') {
+      const usd = Number(args[1]);
+      if (!Number.isFinite(usd) || usd < 0) die('usage: wh.js cost add <usd>');
+      state.cost_usd = Math.round(((typeof state.cost_usd === 'number' ? state.cost_usd : 0) + usd) * 10000) / 10000;
+      state.launcher_runs = (Number.isInteger(state.launcher_runs) ? state.launcher_runs : 0) + 1;
+      L.saveState(root, id, state);
+    }
+    out({ change_id: id, cost_usd: typeof state.cost_usd === 'number' ? state.cost_usd : null, launcher_runs: state.launcher_runs || 0 });
+    break;
+  }
+
+  case 'ledger': {
+    const LG = require(path.join(__dirname, 'wh-ledger.js'));
+    const json = hasFlag('--json');
+    const outDir = flag('--out');
+    const specs = [];
+    for (let v = flag('--repo'); v; v = flag('--repo')) specs.push(LG.parseRepoSpec(String(v)));
+    if (!specs.length) {
+      let known = [];
+      try { known = require(path.join(__dirname, 'workhorse.js')).loadRepos(); } catch (e) { known = []; }
+      const here = L.findRoot(process.cwd());
+      for (const p of (here ? [here] : []).concat(known)) {
+        if (!specs.some((s) => s.path === path.resolve(p))) specs.push(LG.parseRepoSpec(p));
+      }
+    }
+    if (!specs.length) die('no repositories: pass --repo <path>, or run inside a WorkHorse repository');
+    const ledger = LG.build(L, specs, LG.pluginChangelog(), LG.pluginOverrides());
+    const md = LG.renderMarkdown(ledger.runs, ledger.summary, today());
+    if (outDir) {
+      const dir = path.resolve(outDir);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'runs.json'), JSON.stringify({ generated: today(), ...ledger }, null, 2) + '\n');
+      fs.writeFileSync(path.join(dir, 'RUNS.md'), md);
+      out({ runs: ledger.runs.length, wrote: [path.join(dir, 'runs.json'), path.join(dir, 'RUNS.md')] });
+      break;
+    }
+    out(json ? ledger : md);
+    break;
+  }
 
   case 'init': {
     const root = process.cwd();
@@ -288,6 +337,9 @@ switch (cmd) {
       // because they accumulate across changes. A live run left them untracked; they are the
       // record of what the pipeline learned, so the close commit carries them too.
       const paths = [dirRel];
+      // metrics.json is the machine-readable close of the change: what the run ledger
+      // (wh.js ledger) reads for the version it ran on and its cost, which the logs do not hold.
+      writeMetrics(root, id, state);
       if (fs.existsSync(path.join(root, '.workhorse', 'instincts'))) paths.push('.workhorse/instincts');
       L.git(root, ['add', '--', ...paths]);
       // Exits non-zero when nothing is staged; then there is nothing left to record.
@@ -725,6 +777,30 @@ switch (cmd) {
 
   default:
     die(`unknown command "${cmd || ''}". See the header of scripts/wh.js for usage.`);
+}
+
+/** The plugin version this CLI belongs to, from .claude-plugin/plugin.json. */
+function pluginVersion() {
+  try { return JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version || null; } catch (e) { return null; }
+}
+
+/** Write docs/sdlc/<id>/metrics.json: the clock, the gate decisions, the plugin version and the
+ *  run's cost at list price as the launcher recorded it (null when no launcher run reported one). */
+function writeMetrics(root, id, state) {
+  const c = clockFor(root, id, state);
+  const heads = readArtifact(root, id, 'approvals.md').match(/^## G\d: (approved|rejected)/gm) || [];
+  const metrics = {
+    schema: 1, change_id: id, title: state.title || id, tier: L.effectiveTier(state),
+    plugin_version: pluginVersion(), closed_at: L.nowIso(),
+    agent_minutes: c.agent_minutes, waiting_minutes: c.waiting_minutes, dead_minutes: c.dead_minutes,
+    unexplained_minutes: c.gap_minutes, wall_minutes: c.wall_minutes,
+    budget_minutes: c.budget_minutes, within_budget: c.within_budget,
+    gate_decisions: heads.length, rejections: heads.filter((h) => h.endsWith('rejected')).length,
+    cost_usd: typeof state.cost_usd === 'number' ? Math.round(state.cost_usd * 100) / 100 : null,
+    launcher_runs: Number.isInteger(state.launcher_runs) ? state.launcher_runs : 0,
+  };
+  fs.writeFileSync(path.join(L.changeDir(root, id), 'metrics.json'), JSON.stringify(metrics, null, 2) + '\n');
+  return metrics;
 }
 
 /** Append one stamped row to conductor-log.md. The CLI is the only clock the pipeline has. */

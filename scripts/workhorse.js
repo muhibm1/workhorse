@@ -26,6 +26,8 @@ const HELP = `workhorse: agents build the change, you decide at two gates.
                                         merge (starts by itself with the harness; --at-login, --stop)
   workhorse log                         follow the current run step by step
   workhorse doctor                      check that this machine and repository are ready
+  workhorse ledger [--out <dir>]        every run in every repository you have used, measured the
+                                        same way from the committed record (agent time, waiting, cost)
 
 On your phone: open the pull request the gate posted and reply /approve, /approve D2: <choice>,
 or /reject <what to change>. The background watcher picks it up within a minute.`;
@@ -412,6 +414,11 @@ function main(argv) {
     case 'watch': return watch(rest);
     case 'log': case 'follow': return log();
     case 'doctor': return doctor();
+    case 'ledger': case 'runs': {
+      const r = spawnSync(process.execPath, [WH, 'ledger', ...rest], { cwd: process.cwd(), stdio: 'inherit', windowsHide: true });
+      process.exitCode = r.status === null ? 1 : r.status;
+      return;
+    }
     default:
       // `workhorse "<problem> -> <outcome>"`: the request is the whole command line.
       if (argv.join(' ').includes('->')) return run(argv);

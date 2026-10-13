@@ -578,6 +578,12 @@ console.log('changelog');
   const broken = follows.map((f, i) => (f === versions[i + 1] ? null : `${versions[i]} follows ${f}, not ${versions[i + 1]}`)).filter(Boolean);
   check('every changelog entry names the release before it, by version and content',
     follows.length === versions.length - 1 && broken.length === 0, broken.join('; ') || `${follows.length} follows lines`);
+  // From 0.5.0 a release says what the run ledger shows for it, or that it is not measured yet,
+  // so a claim of "faster" always points at runs.
+  const entries = changelog.split(/^(?=## \d+\.\d+\.\d+ — )/m).filter((e) => /^## \d/.test(e));
+  const LGc = require(path.join(PLUGIN, 'scripts', 'wh-ledger.js'));
+  const missing = entries.filter((e) => LGc.cmpVersion(/^## (\S+)/.exec(e)[1], '0.5.0') >= 0 && !/^- Ledger: /m.test(e)).map((e) => /^## (\S+)/.exec(e)[1]);
+  check('every release from 0.5.0 carries a "- Ledger:" line', missing.length === 0, missing.join(', '));
 }
 
 console.log('artifact-check');
@@ -1171,6 +1177,76 @@ console.log('the watcher resumes stalled runs (0.4.2)');
   const agent = (f) => fs.readFileSync(path.join(PLUGIN, 'agents', f), 'utf8');
   check('the shipper skips an already merged PR and reports a refused merge', /already merged/.test(agent('wh-shipper.md')) && /merge refused/.test(agent('wh-shipper.md')));
   check('the conductor records a refused merge as a block the watcher clears', /WH blocked "merge of PR/.test(agent('wh-conductor.md')));
+}
+
+console.log('run ledger (0.5.0)');
+{
+  const LG = require(path.join(PLUGIN, 'scripts', 'wh-ledger.js'));
+  const W = require(path.join(PLUGIN, 'scripts', 'wh-launch.js'));
+  const rel = LG.parseReleases('## 0.3.10 — 2026-09-21\n\n## 0.3.12 — 2026-09-29\n## 0.3.13 — 2026-09-29\n## 0.4.0 — 2026-09-29\n## 0.4.2 — 2026-10-07\n');
+  check('releases parse oldest first', rel.map((r) => r.version).join(',') === '0.3.10,0.3.12,0.3.13,0.4.0,0.4.2');
+  check('a day with one release in force names it', LG.versionAt(rel, '2026-10-01T00:00:00Z').version === '0.4.0');
+  check('a day with several releases gives the honest range', LG.versionAt(rel, '2026-09-29T08:00:00Z').version === '0.3.10–0.4.0');
+  check('every inferred version says so', LG.versionAt(rel, '2026-10-08').source === 'inferred');
+  check('a range belongs to the generation of its lower end', LG.generationOf('0.3.10–0.4.0') === 'Two gates' && LG.generationOf('0.3.12') === 'Speed release' && LG.generationOf('0.5.0') === 'Lead time');
+  check('the tier is read from the documents', LG.tierFrom('', 'Risk tier: 2 (edits wh.js)') === 2 && LG.tierFrom('**Tier:** 3') === 3 && LG.tierFrom('nothing') === null);
+  check('a conductor log that names its plugin version is believed', LG.versionFromLog('2026-09-29T06:39:57Z | design | conductor | plugin root 0.3.11 used') === '0.3.11');
+  check('the median of an even list is the mean of the middle two', LG.median([4, 1, 3, 2]) === 2.5 && LG.median([]) === null);
+  check('launcher cost adds every result event and skips partial lines',
+    W.runCost('{"type":"result","total_cost_usd":1.25}\n{"type":"assistant"}\n{"type":"result","total_cost_usd":0.5}\n{"type":"result","total_') === 1.75);
+
+  // A repository whose record is committed: the ledger reads git, not the working tree.
+  const lg = path.join(tmp, 'ledger');
+  fs.mkdirSync(lg, { recursive: true });
+  const g = (...a) => execFileSync('git', a, { cwd: lg, encoding: 'utf8' }).trim();
+  g('init', '-q'); g('config', 'user.email', 'tester@example.com'); g('config', 'user.name', 'Tester');
+  const cdir = path.join(lg, 'docs', 'sdlc', '2026-10-01-make-it-fast');
+  fs.mkdirSync(cdir, { recursive: true });
+  fs.writeFileSync(path.join(cdir, 'brief.md'), '# Brief\n\nRisk tier: 1\n');
+  fs.writeFileSync(path.join(cdir, 'conductor-log.md'), [
+    '# Conductor log', '',
+    '2026-10-01T10:00:00.000Z | design | conductor | change created',
+    '2026-10-01T10:20:00.000Z | design | conductor | G2 Design presented',
+    '2026-10-01T10:50:00.000Z | build | conductor | resumed after approval',
+    '2026-10-01T11:05:00.000Z | done | conductor | closed', '',
+  ].join('\n'));
+  fs.writeFileSync(path.join(cdir, 'approvals.md'), '# Approvals\n\n## G2: approved\n\n- When: 2026-10-01T10:30:00.000Z\n');
+  g('add', '.'); g('commit', '-q', '-m', 'record');
+  fs.writeFileSync(path.join(cdir, 'conductor-log.md'), 'uncommitted edits are not the record\n');
+  const r = wh(lg, 'ledger', '--repo', lg, '--json');
+  const led = r.code === 0 ? JSON.parse(r.out) : { runs: [] };
+  const row = led.runs[0] || {};
+  check('the ledger recomputes a committed run: 35 agent minutes, 10 waiting, 20 dead', r.code === 0 && row.agent_minutes === 35 && row.waiting_minutes === 10 && row.dead_minutes === 20, r.err || JSON.stringify(row));
+  check('the ledger reads tier, budget and status from the record', row.tier === 1 && row.budget_minutes === 30 && row.within_budget === false && row.status === 'finished', JSON.stringify(row));
+  check('the ledger counts gate decisions', row.touches === 1 && row.rejections === 0);
+  const outDir = path.join(tmp, 'ledger-out');
+  const w = wh(lg, 'ledger', '--repo', lg, '--out', outDir);
+  const md = w.code === 0 ? fs.readFileSync(path.join(outDir, 'RUNS.md'), 'utf8') : '';
+  check('--out writes runs.json and a RUNS.md that opens in plain words', w.code === 0 && fs.existsSync(path.join(outDir, 'runs.json')) && /^# WorkHorse, run by run\n\nEvery change/.test(md) && /What the words mean/.test(md), w.err);
+  const fixed = LG.build(L, [{ path: lg, ref: 'HEAD', name: 'ledger' }], '', { 'ledger/2026-10-01-make-it-fast': { version: '0.3.12', note: 'n.', source: 's' } });
+  check('a cited correction sets the version and is listed with its source', fixed.runs[0].version === '0.3.12' && fixed.runs[0].version_source === 'cited' && /## Corrections/.test(LG.renderMarkdown(fixed.runs, fixed.summary, 'x')));
+  const nolog = path.join(tmp, 'ledger-none');
+  fs.mkdirSync(nolog, { recursive: true });
+  check('the ledger refuses with nothing to read', wh(nolog, 'ledger').code === 1);
+
+  // metrics.json at close, with the cost the launcher added.
+  const mx = path.join(tmp, 'metrics');
+  fs.mkdirSync(mx, { recursive: true });
+  const gm = (...a) => execFileSync('git', a, { cwd: mx, encoding: 'utf8' }).trim();
+  gm('init', '-q'); gm('config', 'user.email', 'tester@example.com'); gm('config', 'user.name', 'Tester');
+  wh(mx, 'init'); gm('add', '.'); gm('commit', '-q', '-m', 'onboard');
+  const mid = JSON.parse(wh(mx, 'new', 'Measure me', '--tier', '0').out).change_id;
+  check('cost add refuses a negative or missing amount', wh(mx, 'cost', 'add', '-1').code === 1 && wh(mx, 'cost', 'add').code === 1);
+  wh(mx, 'cost', 'add', '1.5'); wh(mx, 'cost', 'add', '0.25');
+  check('cost adds launcher runs up', JSON.parse(wh(mx, 'cost').out).cost_usd === 1.75 && JSON.parse(wh(mx, 'cost').out).launcher_runs === 2);
+  wh(mx, 'phase', 'done');
+  const mf = path.join(mx, 'docs', 'sdlc', mid, 'metrics.json');
+  const m = fs.existsSync(mf) ? JSON.parse(fs.readFileSync(mf, 'utf8')) : {};
+  const pv = JSON.parse(fs.readFileSync(path.join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  check('phase done writes metrics.json with the version, the tier and the cost', m.schema === 1 && m.plugin_version === pv && m.tier === 0 && m.cost_usd === 1.75 && m.launcher_runs === 2, JSON.stringify(m));
+  check('metrics.json is in the close commit', gm('ls-files', `docs/sdlc/${mid}/metrics.json`) !== '');
+  const back = LG.build(L, [{ path: mx, ref: 'HEAD', name: 'metrics' }], '', {});
+  check('the ledger prefers the recorded version and cost', back.runs[0] && back.runs[0].version === pv && back.runs[0].version_source === 'recorded' && back.runs[0].cost_usd === 1.75, JSON.stringify(back.runs[0]));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

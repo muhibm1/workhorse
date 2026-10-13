@@ -7,6 +7,35 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.5.0 — 2026-10-13
+
+Follows 0.4.2 (the watcher resumes stalled runs). The run ledger: every WorkHorse run in every
+repository, measured the same way, so each release can show whether it made runs faster.
+
+- `wh.js ledger` (and `workhorse ledger`) reads each change's committed conductor log and
+  approvals from git and recomputes its clock with the same function `wh.js clock` uses. No
+  number is typed by hand. `--repo <path>[#<ref>]` picks repositories (default: every one
+  `workhorse` remembers); `--out <dir>` writes `runs.json` and `RUNS.md`. Changes whose own
+  record is incomplete get a cited correction in `docs/ledger/overrides.json`, listed in
+  `RUNS.md`; nothing else is adjusted.
+- `wh.js phase done` writes `metrics.json` into the change folder: the clock, the gate
+  decisions, the plugin version the run used, and its cost at list price. The launcher adds each
+  headless run's reported cost to the change (`wh.js cost add`), so from now on cost per change
+  is recorded, not estimated.
+- `docs/ledger/RUNS.md` is the first ledger: 18 runs across AgentOps, Portfolio, Studbook,
+  WorkHorse and webapp, 2026-09-11 to 2026-10-08. Finished tier 0 to 2 runs, by generation:
+  median agent time 7 h 59 m (five gates, 2 runs), 1 h 43 m (two gates, 7), 1 h 05 m (speed
+  release onward, 5). Median wall time 45 h, 11 h, 2 h 26 m. Agents were working for only a
+  third of the wall time on the latest runs; the rest was waiting and dead time. That is what
+  0.5.x goes after (`docs/superpowers/specs/2026-10-13-lead-time-design.md`).
+- From this release every changelog entry carries a `- Ledger:` line naming the runs it was
+  measured on, or saying it is not measured yet. A test enforces it.
+- Tests: 385 in `hooks/tests/run.js` (from 364): release and version inference, tier parsing,
+  the recomputed clock on a committed fixture, `--out`, cited corrections, the launcher's cost
+  sum, and `metrics.json` at close.
+- Ledger: not measured yet. The first run on 0.5.0 is the first row with a recorded version and
+  cost.
+
 ## 0.4.2 — 2026-10-07
 
 Follows 0.4.1 (the counted review fix loop). The watcher resumes runs nobody is driving.
