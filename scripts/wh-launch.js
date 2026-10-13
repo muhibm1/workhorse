@@ -175,6 +175,9 @@ function main() {
     let final = '';
     try { final = JSON.parse(results[results.length - 1]).result || ''; } catch (e) { /* no result line */ }
     process.stdout.write(`\n${final || `(claude exited ${code} with no result; see the log)`}\n\n`);
+    // What this run cost at list price, added to the change it worked on (metrics.json at close).
+    const usd = runCost(text);
+    if (usd > 0) spawnSync(process.execPath, [WH, 'cost', 'add', String(usd)], { cwd: repo, encoding: 'utf8' });
     const status = spawnSync(process.execPath, [WH, 'status'], { cwd: repo, encoding: 'utf8' });
     if (status.stdout) process.stdout.write(status.stdout);
     if (/session limit|usage limit|rate limit/i.test(final)) {
@@ -185,5 +188,16 @@ function main() {
   });
 }
 
+/** Total `total_cost_usd` over the result events of a stream-json log. A resumed session can
+ *  report more than one result; each covers its own turns, so they add. */
+function runCost(text) {
+  let sum = 0;
+  for (const l of String(text || '').split(/\r?\n/)) {
+    if (!l.includes('"type":"result"')) continue;
+    try { const e = JSON.parse(l); if (typeof e.total_cost_usd === 'number' && e.total_cost_usd > 0) sum += e.total_cost_usd; } catch (e) { /* partial line */ }
+  }
+  return Math.round(sum * 10000) / 10000;
+}
+
 if (require.main === module) main();
-module.exports = { BASE_TOOLS, buildArgs, parseArgv, pluginDirFor, findRepo };
+module.exports = { BASE_TOOLS, buildArgs, parseArgv, pluginDirFor, findRepo, runCost };

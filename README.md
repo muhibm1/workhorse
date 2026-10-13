@@ -171,6 +171,18 @@ reports agent time, waiting time and dead time for the active change against its
 that was already red on the base branch, once; `wh.js known-failure list` is what later phases
 cite instead of re-deriving it.
 
+## Every run, measured
+
+`workhorse ledger` lists every change WorkHorse has carried in every repository you have used:
+agent time against the tier's budget, time waiting on a person, time lost to stopped runs, and
+cost. It recomputes each row from the change's committed log and approvals, so nobody types the
+numbers. [`docs/ledger/RUNS.md`](docs/ledger/RUNS.md) is the current ledger; every release since
+0.5.0 names the runs it was measured on. Regenerate it with:
+
+```bash
+workhorse ledger --repo ../agentops --repo ../Portfolio --repo ../studbook --repo . --repo "../webapp#origin/v3-integration" --out docs/ledger
+```
+
 ## What enforces what
 
 Prompts can be argued with. Hooks cannot. `hooks/hooks.json` wires nine Node scripts (at eleven
