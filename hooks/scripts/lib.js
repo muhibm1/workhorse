@@ -664,7 +664,7 @@ module.exports = {
   gitCommonDir, stateRoot, stateFile, activeFile, listChangeIds, isInStateRoot,
   ALL_GATES, GATE_NAMES, TIER_GATES, PHASES, BUDGET_MINUTES, budgetMinutes,
   effectiveTier, requiredGates, gateSatisfied, PHASE_ARTIFACT_GATE,
-  parseConductorLog, parseApprovals, computeClock, formatClock, fmtMinutes, fmtAge,
+  parseConductorLog, parseApprovals, computeClock, RESUME_RE, GAP_MINUTES, formatClock, fmtMinutes, fmtAge,
   knownFailuresFile, parseKnownFailures, loadKnownFailures, addKnownFailure,
   shipBlockers, packetComplete,
   normalize, relToRoot, globToRegex, matchesAny, toolFilePath,
