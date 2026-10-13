@@ -1,6 +1,6 @@
 # Where things stand
 
-Last updated 2026-10-07. The state of WorkHorse (the plugin), Paddock (the desktop app, retired)
+Last updated 2026-10-07. The state of WorkHorse (the plugin), Paddock (the desktop app, removed 2026-10-13)
 and Studbook (paused), what is open, and what to do when picking this back up. Studbook's own
 detail is in `studbook/docs/status.md`.
 
@@ -11,6 +11,17 @@ changes, and each gate is posted to the change's pull request so it can be answe
 `/approve` or `/reject` from a phone. Paddock is retired as of 0.3.14 (its CI still runs) and
 Studbook is out of use; both stay in their repositories. The sections below from 2026-09-19 and
 2026-09-26 are kept as the record and describe the Paddock and Studbook work as it stood then.
+
+## What changed on 2026-10-13
+
+- Paddock, the desktop app (`desk/`, about 8,100 lines of TypeScript), is removed, along with its
+  CI job, its Dependabot entry and the pre-push steps that ran it. It broke because it kept its
+  own copies of things WorkHorse owns: a bundled plugin that went stale, its own agent launcher
+  (about 3 hours blocked on one run), its own repository list (three approvals lost) and an
+  approve button that could act before a gate was presented. The terminal command and `/approve`
+  on the pull request replaced it in 0.4.0. Monitoring is now LangSmith traces (0.5.2). Any
+  future front end reads state only, never starts an agent, and acts only through the pull
+  request. The code stays in git history and in the public `paddock-snapshot`.
 
 ## What changed on 2026-10-07
 

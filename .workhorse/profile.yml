@@ -13,18 +13,18 @@ client:
 autonomy: bounded
 
 stack:
-  languages: [javascript, typescript]
-  frameworks: [claude-code-plugin, electron, react, electron-vite, vite, zustand, vitest, playwright]
+  languages: [javascript]
+  frameworks: [claude-code-plugin]
   package_manager: npm
-  database: "none for the plugin; Paddock's Studbook tab connects to an external Postgres (Supabase, us-east-1)"
-  hosting: "local machine: plugin installed at user scope, Paddock as a portable exe; source on GitHub (private)"
+  database: "none"
+  hosting: "local machine: plugin installed at user scope; source on GitHub (private)"
   ci: github-actions
 
 # Commands agents run. Each must be a single command that exits non-zero on failure.
 # All run from the repository root. Confirmed ones were run on 2026-09-27 and exited 0.
 commands:
-  # Paddock (desk/) is retired (2026-09-29), so a run checks the plugin only: its test runner and
-  # the manifest validation. desk/ keeps its own CI job; `npm --prefix desk test` still runs it.
+  # A run checks the plugin only: its test runner and the manifest validation. Paddock (desk/)
+  # was retired on 2026-09-29 and removed on 2026-10-13.
   install: ""
   typecheck: ""
   lint: "claude plugin validate ."          # manifest, frontmatter and hooks.json validation
@@ -47,12 +47,10 @@ conventions:
     - "**/tests/**"
     - "**/test/**"
     - "**/e2e/**"
-    - "desk/fixtures/**"
   docs_dir: docs
   style_notes:
     - "Plugin code (hooks/, scripts/) is zero-dependency CommonJS Node with 'use strict'; never add an npm dependency there"
-    - "Paddock spawns child processes with an explicit argument array, never a shell string"
-    - "Secrets stay in Paddock's main process, encrypted with safeStorage, and are never returned over IPC"
+    - "Child processes take an explicit argument array, never a shell string"
     - "Pin exact dependency versions; pin GitHub Actions by commit SHA with the tag in a comment"
     - "A version bump adds a changelog entry first in the file, headed with the version, a spaced em-dash and the date, and a Follows line; tests match that heading"
     - "Comments state measured facts with their source, and label anything not verified"
@@ -74,14 +72,6 @@ sensitive_paths:
   - "vendor/**"
   - "ci/**"
   - ".github/dependabot.yml"
-  - "desk/src/main/settings.ts"
-  - "desk/src/main/index.ts"
-  - "desk/src/main/ipc.ts"
-  - "desk/src/main/studbook/**"
-  - "desk/src/preload/**"
-  - "desk/electron-builder.yml"
-  - "desk/package.json"
-  - "desk/package-lock.json"
 
 # Commands hooks refuse (deny) or ask before running. Substrings, case-insensitive.
 deny_commands:
@@ -131,7 +121,7 @@ compliance:
     - regime: "pci-dss"
       reason: "No cardholder data path; the repo has no payment processing anywhere in the stack or data inventory."
     - regime: "financial"
-      reason: "No ledger, balance, pricing or eligibility decision anywhere in the codebase; WorkHorse and Paddock do not move money."
+      reason: "No ledger, balance, pricing or eligibility decision anywhere in the codebase; WorkHorse does not move money."
   special_categories: []   # none identified in this repo's own data (believed: no field or inferable grouping found)
   data_residency: "Studbook corpus (SDLC docs, commit messages, embeddings) in Supabase Postgres us-east-1 (confirmed, studbook/docs/hosted-config.md per codebase-map.md). Anthropic API and GitHub are US-region processors (believed, no explicit region pin found). No residency requirement is stated because there is no end-user personal data and the owner states US jurisdiction with no end users (constraints.md, Business constraints) -- believed, not a documented legal determination."
   audit_log_required: true   # already implemented, not regime-driven: approvals.md is an append-only log of who approved what, when, over which artifact hash (confirmed, scripts/wh.js line 325, hooks/tests/run.js). Recorded here so the requirement is not silently dropped in a future edit.
@@ -140,7 +130,7 @@ compliance:
 # Risk tier overrides. Paths here force at least the given tier regardless of the classifier.
 tier_floor_paths:
   3: []
-  2: ["hooks/**", "scripts/wh.js", "skills/approve/**", "desk/src/main/settings.ts", "desk/src/main/ipc.ts", "desk/src/main/index.ts", "desk/src/main/studbook/**", "desk/src/preload/**", ".github/**", ".githooks/**"]
+  2: ["hooks/**", "scripts/wh.js", "skills/approve/**", ".github/**", ".githooks/**"]
 
 # Optional tracker sync. Not configured for this repository.
 tracker:
@@ -150,4 +140,4 @@ tracker:
   sync_on: [gate, phase]
 
 # Free text the discovery analyst could not fit elsewhere. Kept short.
-notes: "Confirmed 2026-09-27 from the repo root: npm test (224 passed), npm --prefix desk test (278 passed, 1 skipped, 2 files skipped: Studbook parity gates need a live database), typecheck, lint, audit (0 vulnerabilities), claude plugin validate . all exit 0. Believed, not run: install, build, e2e. Releases: plugin = bump .claude-plugin/plugin.json and marketplace.json, add CHANGELOG.md entry, then the owner runs claude plugin install workhorse@workhorse --scope user. Paddock = bump desk/package.json, add desk/CHANGELOG.md entry, then npm --prefix desk run dist:win writes to ~/Paddock-builds. Both are human steps. Studbook proper lives in a separate repo, ~/studbook (muhibm1/studbook), and is out of scope here."
+notes: "Confirmed 2026-09-27 from the repo root: npm test (224 passed), claude plugin validate . all exit 0. Releases: plugin = bump .claude-plugin/plugin.json and marketplace.json, add CHANGELOG.md entry, then the owner runs claude plugin install workhorse@workhorse --scope user. This is a human step. Paddock (desk/) was removed on 2026-10-13. Studbook proper lives in a separate repo, ~/studbook (muhibm1/studbook), and is out of scope here."

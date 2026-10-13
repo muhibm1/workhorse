@@ -1,5 +1,8 @@
 # Constraints: WorkHorse
 
+> **2026-10-13: Paddock (`desk/`) has been removed from this repository.** Everything below about
+> Paddock describes it as it was. Its code stays in git history and in the public `paddock-snapshot`.
+
 Written by wh-discovery-analyst on 2026-09-27 at commit 0ec0a97. Every claim is labelled
 **confirmed** or **believed**. The evidence is in `docs/sdlc/codebase-map.md`.
 
