@@ -2,7 +2,8 @@
 // Hook and CLI tests. Builds a throwaway repo under the OS temp dir, feeds each hook sample
 // JSON on stdin, and asserts the decision. Run: node hooks/tests/run.js
 'use strict';
-process.env.WORKHORSE_NO_WATCH = '1'; // session-context.js would otherwise start a real watcher
+process.env.WORKHORSE_NO_WATCH = '1';
+process.env.WORKHORSE_NO_TRACE = '1'; // phase done would otherwise send fixture changes to LangSmith // session-context.js would otherwise start a real watcher
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -1321,6 +1322,55 @@ console.log('merge on Ship approval (0.5.1)');
   const conductor = fs.readFileSync(path.join(PLUGIN, 'agents', 'wh-conductor.md'), 'utf8');
   check('the conductor checks CI before presenting Ship', /WH checks --wait 15/.test(conductor));
   check('the shipper never merges over a red check and leaves the merge to ship-merge', /never merge over a red check/.test(fs.readFileSync(path.join(PLUGIN, 'agents', 'wh-shipper.md'), 'utf8')) && /wh\.js ship-merge/.test(fs.readFileSync(path.join(PLUGIN, 'agents', 'wh-shipper.md'), 'utf8')));
+}
+
+console.log('runs as LangSmith traces (0.5.2)');
+{
+  const T = require(path.join(PLUGIN, 'scripts', 'wh-trace.js'));
+  const id1 = T.stableId('c1', 'root');
+  check('trace ids are stable UUIDs per change and name', id1 === T.stableId('c1', 'root') && id1 !== T.stableId('c2', 'root') && /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id1), id1);
+  check('the dotted-order stamp has microseconds', T.stamp(Date.parse('2026-10-13T08:52:00.123Z')) === '20261013T085200123000Z');
+  check('a log row names its agent', T.agentOf('wh-designer | tier 2, 20 evals').agent === 'wh-designer' && T.agentOf('no agent here').agent === 'conductor');
+  const log = [
+    '2026-10-13T06:00:00.000Z | design | conductor | change created',
+    '2026-10-13T06:20:00.000Z | design | wh-designer | brief written',
+    '2026-10-13T06:50:00.000Z | build | conductor | resumed after approval',
+    '2026-10-13T07:05:00.000Z | build | wh-builder | wave 1 folded',
+  ].join('\n');
+  const approvals = '## G2: approved\n\n- When: 2026-10-13T06:30:00.000Z\n';
+  const now = Date.parse('2026-10-13T09:00:00Z');
+  const runs = T.buildTrace(L, { id: 'c1', title: 'Fixture', tier: 1, version: '0.5.2', log, approvals, streams: [], now });
+  const root = runs[0];
+  const clock = L.computeClock({ log, approvals, state: { phase: 'done', tier: 1 }, profile: {} });
+  check('the root carries the same minutes the clock computes', root.outputs.agent_minutes === clock.agent_minutes && root.outputs.waiting_minutes === clock.waiting_minutes && root.outputs.dead_minutes === clock.dead_minutes, JSON.stringify(root.outputs));
+  const phases = runs.filter((r) => r.parent_run_id === root.id);
+  check('one child per phase in order, each step under its phase', phases.map((p) => p.name).join(',') === 'design,build' && runs.filter((r) => phases.some((p) => p.id === r.parent_run_id)).length === 4);
+  check('every run belongs to the root trace and extends its parent\'s dotted order', runs.every((r) => r.trace_id === root.id) && runs.filter((r) => r.parent_run_id).every((r) => r.dotted_order.startsWith(runs.find((p) => p.id === r.parent_run_id).dotted_order + '.')));
+  const owner = runs.find((r) => r.name === 'owner');
+  check('the approval is a step tagged waiting; the resume is tagged dead', owner && owner.tags.includes('waiting') && runs.some((r) => r.tags.includes('dead')));
+  check('a recent change keeps its real times', root.start_time === '2026-10-13T06:00:00.000Z' && !root.tags.includes('replayed'));
+  const old = T.buildTrace(L, { id: 'c1', title: 'Fixture', tier: 1, log, approvals, streams: [], now: now + 5 * 86400000 });
+  check('an older change is replayed to end now with the same durations, and says so', old[0].end_time === new Date(now + 5 * 86400000).toISOString() && Date.parse(old[0].end_time) - Date.parse(old[0].start_time) === Date.parse(root.end_time) - Date.parse(root.start_time) && old[0].tags.includes('replayed') && old[0].extra.metadata.recorded_started_at === '2026-10-13T06:00:00.000Z');
+  const long = log + '\n2026-10-14T07:05:00.000Z | build | conductor | finally';
+  check('a change longer than LangSmith\'s window is not sent', T.buildTrace(L, { id: 'c1', log: long, approvals, now }).length === 0);
+  const stream = [
+    JSON.stringify({ type: 'assistant', parent_tool_use_id: null, message: { usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: 'tool_use', id: 't1', name: 'Task', input: { subagent_type: 'wh-builder' } }] } }),
+    JSON.stringify({ type: 'assistant', parent_tool_use_id: 't1', message: { usage: { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 7 }, content: [] } }),
+    JSON.stringify({ type: 'result', total_cost_usd: 0.42 }),
+  ].join('\n');
+  const u = T.usageFromStreams([stream]);
+  check('stream usage is split by the agent each Task call started', u.by_agent.conductor.output_tokens === 5 && u.by_agent['wh-builder'].input_tokens === 100 && u.by_agent['wh-builder'].cache_read_input_tokens === 7 && u.cost_usd === 0.42, JSON.stringify(u));
+  const tr = path.join(tmp, 'trace');
+  fs.mkdirSync(path.join(tr, 'docs', 'sdlc', '2026-10-13-fixture'), { recursive: true });
+  const gt = (...a) => execFileSync('git', a, { cwd: tr, encoding: 'utf8' }).trim();
+  gt('init', '-q'); gt('config', 'user.email', 'tester@example.com'); gt('config', 'user.name', 'Tester');
+  fs.writeFileSync(path.join(tr, 'docs', 'sdlc', '2026-10-13-fixture', 'conductor-log.md'), log + '\n');
+  gt('add', '.'); gt('commit', '-q', '-m', 'record');
+  const noKey = { ...process.env }; delete noKey.LANGSMITH_API_KEY;
+  const dry = spawnSync(process.execPath, [WH, 'trace', '--repo', tr, '--all', '--dry-run'], { cwd: tr, encoding: 'utf8', env: noKey });
+  check('--dry-run shows the trace without a key', dry.status === 0 && JSON.parse(dry.stdout).traces[0].change_id === '2026-10-13-fixture', dry.stderr);
+  const send = spawnSync(process.execPath, [WH, 'trace', '--repo', tr, '--all'], { cwd: tr, encoding: 'utf8', env: noKey });
+  check('without LANGSMITH_API_KEY nothing is sent and it says why', send.status === 2 && /LANGSMITH_API_KEY is not set/.test(send.stderr));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

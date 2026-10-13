@@ -177,7 +177,7 @@ function main() {
     process.stdout.write(`\n${final || `(claude exited ${code} with no result; see the log)`}\n\n`);
     // What this run cost at list price, added to the change it worked on (metrics.json at close).
     const usd = runCost(text);
-    if (usd > 0) spawnSync(process.execPath, [WH, 'cost', 'add', String(usd)], { cwd: repo, encoding: 'utf8' });
+    if (usd > 0) spawnSync(process.execPath, [WH, 'cost', 'add', String(usd), '--log', logPath], { cwd: repo, encoding: 'utf8' });
     const status = spawnSync(process.execPath, [WH, 'status'], { cwd: repo, encoding: 'utf8' });
     if (status.stdout) process.stdout.write(status.stdout);
     if (/session limit|usage limit|rate limit/i.test(final)) {

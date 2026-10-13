@@ -42,7 +42,10 @@
 //                                           (exit 1 on red, 2 while still pending after the wait)
 //   wh.js ship-merge [--if-pending]         after Ship (G4) is approved: commit and push the records,
 //                                           then merge the pull request once CI is green (0.5.1)
-//   wh.js cost [add <usd>]                  the active change's cost at list price, as headless runs report it
+//   wh.js trace [--repo <path>[#<ref>]] [--change <id> | --all] [--dry-run] [--project <name>]
+//                                           send a change (default: the active one) to LangSmith as one
+//                                           trace, from its conductor log; needs LANGSMITH_API_KEY (0.5.2)
+//   wh.js cost [add <usd>] [--log <path>]                  the active change's cost at list price, as headless runs report it
 //   wh.js ledger [--repo <path>[#<ref>]]... [--out <dir>] [--json]
 //                                           every change in every repository, its clock recomputed from
 //                                           the committed record (see scripts/wh-ledger.js)
@@ -190,16 +193,68 @@ switch (cmd) {
     break;
   }
 
+  case 'trace': {
+    const T = require(path.join(__dirname, 'wh-trace.js'));
+    const LG = require(path.join(__dirname, 'wh-ledger.js'));
+    const dry = hasFlag('--dry-run');
+    const all = hasFlag('--all');
+    const project = flag('--project') || process.env.WORKHORSE_LANGSMITH_PROJECT || 'workhorse';
+    const repoSpec = flag('--repo');
+    let changeId = flag('--change');
+    const spec = LG.parseRepoSpec(typeof repoSpec === 'string' ? repoSpec : (L.findRoot(process.cwd()) || process.cwd()));
+    const changes = LG.readChanges(spec.path, spec.ref);
+    const releases = LG.parseReleases(LG.pluginChangelog());
+    let streams = [];
+    if (!all && !changeId) {
+      const root = requireRoot();
+      const { id, state } = requireActive(root);
+      changeId = id;
+      // The working tree is the record while a change is open; the launcher's stream logs add usage.
+      const read = (n) => readArtifact(root, id, n);
+      changes[id] = { 'conductor-log.md': read('conductor-log.md'), 'approvals.md': read('approvals.md'), 'brief.md': read('brief.md'), 'metrics.json': read('metrics.json') };
+      streams = (state.run_logs || []).filter((f) => fs.existsSync(f)).map((f) => fs.readFileSync(f, 'utf8'));
+    }
+    const ids = all ? Object.keys(changes).sort() : [changeId];
+    const traces = [];
+    const skipped = [];
+    for (const id of ids) {
+      const files = changes[id];
+      if (!files || !files['conductor-log.md']) { if (!all) die(`no conductor log for ${id}`); continue; }
+      const row = LG.runRow(L, spec.name, id, files, releases, LG.pluginOverrides()[`${spec.name}/${id}`] || null);
+      let metrics = null;
+      try { metrics = files['metrics.json'] ? JSON.parse(files['metrics.json']) : null; } catch (e) { metrics = null; }
+      const runs = T.buildTrace(L, { id, repo: spec.name, title: id.slice(11).replace(/-+$/, '').replace(/-/g, ' '), tier: row.tier, version: row.version, metrics, log: files['conductor-log.md'], approvals: files['approvals.md'], streams });
+      if (runs.length) traces.push({ id, runs });
+      else skipped.push({ change_id: id, why: 'longer than LangSmith\'s 24-hour window, or fewer than two log rows' });
+    }
+    if (dry) { out({ traces: traces.map((t) => ({ change_id: t.id, runs: t.runs.length, root: t.runs[0].name, outputs: t.runs[0].outputs })), skipped }); break; }
+    const apiKey = process.env.LANGSMITH_API_KEY;
+    if (!apiKey) die('LANGSMITH_API_KEY is not set; tracing is off. --dry-run shows what would be sent.', 2);
+    (async () => {
+      const results = [];
+      for (const t of traces) {
+        const r = await T.upload(t.runs, { apiKey, project, endpoint: process.env.LANGSMITH_ENDPOINT });
+        results.push({ change_id: t.id, runs: t.runs.length, ...r });
+      }
+      out({ project, results, skipped });
+      if (results.some((r) => !r.ok)) process.exitCode = 1;
+    })();
+    break;
+  }
+
   case 'cost': {
     // The launcher adds each headless run's reported cost to the active change, so the change's
     // metrics.json can say what it cost. `cost add <usd>`; `cost` alone prints the running total.
     const root = requireRoot();
     const { id, state } = requireActive(root);
+    const logPath = flag('--log');
     if (args[0] === 'add') {
       const usd = Number(args[1]);
       if (!Number.isFinite(usd) || usd < 0) die('usage: wh.js cost add <usd>');
       state.cost_usd = Math.round(((typeof state.cost_usd === 'number' ? state.cost_usd : 0) + usd) * 10000) / 10000;
       state.launcher_runs = (Number.isInteger(state.launcher_runs) ? state.launcher_runs : 0) + 1;
+      // The stream log is what `wh.js trace` reads for tokens by agent.
+      if (typeof logPath === 'string') state.run_logs = (state.run_logs || []).concat([path.resolve(logPath)]);
       L.saveState(root, id, state);
     }
     out({ change_id: id, cost_usd: typeof state.cost_usd === 'number' ? state.cost_usd : null, launcher_runs: state.launcher_runs || 0 });
@@ -376,6 +431,14 @@ switch (cmd) {
       L.git(root, ['commit', '-q', '-m', `chore(sdlc): close ${id}`, '--', ...paths]);
       committed = L.git(root, ['log', '-1', '--format=%h', '--', ...paths]) || null;
       R.lockRelease(L, root);
+      // 0.5.2: the closed change goes to LangSmith as one trace, in the background, so closing
+      // never waits on the network. Off unless LANGSMITH_API_KEY is set.
+      if (process.env.LANGSMITH_API_KEY && !process.env.WORKHORSE_NO_TRACE) {
+        try {
+          const child = require('child_process').spawn(process.execPath, [__filename, 'trace'], { cwd: root, detached: true, stdio: 'ignore', windowsHide: true });
+          child.unref();
+        } catch (e) { /* tracing is best effort */ }
+      }
       R.notify(`WorkHorse: ${state.title || id} is done`, 'The change closed; the retro runs in the background.');
     }
     out(committed ? { phase: p, committed } : { phase: p });

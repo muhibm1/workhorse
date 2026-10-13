@@ -183,6 +183,10 @@ numbers. [`docs/ledger/RUNS.md`](docs/ledger/RUNS.md) is the current ledger; eve
 workhorse ledger --repo ../agentops --repo ../Portfolio --repo ../studbook --repo . --repo "../webapp#origin/v3-integration" --out docs/ledger
 ```
 
+**In LangSmith.** With `LANGSMITH_API_KEY` set, every change is sent to LangSmith as one
+trace when it closes: phases, each agent's steps with their real durations, and waiting on a
+person tagged apart from agent work. `wh.js trace --repo <path> --all` sends past changes.
+
 ## What enforces what
 
 Prompts can be argued with. Hooks cannot. `hooks/hooks.json` wires nine Node scripts (at eleven

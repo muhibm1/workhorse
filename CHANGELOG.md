@@ -7,6 +7,31 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.5.2 — 2026-10-13
+
+Follows 0.5.1 (approving Ship merges the change). Every run becomes a LangSmith trace.
+
+- Asked for by the Paddock review (2026-10-13): users lacked a searchable record of what the
+  agents did, and LangSmith is where teams already look at agent runs.
+- `wh.js trace` turns a change's conductor log into one trace: the change at the root, a child
+  per phase, and a child per step, timed from the row before it to its own row. Each step is
+  tagged `agent`, `waiting`, `dead` or `unexplained` by the same rule the clock uses, and the
+  root carries the clock's minutes, tier, plugin version and cost. With the launcher's stream
+  logs (now recorded per change by `wh.js cost add --log`) the root also gets tokens by agent.
+- Closing a change (`wh.js phase done`) sends its trace in the background, so closing never
+  waits on the network. Off unless `LANGSMITH_API_KEY` is set; `WORKHORSE_NO_TRACE=1` turns it
+  off; `WORKHORSE_LANGSMITH_PROJECT` picks the project (default `workhorse`).
+- `--repo <path>[#<ref>] --all` sends past changes from the committed record. LangSmith only
+  accepts runs from the last 24 hours, so an older change is replayed: shifted to end now with
+  exact durations, tagged `replayed`, its recorded times in metadata. A change that ran longer
+  than 23 hours is not sent. Ids are derived from the change id, so sending twice is harmless.
+- Sent once on 2026-10-13: 16 of the ledger's 18 runs (AgentOps, Portfolio, Studbook,
+  WorkHorse, webapp). The two Portfolio runs of 68 h and 85 h were too long to send.
+- Tests: 418 in `hooks/tests/run.js` (from 405): stable ids, the dotted order, the clock's
+  minutes on the root, phase and step nesting, replay, the 23-hour limit, tokens by agent, and
+  no upload without a key.
+- Ledger: not measured yet. Tracing adds no time to a run by construction; it runs after close.
+
 ## 0.5.1 — 2026-10-13
 
 Follows 0.5.0 (the run ledger). No dead time after Ship: approving Ship merges the change.
