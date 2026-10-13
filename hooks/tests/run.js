@@ -878,10 +878,65 @@ console.log('agent models and tools (0.3.14)');
   // The design stage decides everything downstream; it keeps the strongest model.
   check('the designer runs on Fable', model('wh-designer.md') === 'fable', model('wh-designer.md'));
   check('the conductor runs on Sonnet', model('wh-conductor.md') === 'sonnet', model('wh-conductor.md'));
-  // Studbook is out of use (2026-09-29): no agent may list a tool from a server that is not registered,
-  // or every dispatch of it would carry a dead tool name.
+  // No agent may list a tool from a server the plugin does not register itself, or every dispatch of
+  // it would carry a dead tool name. The bare `mcp__studbook__` names came from a registration each
+  // person had to make by hand (removed 0.3.14); the plugin's own `.mcp.json` now starts the server.
   const naming = fs.readdirSync(dir).filter((f) => f.endsWith('.md') && /mcp__studbook__/.test(front(f)));
   check('no agent lists a Studbook tool', naming.length === 0, naming.join(', '));
+}
+
+console.log('studbook record server');
+{
+  const dir = path.join(PLUGIN, 'agents');
+  const front = (f) => {
+    const m = /^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r\n/g, '\n'));
+    return m ? m[1] : '';
+  };
+  const mcp = JSON.parse(fs.readFileSync(path.join(PLUGIN, '.mcp.json'), 'utf8'));
+  const server = mcp.mcpServers && mcp.mcpServers.studbook;
+  check('the plugin registers the studbook server', !!server && server.command === 'node'
+    && server.args.length === 1 && server.args[0] === '${CLAUDE_PLUGIN_ROOT}/scripts/studbook-mcp.js');
+  const users = fs.readdirSync(dir).filter((f) => f.endsWith('.md') && /mcp__plugin_workhorse_studbook__/.test(front(f)));
+  check('the designer and the discovery analyst can search the record',
+    users.sort().join(',') === 'wh-designer.md,wh-discovery-analyst.md', users.join(', '));
+  for (const f of users) {
+    const tools = (/^tools:\s*(.*)$/m.exec(front(f)) || [])[1].split(',').map((t) => t.trim());
+    const studbook = tools.filter((t) => t.includes('studbook'));
+    check(`${f} lists only the free search tool`, studbook.join() === 'mcp__plugin_workhorse_studbook__search_record', studbook.join());
+    const body = fs.readFileSync(path.join(dir, f), 'utf8');
+    check(`${f} caps calls and continues without the tool`, /At most 3 calls/.test(body) && /continue without it/.test(body));
+  }
+  check('the designer passes its change id as own_change_id', /own_change_id/.test(fs.readFileSync(path.join(dir, 'wh-designer.md'), 'utf8')));
+
+  const S = require(path.join(PLUGIN, 'scripts', 'studbook-mcp.js'));
+  const env = S.serverEnv({}, '/h');
+  check('the server reads the local record by default', env.STUDBOOK_LOCAL_DB === path.join('/h', '.studbook', 'record.sqlite'));
+  check('the paid answer tool is capped at zero by default', env.STUDBOOK_MCP_ASK_LIMIT === '0');
+  check('search is fast by default: reranker off, models preloaded, ONNX encoder, one OpenMP thread',
+    env.STUDBOOK_MCP_RERANK === 'off' && env.STUDBOOK_MCP_PRELOAD === '1' && env.STUDBOOK_QUERY_ENCODER === 'onnx'
+    && env.OMP_NUM_THREADS === '1');
+  const reranked = S.serverEnv({ STUDBOOK_MCP_RERANK: 'on' }, '/h');
+  check('choosing the reranker leaves the thread count alone', reranked.OMP_NUM_THREADS === undefined);
+  check('a chosen database URL is left alone', S.serverEnv({ STUDBOOK_DATABASE_URL: 'x' }, '/h').STUDBOOK_LOCAL_DB === undefined);
+  check('a chosen local file and ask cap are kept',
+    S.serverEnv({ STUDBOOK_LOCAL_DB: '/r.sqlite', STUDBOOK_MCP_ASK_LIMIT: '2' }, '/h').STUDBOOK_LOCAL_DB === '/r.sqlite'
+    && S.serverEnv({ STUDBOOK_MCP_ASK_LIMIT: '2' }, '/h').STUDBOOK_MCP_ASK_LIMIT === '2');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wh-studbook-'));
+  check('no checkout found gives null', S.findHome({}, tmp) === null);
+  const home = path.join(tmp, 'C.Projects', 'studbook');
+  fs.mkdirSync(path.join(home, 'mcp_server'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'mcp_server', '__main__.py'), '');
+  check('finds ~/C.Projects/studbook', S.findHome({}, tmp) === home);
+  check('STUDBOOK_HOME wins when it holds a checkout', S.findHome({ STUDBOOK_HOME: home }, '/nowhere') === home);
+  check('no virtualenv gives null', S.findPython(home) === null);
+  fs.mkdirSync(path.join(home, '.venv', 'bin'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.venv', 'bin', 'python'), '');
+  check('finds the POSIX virtualenv', S.findPython(home) === path.join(home, '.venv', 'bin', 'python'));
+  const r = spawnSync(process.execPath, [path.join(PLUGIN, 'scripts', 'studbook-mcp.js')], {
+    env: { ...process.env, HOME: path.join(tmp, 'empty'), USERPROFILE: path.join(tmp, 'empty'), STUDBOOK_HOME: '' }, encoding: 'utf8',
+  });
+  check('with no checkout the launcher exits 1 with one line', r.status === 1 && /no Studbook checkout/.test(r.stderr), r.stderr);
+  fs.rmSync(tmp, { recursive: true, force: true });
 }
 
 console.log('wh-launch (0.3.14)');
