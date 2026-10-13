@@ -217,6 +217,36 @@ function stallDecision({ digest, lockHeld, lastLog, prMerged, now, prior }) {
   return { resume: true, why: blocked ? 'the pull request is merged' : `no activity for ${Math.round(idle)} min and no gate waiting`, attempts: attempts + 1 };
 }
 
+// A stopped run says so where its owner looks (0.5.4). Paddock was retired on 2026-10-13 in
+// favour of LangSmith for watching runs; what LangSmith cannot do is tell a person, while a run
+// is stopped, that it needs them. The watcher already knows: when it decides not to resume a run
+// that is a person's to unblock, or that has been resumed three times without progress, it posts
+// one comment on the change's pull request, and GitHub notifies the phone. Once per stop: a new
+// log line is a new stop. Nothing is written to the conductor log, because a log line would read
+// as progress and reset the resume count.
+const NOTIFY_WHY = /needs a look|blocked on something a person must do/;
+
+/** Pure: the pull request comment for a run the watcher is leaving stopped, or null. */
+function stallNotice({ decision, digest, lastLog, now }) {
+  if (!decision || decision.resume || !digest || !digest.change_id || !lastLog) return null;
+  if (!NOTIFY_WHY.test(decision.why)) return null;
+  const idle = Math.round((now - lastLog.at) / 60000);
+  const parts = lastLog.text.split(' | ');
+  const step = parts.length >= 4 ? `${parts[2]}: ${parts.slice(3).join(' | ')}` : lastLog.text;
+  return {
+    key: `${digest.change_id}:${decision.why}:${lastLog.text}`,
+    text: [
+      `**WorkHorse: this run has stopped and needs you.**`,
+      '',
+      `${digest.title || digest.change_id} stopped in ${digest.phase} ${idle} minutes ago, and the watcher is not restarting it: ${decision.why}.`,
+      '',
+      `Last step: ${step}`,
+      '',
+      'Fix what it names, then run `workhorse resume` in this repository.',
+    ].join('\n'),
+  };
+}
+
 function loadWatchState() { try { return JSON.parse(fs.readFileSync(WATCH_STATE, 'utf8')); } catch (e) { return {}; } }
 function saveWatchState(s) { try { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(WATCH_STATE, JSON.stringify(s, null, 2) + '\n'); } catch (e) { /* best effort */ } }
 const STARTUP = process.env.APPDATA
@@ -344,6 +374,15 @@ function watch(argv) {
     const ws = loadWatchState();
     const d = stallDecision({ digest, lockHeld: !!(lock && lock.holder), lastLog, prMerged, now: Date.now(), prior: ws[digest.change_id] });
     if (!d.resume) {
+      const n = stallNotice({ decision: d, digest, lastLog, now: Date.now() });
+      if (n && digest.pr_url && !process.env.WORKHORSE_NO_NOTIFY && !(ws.notified || []).includes(n.key)) {
+        const posted = spawnSync('gh', ['pr', 'comment', digest.pr_url, '--body-file', '-'], { cwd: repo, input: n.text, encoding: 'utf8', windowsHide: true });
+        if (posted.status === 0) {
+          say(`${stamp()} ${path.basename(repo)}: told the pull request that ${digest.title || digest.change_id} has stopped (${d.why}).`);
+          ws.notified = (ws.notified || []).slice(-50).concat([n.key]);
+          saveWatchState(ws);
+        }
+      }
       // Say it once per change, so the log explains a run that is left alone.
       const key = `${digest.change_id}:${d.why}`;
       if (lastLog && (Date.now() - lastLog.at) / 60000 >= STALL_MINUTES && !(ws.said || []).includes(key)) {
@@ -430,4 +469,4 @@ function main(argv) {
 }
 
 if (require.main === module) main(process.argv.slice(2));
-module.exports = { main, HELP, findRepo, loadRepos, remember, ensureWatcher, watcherAlive, stallDecision, lastLogLine, STALL_MINUTES, RESUME_COOLDOWN_MINUTES, MAX_AUTO_RESUMES };
+module.exports = { main, HELP, findRepo, loadRepos, remember, ensureWatcher, watcherAlive, stallDecision, stallNotice, lastLogLine, STALL_MINUTES, RESUME_COOLDOWN_MINUTES, MAX_AUTO_RESUMES };

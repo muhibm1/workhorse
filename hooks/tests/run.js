@@ -309,6 +309,9 @@ console.log('digest');
   check('digest reads tier and required gates', d().tier === 1 && d().required_human_gates.join() === 'G2,G4');
   check('digest reads the client name', d().client === 'Fixture Co', d().client);
   check('repo falls back to folder name for a non-hosted remote', d().repo === 'repo');
+  // 0.5.4: the digest is the contract any read-only view builds on (the Paddock decision), so its
+  // keys are pinned. Adding a key means adding it here; removing one breaks readers.
+  check('the digest keeps its documented keys', ['change_id', 'title', 'client', 'repo', 'tier', 'tier_reason', 'phase', 'mode', 'status_label', 'waiting_on', 'blocking_gate', 'gate_waiting_since', 'gate_waiting_minutes', 'gates', 'gate_names', 'required_human_gates', 'ship_blockers', 'clock', 'verification', 'branch', 'pr_url', 'commit', 'problem', 'outcome', 'tldr', 'decisions', 'decision_items', 'last_approval', 'artifacts', 'artifact_dir', 'tracker', 'updated_at'].join() === Object.keys(d()).join(), Object.keys(d()).join());
 
   // Problem and outcome live at the top of the brief. A brief without its closing section is
   // still being written, so it is not yet waiting on anyone.
@@ -1222,6 +1225,15 @@ console.log('the watcher resumes stalled runs (0.4.2)');
   check('three resumes with no new log line and it stops, naming why', dec({ prior: prior(3, 400) }).resume === false && /needs a look/.test(dec({ prior: prior(3, 400) }).why));
   check('a new log line resets the attempt count', dec({ prior: prior(3, 400, 'an older line') }).attempts === 1);
   check('the thresholds are ten minutes, thirty minutes, three tries', W.STALL_MINUTES === 10 && W.RESUME_COOLDOWN_MINUTES === 30 && W.MAX_AUTO_RESUMES === 3);
+  // 0.5.4: a run left stopped says so on its pull request, once per stop.
+  const note = (o) => W.stallNotice(Object.assign({ decision: dec(o), digest: dg({}), lastLog: (o && o.lastLog) || log(120), now }, o && o.notice));
+  check('a resumed run sends no notice', note({}) === null);
+  check('a run that is only waiting on a gate or still active sends no notice', note({ digest: dg({ blocking_gate: 'G2' }) }) === null && note({ lastLog: log(3) }) === null);
+  const gaveUp = note({ prior: prior(3, 400) });
+  check('three resumes with no progress send one notice naming the phase, the reason and the restart', gaveUp && /stopped in build 120 minutes ago/.test(gaveUp.text) && /needs a look/.test(gaveUp.text) && /workhorse resume/.test(gaveUp.text) && /Last step: conductor: wave 1 folded/.test(gaveUp.text), gaveUp && gaveUp.text);
+  const cred = note({ lastLog: blocked('needs the STRIPE_KEY from the owner') });
+  check('a run blocked on a person sends a notice', cred && /a person must do/.test(cred.text));
+  check('the notice key changes with the last step, so a new stop is a new notice', cred.key !== note({ lastLog: blocked('needs the DB password') }).key && cred.key === note({ lastLog: blocked('needs the STRIPE_KEY from the owner') }).key);
 
   const lr = path.join(tmp, 'logrepo');
   fs.mkdirSync(path.join(lr, 'docs', 'sdlc', 'cx'), { recursive: true });

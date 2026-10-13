@@ -191,6 +191,10 @@ budget, avoid stalls and unexplained gaps, and pass its gates the first time. Fl
 those scores and groups the bad runs by the phase they went wrong in
 (`examples/flywheel/flywheel.toml`). Traces go to the LangSmith project `workhorse-runs`.
 
+**When a run stops.** If a run stops on something only you can fix, or the watcher has
+restarted it three times without progress, the watcher says so once in a comment on the pull
+request, so your phone tells you. `WORKHORSE_NO_NOTIFY=1` turns that off.
+
 ## What enforces what
 
 Prompts can be argued with. Hooks cannot. `hooks/hooks.json` wires nine Node scripts (at eleven
