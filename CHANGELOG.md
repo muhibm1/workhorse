@@ -8,6 +8,25 @@ date (`git show e6bbf58:desk/CHANGELOG.md`).
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.5.4 — 2026-10-13
+
+Follows 0.5.3 (bad runs become test cases). A stopped run says so on its pull request.
+
+- Why: with Paddock retired, nothing told Muhammad that a run had stopped and needed him. One
+  AgentOps run sat 90 minutes before anyone looked. The watcher already knew; it only wrote it
+  to its own log.
+- When the watcher decides not to restart a run because a person must unblock it, or because
+  three automatic restarts made no progress, it posts one comment on the change's pull request:
+  the phase, how long it has been stopped, why, the last step, and how to continue. GitHub
+  notifies the phone. One comment per stop; a new log line is a new stop. Nothing is written to
+  the conductor log, which would read as progress and reset the restart count.
+  `WORKHORSE_NO_NOTIFY=1` turns it off.
+- The digest's keys (`wh.js digest --json`) are pinned by a test, so a read-only "what needs
+  me" view could rely on them, as the Paddock decision requires of any future front end.
+- Tests: 454 in `hooks/tests/run.js` (from 448): when a notice is sent and when not, its
+  wording, one notice per stop, and the digest's keys.
+- Ledger: not measured yet. Target: no stopped run waits more than 15 minutes without a notice.
+
 ## 0.5.3 — 2026-10-13
 
 Follows 0.5.2 (every run is a LangSmith trace). Bad runs become test cases: Flywheel can read

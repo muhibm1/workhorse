@@ -114,7 +114,7 @@ example config ships in `examples/flywheel/`.
 Target: every recorded run that went over budget or stalled shows up in a mining pass, with the
 phase it went wrong in. Costs nothing to run: mining reads traces and calls no model.
 
-### 0.5.4 A stalled run says so on the pull request
+### 0.5.4 A stalled run says so on the pull request (shipped)
 
 When the watcher finds a run idle and decides not to resume it (it already does this), it posts
 one comment on the change's pull request saying what stopped and how to restart it, once per
