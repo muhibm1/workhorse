@@ -2,7 +2,8 @@
 
 Releases of the WorkHorse plugin, newest first. Each entry is built from the commits it shipped
 (listed by hash), and names the release it follows and what that release did, so any one entry states where
-it sits in the sequence on its own. Paddock, the desktop app, has its own changelog in `desk/CHANGELOG.md`.
+it sits in the sequence on its own. Paddock, the desktop app, was removed on 2026-10-13; its changelog is in the history before that
+date (`git show e6bbf58:desk/CHANGELOG.md`).
 
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.

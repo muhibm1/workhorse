@@ -1,5 +1,8 @@
 # Codebase map: WorkHorse
 
+> **2026-10-13: Paddock (`desk/`) has been removed from this repository.** Everything below about
+> Paddock describes it as it was. Its code stays in git history and in the public `paddock-snapshot`.
+
 Written by wh-discovery-analyst on 2026-09-27 at commit 0ec0a97 (branch `master`). Every claim is
 labelled **confirmed** (observed by reading the file or running the command) or **believed** (not
 verified). The repository holds three things: the WorkHorse plugin, the Paddock desktop app, and

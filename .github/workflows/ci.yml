@@ -1,8 +1,5 @@
-# CI for the WorkHorse plugin and Paddock (desk/). No secrets anywhere: nothing here talks to a
-# database or an API. Paddock's two Studbook parity gates need a live database and the Python
-# reference's dumps, so they skip here and are run locally (studbook/docs/paddock-gate.md) --
-# the desk job asserts the count of tests that did run, so a suite that skipped its way to green
-# fails instead.
+# CI for the WorkHorse plugin. No secrets anywhere: nothing here talks to a database or an API.
+# Paddock, the desktop app this job used to sit beside, was removed on 2026-10-13.
 
 name: ci
 
@@ -31,53 +28,3 @@ jobs:
           passed=$(grep -oP '^\K[0-9]+(?= passed)' plugin-tests.log | tail -1)
           echo "passed: $passed"
           test "${passed:-0}" -ge 140
-
-  desk:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: desk
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: desk/package-lock.json
-      - name: Install
-        run: npm ci
-      - name: Dependency audit
-        run: npm audit
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Lint (hooks rules and typescript-eslint recommended; eslint.config.mjs)
-        run: npm run lint
-      - name: Unit tests
-        env:
-          NO_COLOR: "1"
-        run: |
-          npx vitest run 2>&1 | tee vitest.log
-          # vitest colours its summary even in CI: NO_COLOR above, and strip any escape codes left.
-          passed=$(sed -E 's/\x1B\[[0-9;]*m//g' vitest.log | grep -oP 'Tests\s+\K[0-9]+(?= passed)' | tail -1)
-          echo "passed: $passed"
-          test "${passed:-0}" -ge 240
-      - name: Build
-        run: npm run build
-      - name: Install the claude CLI Paddock requires
-        # Paddock's Setup screen blocks every other screen until `claude --version` answers (it
-        # checks the binary exists; no login, no API call). Without it the smoke test sees only
-        # Setup -- which is the app behaving correctly, so the runner is fixed, not the app.
-        run: npm install -g @anthropic-ai/claude-code@2.1.277 && claude --version
-      - name: End-to-end smoke (Electron under a virtual display)
-        # A desktop-sized virtual screen rather than xvfb-run's 640x480 default. (Suspected first
-        # when the smoke test failed on Linux; the uploaded trace showed the real cause was the
-        # missing claude CLI above. The size stays because it is what users run.)
-        run: xvfb-run -a --server-args="-screen 0 1440x900x24" npx playwright test
-      - name: Keep Playwright's traces when the smoke test fails
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        with:
-          name: playwright-results
-          path: desk/test-results/
-          retention-days: 7
