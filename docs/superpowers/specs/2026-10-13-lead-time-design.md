@@ -48,7 +48,7 @@ Each one names its target before it ships, so it can miss.
 `RUNS.md`. Each change now writes `metrics.json` at close with the plugin version and its cost.
 Every changelog entry carries a `Ledger:` line, enforced by a test.
 
-### 0.5.1 No dead time after Ship
+### 0.5.1 No dead time after Ship (shipped)
 
 - Approving Ship turns on GitHub's auto-merge (`gh pr merge --auto`). GitHub merges when CI is
   green, so the refused merge and the owner's manual step disappear.
@@ -61,7 +61,7 @@ Every changelog entry carries a `Ledger:` line, enforced by a test.
 
 Target: zero dead minutes between Ship approval and merge on every run.
 
-### 0.5.2 Every run is a LangSmith trace
+### 0.5.2 Every run is a LangSmith trace (shipped)
 
 The Paddock review (2026-10-13) asked for this, and it fits: LangSmith is where teams already
 look at agent runs. After a run, `wh.js trace` turns the run's stream log and conductor log into
@@ -73,17 +73,65 @@ What it buys: a searchable record of what the agents did, per-agent latency fine
 conductor log, and a trace set Flywheel (the LangSmith trace-to-test project) can mine for
 regressions. Speed is unaffected; measuring speed gets sharper.
 
-### 0.5.3 Five decisions, not twenty
+### Paddock is retired; monitoring moves to LangSmith and Flywheel (decided 2026-10-13)
+
+Paddock was the WorkHorse desktop app (Electron, about 8,100 lines in `desk/`). It broke because
+it was a second engine, not a window: it kept its own copy of the plugin, its own agent
+launcher, its own repository list and its own approve button, and every copy drifted from the
+real one (a stale plugin stopped a run in Build, a launcher blocked one run for three hours,
+three approvals were lost). Muhammad decided on 2026-10-13 not to rebuild it as a desktop or
+mobile app. The full reasoning is in the Paddock assessment of the same date.
+
+What replaces it, in order:
+
+1. **Watching runs: LangSmith.** Shipped in 0.5.2. Every change is a trace that works on a
+   laptop or a phone browser.
+2. **Learning from bad runs: Flywheel.** Flywheel turns failed traces into test cases, grouped
+   by where they went wrong. WorkHorse traces need to say what "failed" means for them (0.5.3).
+3. **Being told when a run needs you: the watcher.** It already detects a stalled run; it
+   needs to say so where Muhammad looks, on the pull request (0.5.4).
+4. **Only if a gap remains: a read-only "what needs me" page** over `wh.js digest --json`. It
+   never runs agents and never writes; approving stays a `/approve` comment on the pull request.
+   The digest's JSON shape is pinned by a test from 0.5.4 so such a page could rely on it.
+
+Any future front end follows three rules, each closing a failure above: it reads state and
+never writes it; it never starts or drives an agent; every action goes through `/approve` or
+`/reject` on the pull request.
+
+Done the same day: `desk/` and its CI job were removed (#32), and the site now presents Paddock
+as an earlier front end, retired after measured runs showed it cost hours (Portfolio #34).
+
+### 0.5.3 Bad runs become test cases (Flywheel) (shipped)
+
+Each trace's root gets scores Flywheel can filter on, all counted from the record: `finished`
+(the change closed), `within_budget` (agent minutes within the tier's budget), `no_stall`
+(the run never sat stopped for 10 minutes or more), `no_unexplained_gap`, and `gates_first_time` (no gate
+rejected). The phase behind the first failing score carries the error. `flywheel mine`
+against the "workhorse-runs" project then lists
+every bad run grouped by signature, for example "within_budget < 1 @ review". A repository
+example config ships in `examples/flywheel/`.
+
+Target: every recorded run that went over budget or stalled shows up in a mining pass, with the
+phase it went wrong in. Costs nothing to run: mining reads traces and calls no model.
+
+### 0.5.4 A stalled run says so on the pull request
+
+When the watcher finds a run idle and decides not to resume it (it already does this), it posts
+one comment on the change's pull request saying what stopped and how to restart it, once per
+stop. A run that keeps failing after its automatic resumes is reported the same way. GitHub
+notifies the phone; no app needed. The `digest --json` shape is pinned by a test.
+
+Target: no stopped run sits more than 15 minutes without a notification (one sat 90 minutes).
+
+### 0.5.5 Five decisions, not twenty
 
 The Design document lists at most five decisions that need the owner, each with a
 recommendation. Everything else the agents decided goes in a "Decided by the agents" appendix:
-reversible, recorded, not asked. The artifact-check hook enforces the five. This edits the
-designer agent, which another thread is changing tonight to restore Studbook search, so it lands
-after that merges.
+reversible, recorded, not asked. The artifact-check hook enforces the five.
 
 Target: at most five owner decisions per brief; rejections at Design do not rise.
 
-### 0.5.4 Review alongside build
+### 0.5.6 Review alongside build
 
 Reviewers start on each build wave as soon as it is folded, instead of after the whole build and
 verify. The two-round fix cap from 0.4.1 stays. Measured first on a recorded tier 3 log to size
@@ -91,7 +139,7 @@ the saving before it ships.
 
 Target: review minutes on a tier 3 run under half of agent time (110 of 212 today).
 
-### 0.5.5 Split big changes at Design
+### 0.5.7 Split big changes at Design
 
 When the plan's size predicts a run over budget (for example more than 20 requirements at tier
 3), the designer offers a split into increments as a Design decision, with the first increment
