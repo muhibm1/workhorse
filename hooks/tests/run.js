@@ -1249,6 +1249,80 @@ console.log('run ledger (0.5.0)');
   check('the ledger prefers the recorded version and cost', back.runs[0] && back.runs[0].version === pv && back.runs[0].version_source === 'recorded' && back.runs[0].cost_usd === 1.75, JSON.stringify(back.runs[0]));
 }
 
+console.log('merge on Ship approval (0.5.1)');
+{
+  const G = require(path.join(PLUGIN, 'scripts', 'wh-github.js'));
+  const sc = G.summarizeChecks;
+  check('a failed or cancelled check makes CI red and names it', sc([{ name: 'a', bucket: 'pass' }, { name: 'b', bucket: 'fail' }, { name: 'c', bucket: 'cancel' }]).state === 'red' && sc([{ name: 'b', bucket: 'fail' }]).failing[0] === 'b');
+  check('a running check makes CI pending', sc([{ name: 'a', bucket: 'pass' }, { name: 'b', bucket: 'pending' }]).state === 'pending');
+  check('passing and skipped checks are green; no checks is none', sc([{ name: 'a', bucket: 'pass' }, { name: 'b', bucket: 'skipping' }]).state === 'green' && sc([]).state === 'none');
+  const md = G.mergeDecision;
+  check('green CI merges', md({ prState: 'OPEN', checks: { state: 'green', failing: [] } }).action === 'merge');
+  check('a repository without CI merges, and says so', /no CI/.test(md({ prState: 'OPEN', checks: { state: 'none', failing: [] } }).why));
+  check('running or unreadable CI waits', md({ prState: 'OPEN', checks: { state: 'pending' } }).action === 'wait' && md({ prState: 'OPEN', checks: { state: 'unknown' } }).action === 'wait');
+  check('red CI is never merged over', md({ prState: 'OPEN', checks: { state: 'red', failing: ['ci'] } }).action === 'refuse');
+  check('an already merged PR is left alone; a closed one is refused', md({ prState: 'MERGED' }).action === 'merged' && md({ prState: 'CLOSED' }).action === 'refuse');
+
+  // A fake gh on PATH: answers pr view, pr checks and pr merge from files, and logs every call.
+  const sm = path.join(tmp, 'shipmerge');
+  const bin = path.join(tmp, 'fakebin');
+  fs.mkdirSync(sm, { recursive: true }); fs.mkdirSync(bin, { recursive: true });
+  const ghLog = path.join(tmp, 'gh-calls.log');
+  const ghScript = path.join(bin, 'gh-fake.js');
+  fs.writeFileSync(ghScript, [
+    "const fs = require('fs'); const a = process.argv.slice(2); const d = process.env.FAKE_GH_DIR;",
+    "fs.appendFileSync(process.env.FAKE_GH_LOG, a.join(' ') + '\\n');",
+    "if (a[0] === 'pr' && a[1] === 'view') { process.stdout.write(fs.readFileSync(d + '/view.json', 'utf8')); process.exit(0); }",
+    "if (a[0] === 'pr' && a[1] === 'checks') { process.stdout.write(fs.readFileSync(d + '/checks.json', 'utf8')); process.exit(0); }",
+    "if (a[0] === 'pr' && a[1] === 'merge') { process.exit(fs.existsSync(d + '/merge-fails') ? 1 : 0); }",
+    "process.exit(1);",
+  ].join('\n'));
+  if (process.platform === 'win32') fs.writeFileSync(path.join(bin, 'gh.cmd'), `@"${process.execPath}" "${ghScript}" %*\r\n`);
+  else { fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\nexec "${process.execPath}" "${ghScript}" "$@"\n`); fs.chmodSync(path.join(bin, 'gh'), 0o755); }
+  const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, FAKE_GH_DIR: sm, FAKE_GH_LOG: ghLog };
+  const whE = (...a) => { const r = spawnSync(process.execPath, [WH, ...a], { cwd: sm, encoding: 'utf8', env }); return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() }; };
+  const g = (...a) => execFileSync('git', a, { cwd: sm, encoding: 'utf8' }).trim();
+  g('init', '-q'); g('config', 'user.email', 'tester@example.com'); g('config', 'user.name', 'Tester');
+  const bare = path.join(tmp, 'shipmerge-origin.git');
+  execFileSync('git', ['init', '-q', '--bare', bare]);
+  g('remote', 'add', 'origin', 'https://github.com/example/shipmerge.git');
+  g('config', 'remote.origin.pushurl', bare);
+  whE('init'); g('add', '.'); g('commit', '-q', '-m', 'onboard');
+  const sid = JSON.parse(whE('new', 'Merge me', '--tier', '1').out).change_id;
+  const setState = (patch) => { const st = L.loadState(sm, sid); Object.assign(st, patch); L.saveState(sm, sid, st); };
+  check('ship-merge does nothing before Ship is approved', JSON.parse(whE('ship-merge').out).action === 'none');
+  setState({ gates: { ...(L.loadState(sm, sid).gates || {}), G4: 'approved' }, github: { pr_number: 7 } });
+  fs.writeFileSync(path.join(sm, 'view.json'), JSON.stringify({ state: 'OPEN', headRefOid: 'abc123', url: 'https://github.com/example/shipmerge/pull/7' }));
+  fs.writeFileSync(path.join(sm, 'checks.json'), JSON.stringify([{ name: 'ci', bucket: 'pending' }]));
+  fs.writeFileSync(path.join(sm, 'docs', 'sdlc', sid, 'ship.md'), '# Ship\n\nrecord written before the merge\n');
+  let r = JSON.parse(whE('ship-merge').out);
+  check('while CI runs, the merge waits and is remembered', r.action === 'wait' && L.loadState(sm, sid).merge_pending === true, JSON.stringify(r));
+  check('the records are committed before the merge', g('log', '-1', '--format=%s') === `chore(sdlc): records for ${sid} before merge` && g('status', '--porcelain', '--', `docs/sdlc/${sid}/ship.md`) === '');
+  whE('ship-merge');
+  const log1 = fs.readFileSync(path.join(sm, 'docs', 'sdlc', sid, 'conductor-log.md'), 'utf8');
+  check('waiting is logged once, not every minute', (log1.match(/waits: CI is still running/g) || []).length === 1);
+  fs.writeFileSync(path.join(sm, 'checks.json'), JSON.stringify([{ name: 'ci', bucket: 'pass' }]));
+  r = JSON.parse(whE('ship-merge', '--if-pending').out);
+  const calls = fs.readFileSync(ghLog, 'utf8');
+  check('once CI is green the watcher\'s call merges, pinned to the checked head', r.action === 'merged' && /pr merge 7 --squash --match-head-commit abc123/.test(calls) && L.loadState(sm, sid).merge_pending === false, JSON.stringify(r));
+  check('with nothing pending, --if-pending calls no gh at all', (() => { const before = fs.readFileSync(ghLog, 'utf8').length; whE('ship-merge', '--if-pending'); return fs.readFileSync(ghLog, 'utf8').length === before; })());
+  fs.writeFileSync(path.join(sm, 'checks.json'), JSON.stringify([{ name: 'ci', bucket: 'fail' }]));
+  r = JSON.parse(whE('ship-merge').out);
+  check('red CI is refused and logged as a block', r.action === 'refuse' && /blocked: not merging .*CI is red: ci/.test(fs.readFileSync(path.join(sm, 'docs', 'sdlc', sid, 'conductor-log.md'), 'utf8')));
+  fs.writeFileSync(path.join(sm, 'checks.json'), JSON.stringify([{ name: 'ci', bucket: 'pass' }]));
+  fs.writeFileSync(path.join(sm, 'merge-fails'), '');
+  r = JSON.parse(whE('ship-merge').out);
+  check('a merge GitHub refuses becomes a wait the watcher retries', r.action === 'wait' && L.loadState(sm, sid).merge_pending === true);
+  fs.rmSync(path.join(sm, 'merge-fails'));
+  fs.writeFileSync(path.join(sm, 'checks.json'), JSON.stringify([{ name: 'ci', bucket: 'fail' }]));
+  check('checks exits 1 on red', whE('checks').code === 1);
+  fs.writeFileSync(path.join(sm, 'checks.json'), JSON.stringify([{ name: 'ci', bucket: 'pass' }]));
+  check('checks reports green', JSON.parse(whE('checks').out).state === 'green');
+  const conductor = fs.readFileSync(path.join(PLUGIN, 'agents', 'wh-conductor.md'), 'utf8');
+  check('the conductor checks CI before presenting Ship', /WH checks --wait 15/.test(conductor));
+  check('the shipper never merges over a red check and leaves the merge to ship-merge', /never merge over a red check/.test(fs.readFileSync(path.join(PLUGIN, 'agents', 'wh-shipper.md'), 'utf8')) && /wh\.js ship-merge/.test(fs.readFileSync(path.join(PLUGIN, 'agents', 'wh-shipper.md'), 'utf8')));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

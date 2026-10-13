@@ -188,4 +188,43 @@ function postComment(root, number, text) {
   return r.ok;
 }
 
-module.exports = { MARKER, GATE_WORDS, enabled, approvers, currentLogin, findPr, presentOnGitHub, readDecision, fetchConversation, postComment, gateComment, gh };
+/** One state for a pull request's checks, from `gh pr checks --json name,bucket` rows:
+ *  red (any failed or cancelled), pending (any still running), green, or none (no CI at all). */
+function summarizeChecks(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const failing = list.filter((r) => r.bucket === 'fail' || r.bucket === 'cancel').map((r) => r.name);
+  if (failing.length) return { state: 'red', failing };
+  if (list.some((r) => r.bucket === 'pending')) return { state: 'pending', failing: [] };
+  return { state: list.length ? 'green' : 'none', failing: [] };
+}
+
+/** The pull request's checks. gh exits non-zero while checks fail or run, so read stdout anyway. */
+function prChecks(root, number) {
+  const r = gh(root, ['pr', 'checks', String(number), '--json', 'name,bucket']);
+  let rows = null;
+  try { rows = JSON.parse(r.out); } catch (e) { rows = null; }
+  if (!rows) return /no checks reported/i.test(r.err) ? { state: 'none', failing: [] } : { state: 'unknown', failing: [], error: r.err };
+  return summarizeChecks(rows);
+}
+
+/** What to do with an approved pull request (0.5.1). Pure. A Ship approval is the owner saying
+ *  "merge it", so WorkHorse merges as soon as CI is green, never over a red check. */
+function mergeDecision({ prState, checks }) {
+  if (prState === 'MERGED') return { action: 'merged', why: 'the pull request is already merged' };
+  if (prState !== 'OPEN') return { action: 'refuse', why: `the pull request is ${String(prState || 'unknown').toLowerCase()}` };
+  const c = checks || { state: 'unknown' };
+  if (c.state === 'red') return { action: 'refuse', why: `CI is red: ${c.failing.join(', ')}` };
+  if (c.state === 'pending') return { action: 'wait', why: 'CI is still running' };
+  if (c.state === 'unknown') return { action: 'wait', why: 'CI state could not be read' };
+  return { action: 'merge', why: c.state === 'none' ? 'no CI is configured' : 'CI is green' };
+}
+
+/** Squash-merge (or the profile's method) only if the head is still the commit that was checked. */
+function mergePr(root, number, method, head) {
+  const m = ['squash', 'merge', 'rebase'].includes(method) ? method : 'squash';
+  const args = ['pr', 'merge', String(number), `--${m}`];
+  if (head) args.push('--match-head-commit', head);
+  return gh(root, args);
+}
+
+module.exports = { summarizeChecks, prChecks, mergeDecision, mergePr, MARKER, GATE_WORDS, enabled, approvers, currentLogin, findPr, presentOnGitHub, readDecision, fetchConversation, postComment, gateComment, gh };

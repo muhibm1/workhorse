@@ -28,7 +28,7 @@ distilled from a real production audit.
 |-------|------|----------|-----------------|
 | Ask | none | nothing; you typed "problem -> outcome" | the run starts |
 | Design | G2 | `brief.md`, at most 80/120/160 lines by tier | build it exactly this way; no more questions |
-| Ship | G4 | `ship.md`, at most 100/150/200 lines | merge and deploy to every environment the profile marks automatic |
+| Ship | G4 | `ship.md`, at most 100/150/200 lines | merge (WorkHorse merges as soon as CI is green) and deploy to every environment the profile marks automatic |
 | Deploy (tier 3 only) | G5 | `release.md`, the runbook | you run the production step |
 
 | Tier | Typical change | You approve at |

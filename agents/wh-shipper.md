@@ -89,11 +89,16 @@ and `pr_url` set; or a blocked report naming the missing piece.
 
 Runs after G4 is approved. Confirm `wh.js state get gates.G4` is `approved`; if not, stop.
 
-1. Merge the PR with `gh pr merge --squash` unless the profile names another merge style.
-   Merge is hook-guarded; never work around a refusal. If the PR is already merged (`gh pr
-   view --json state` says `MERGED`: the owner merged it), skip this step and carry on. If the
-   merge is refused, stop and report `merge refused: PR <url> must be merged by the owner`;
-   the conductor records the block, and the watcher resumes the run once the PR is merged.
+1. Get the PR merged. Since 0.5.1 the Ship approval itself merges it once CI is green
+   (`wh.js ship-merge`, run by `wh.js approve G4` and retried each minute by the watcher), so
+   it is usually already merged: check `gh pr view --json state`. If it says `MERGED`, carry on.
+   Otherwise run `wh.js ship-merge` once and follow its `action`: `merged`, carry on; `wait`,
+   stop and report `merge of PR <url> waits on CI; WorkHorse merges it when green`; `refuse`,
+   stop and report `merge refused: PR <url>: <why>`; `none` (GitHub off or `github.merge:
+   false`), merge with `gh pr merge --squash` unless the profile names another merge style.
+   Merge is hook-guarded; never work around a refusal, and never merge over a red check. In
+   every stop the conductor records the block and the watcher resumes the run once the PR is
+   merged.
 2. Deploy to every environment marked `auto: true`, in the profile's order, with its `deploy`
    command. Run the profile's smoke or e2e command after each if one is defined. Read the exit
    code of every command before moving on; stop at the first failure and roll back that

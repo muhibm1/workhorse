@@ -96,7 +96,7 @@ requires (the CLI now resets such a gate to pending when the tier is set, but do
 | build | see Build below; then `wh-polish` once on the whole change's diff after the last wave, not per wave | commits on the change branch | Verify |
 | verify | see Verify below | `verification.md` green | Review |
 | review | see Review below | `reviews/<agent>.md`, `ship.md`, PR | G4 required (always): present and STOP |
-| deploy | `WH phase deploy`; `wh-shipper` in mode `deploy`: it merges the PR (or finds it merged), deploys to every environment the profile marks automatic and, at tier 3, writes `release.md`. If it reports the merge refused, run `WH blocked "merge of PR <url> by the owner; the run continues once it is merged"` and end your turn: the watcher resumes the run when the PR is merged, and the shipper then skips the merge | deploy record in `ship.md`, `release.md` (tier 3) | G5 required: present and STOP; else `WH gate G5 auto` |
+| deploy | `WH phase deploy`; `wh-shipper` in mode `deploy`: it merges the PR (or finds it merged), deploys to every environment the profile marks automatic and, at tier 3, writes `release.md`. If it reports the merge waiting on CI or refused, run `WH blocked "merge of PR <url>: <its reason>; the run continues once it is merged"` and end your turn: the watcher resumes the run when the PR is merged, and the shipper then skips the merge | deploy record in `ship.md`, `release.md` (tier 3) | G5 required: present and STOP; else `WH gate G5 auto` |
 | done | `WH phase done` (commits the change's artifacts); then dispatch `wh-retro-learner` with `run_in_background: true`, the one exception to the always-wait rule: it commits its own `retro.md`; then `WH active --clear` | `retro.md` (by the retro) | end |
 
 ## Build
@@ -215,7 +215,10 @@ eight did.
       through the same start, check and re-check.
 4. Dispatch `wh-shipper` in mode `ship` with `verify-logs/summary.json`, `verification.md` and
    every report. It pushes the branch, opens the PR, and writes `ship.md` with the clock pasted
-   in and `## Your decision` last. Then present G4 (see Gates) and STOP.
+   in and `## Your decision` last. Then run `WH checks --wait 15`: the PR's CI must not be red
+   when the owner reads Ship. Red: back to the fixer with the failing check's log, then Verify
+   and the shipper again (this counts as a fix round). Still running after 15 minutes: present
+   anyway; the Ship approval merges only once CI is green. Then present G4 (see Gates) and STOP.
 
 ## Review specialists (ECC)
 

@@ -7,6 +7,30 @@ it sits in the sequence on its own. Paddock, the desktop app, has its own change
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.5.1 — 2026-10-13
+
+Follows 0.5.0 (the run ledger). No dead time after Ship: approving Ship merges the change.
+
+- Seen in the ledger: the harness refuses an agent's merge on every repository, so after the
+  owner approved Ship the run blocked until the owner merged by hand. One Portfolio run sat
+  8 h 36 m on this (2026-09-29); AgentOps increment 1 needed three extra manual steps for it.
+- `wh.js ship-merge`: after a Ship approval, commits and pushes the change's records (so the
+  merge carries them and no second documents-only pull request is needed), then merges the pull
+  request if CI is green, pinned to the commit whose checks it read. While CI runs it waits and
+  the watcher retries each minute; it never merges over a red check, and logs a block instead.
+  A repository with no CI merges and says so. `profile.github.merge: false` keeps the old path.
+- `wh.js approve G4` (and so `/approve` on the pull request, through the watcher) runs it at
+  once: the approval is the owner saying "merge it". This runs as a plain process, not as an
+  agent, which is why the harness does not refuse it.
+- `wh.js checks [--wait MIN]` reads the pull request's CI. The conductor waits up to 15 minutes
+  for it before presenting Ship, and sends a red check back to the fixer, so the owner never
+  reads a Ship document over a red build or watches CI by hand.
+- The shipper's deploy step no longer merges itself unless GitHub is off for the repository.
+- Tests: 405 in `hooks/tests/run.js` (from 385), including a fake `gh` that drives the wait,
+  merge, refuse and retry paths end to end.
+- Ledger: not measured yet. Target from the 0.5 plan: zero dead minutes between Ship approval
+  and merge on every run.
+
 ## 0.5.0 — 2026-10-13
 
 Follows 0.4.2 (the watcher resumes stalled runs). The run ledger: every WorkHorse run in every
