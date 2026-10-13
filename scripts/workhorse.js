@@ -321,6 +321,9 @@ function watch(argv) {
     child.unref();
   };
   const tickRepo = (repo) => {
+    // 0.5.1: a Ship approval whose merge waits on CI is merged here the minute CI turns green.
+    const sm = whJson(repo, ['ship-merge', '--if-pending']);
+    if (sm && sm.action === 'merged') say(`${stamp()} ${path.basename(repo)}: merged ${sm.pr} (${sm.why}).`);
     const { gate, digest } = waitingGate(repo);
     if (gate && digest && digest.pr_url) {
       const sync = whJson(repo, ['github-sync']);

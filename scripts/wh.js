@@ -38,6 +38,10 @@
 //   wh.js notify "<title>" "<body>"         desktop notification, best effort
 //   wh.js clock --by-agent                  minutes per agent, from the conductor log
 //   wh.js github-sync                       record a /approve or /reject left on the gate's pull request
+//   wh.js checks [--wait MIN]               the change's pull request CI: green, red, pending or none
+//                                           (exit 1 on red, 2 while still pending after the wait)
+//   wh.js ship-merge [--if-pending]         after Ship (G4) is approved: commit and push the records,
+//                                           then merge the pull request once CI is green (0.5.1)
 //   wh.js cost [add <usd>]                  the active change's cost at list price, as headless runs report it
 //   wh.js ledger [--repo <path>[#<ref>]]... [--out <dir>] [--json]
 //                                           every change in every repository, its clock recomputed from
@@ -159,6 +163,32 @@ function stateVars(root, id, state) {
 
 switch (cmd) {
   case 'plugin-root': out(PLUGIN_ROOT); break;
+
+  case 'checks': {
+    const root = requireRoot();
+    const { state } = requireActive(root);
+    const wait = Number(flag('--wait') || 0);
+    const number = state.github && state.github.pr_number;
+    if (!number) { out({ state: 'none', why: 'no pull request recorded for this change' }); break; }
+    const until = Date.now() + Math.max(0, wait) * 60000;
+    let c = G.prChecks(root, number);
+    while ((c.state === 'pending' || c.state === 'unknown') && Date.now() < until) {
+      spawnSyncSleep(30);
+      c = G.prChecks(root, number);
+    }
+    out({ pr: number, ...c });
+    if (c.state === 'red') process.exit(1);
+    if (c.state === 'pending' || c.state === 'unknown') process.exit(2);
+    break;
+  }
+
+  case 'ship-merge': {
+    const root = requireRoot();
+    const { id, state } = requireActive(root);
+    if (hasFlag('--if-pending') && !state.merge_pending) { out({ action: 'none', why: 'no merge is waiting' }); break; }
+    out(shipMerge(root, id, state));
+    break;
+  }
 
   case 'cost': {
     // The launcher adds each headless run's reported cost to the active change, so the change's
@@ -446,7 +476,10 @@ switch (cmd) {
     // state.json is machine state kept outside git; approvals.md is the audit record.
     L.git(root, ['add', '--', path.relative(root, af)]);
     const sha = L.git(root, ['commit', '-q', '-m', `chore(sdlc): ${g} ${status} for ${id}`, '--', path.relative(root, af)]);
-    out({ gate: g, status, who, at, committed: sha !== '' || L.git(root, ['log', '-1', '--format=%h']) });
+    // 0.5.1: approving Ship is the owner saying "merge it". The merge used to wait for the owner
+    // too (8 h 36 m on one Portfolio run), because the harness refuses an agent's merge.
+    const merge = g === 'G4' && !reject ? shipMerge(root, id, state) : undefined;
+    out({ gate: g, status, who, at, committed: sha !== '' || L.git(root, ['log', '-1', '--format=%h']), ...(merge ? { merge } : {}) });
     break;
   }
 
@@ -777,6 +810,63 @@ switch (cmd) {
 
   default:
     die(`unknown command "${cmd || ''}". See the header of scripts/wh.js for usage.`);
+}
+
+/** Block for a number of seconds without a busy loop (the CLI is synchronous). */
+function spawnSyncSleep(seconds) {
+  require('child_process').spawnSync(process.execPath, ['-e', `setTimeout(() => {}, ${Math.round(seconds * 1000)})`]);
+}
+
+/**
+ * After a Ship approval: commit and push the change's records so the merge carries them, then
+ * merge the pull request if CI is green, wait (state.merge_pending, picked up by the watcher)
+ * while it runs, or refuse over a red check. Best effort: no GitHub leaves the shipper's path.
+ */
+function shipMerge(root, id, state) {
+  const profile = (() => { try { return L.loadProfile(root); } catch (e) { return {}; } })();
+  const cfg = profile.github || {};
+  if ((state.gates || {}).G4 !== 'approved') return { action: 'none', why: 'Ship (G4) is not approved' };
+  if (cfg.merge === false) return { action: 'none', why: 'github.merge is off in the profile; the shipper merges' };
+  if (!G.enabled(L, root, profile)) return { action: 'none', why: 'GitHub approvals are off or origin is not on GitHub' };
+  const number = state.github && state.github.pr_number;
+  if (!number) return { action: 'none', why: 'no pull request recorded for this change' };
+  const branch = state.branch || L.git(root, ['branch', '--show-current']);
+  const dirRel = path.relative(root, L.changeDir(root, id)).split(path.sep).join('/');
+  L.git(root, ['add', '--', dirRel]);
+  L.git(root, ['commit', '-q', '-m', `chore(sdlc): records for ${id} before merge`, '--', dirRel]);
+  if (branch) require('child_process').spawnSync('git', ['push', '-q', 'origin', branch], { cwd: root, encoding: 'utf8', timeout: 120000 });
+  const view = G.gh(root, ['pr', 'view', String(number), '--json', 'state,headRefOid,url']);
+  let pr = {};
+  try { pr = JSON.parse(view.out); } catch (e) { pr = {}; }
+  const checks = pr.state === 'OPEN' ? G.prChecks(root, number) : null;
+  const d = G.mergeDecision({ prState: pr.state, checks });
+  const url = pr.url || `#${number}`;
+  const was = Boolean(state.merge_pending);
+  let result = { action: d.action, why: d.why, pr: url };
+  if (d.action === 'merge') {
+    const m = G.mergePr(root, number, cfg.merge_method, pr.headRefOid);
+    if (m.ok) {
+      state.merge_pending = false;
+      state.merged_at = L.nowIso();
+      appendLog(root, id, state, `conductor | merged ${url} after the Ship approval: ${d.why}`);
+      result = { action: 'merged', why: d.why, pr: url };
+    } else {
+      state.merge_pending = true;
+      const why = (m.err || 'merge refused').split('\n').pop();
+      if (!was) appendLog(root, id, state, `conductor | merge of ${url} not done yet: ${why}; the watcher retries`);
+      result = { action: 'wait', why, pr: url };
+    }
+  } else if (d.action === 'wait') {
+    state.merge_pending = true;
+    if (!was) appendLog(root, id, state, `conductor | merge of ${url} waits: ${d.why}; WorkHorse merges it when green`);
+  } else if (d.action === 'merged') {
+    state.merge_pending = false;
+  } else {
+    state.merge_pending = false;
+    appendLog(root, id, state, `conductor | blocked: not merging ${url}: ${d.why}`);
+  }
+  L.saveState(root, id, state);
+  return result;
 }
 
 /** The plugin version this CLI belongs to, from .claude-plugin/plugin.json. */
