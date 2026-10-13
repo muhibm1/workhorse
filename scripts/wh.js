@@ -198,7 +198,7 @@ switch (cmd) {
     const LG = require(path.join(__dirname, 'wh-ledger.js'));
     const dry = hasFlag('--dry-run');
     const all = hasFlag('--all');
-    const project = flag('--project') || process.env.WORKHORSE_LANGSMITH_PROJECT || 'workhorse';
+    const project = flag('--project') || process.env.WORKHORSE_LANGSMITH_PROJECT || 'workhorse-runs';
     const repoSpec = flag('--repo');
     let changeId = flag('--change');
     const spec = LG.parseRepoSpec(typeof repoSpec === 'string' ? repoSpec : (L.findRoot(process.cwd()) || process.cwd()));
@@ -223,11 +223,11 @@ switch (cmd) {
       const row = LG.runRow(L, spec.name, id, files, releases, LG.pluginOverrides()[`${spec.name}/${id}`] || null);
       let metrics = null;
       try { metrics = files['metrics.json'] ? JSON.parse(files['metrics.json']) : null; } catch (e) { metrics = null; }
-      const runs = T.buildTrace(L, { id, repo: spec.name, title: id.slice(11).replace(/-+$/, '').replace(/-/g, ' '), tier: row.tier, version: row.version, metrics, log: files['conductor-log.md'], approvals: files['approvals.md'], streams });
+      const runs = T.buildTrace(L, { id, repo: spec.name, title: id.slice(11).replace(/-+$/, '').replace(/-/g, ' '), tier: row.tier, version: row.version, status: all ? row.status : undefined, metrics, log: files['conductor-log.md'], approvals: files['approvals.md'], streams });
       if (runs.length) traces.push({ id, runs });
       else skipped.push({ change_id: id, why: 'longer than LangSmith\'s 24-hour window, or fewer than two log rows' });
     }
-    if (dry) { out({ traces: traces.map((t) => ({ change_id: t.id, runs: t.runs.length, root: t.runs[0].name, outputs: t.runs[0].outputs })), skipped }); break; }
+    if (dry) { out({ traces: traces.map((t) => ({ change_id: t.id, runs: t.runs.length, root: t.runs[0].name, outputs: t.runs[0].outputs, went_wrong: t.runs.filter((r) => r.error).map((r) => `${r.name}: ${r.error}`) })), skipped }); break; }
     const apiKey = process.env.LANGSMITH_API_KEY;
     if (!apiKey) die('LANGSMITH_API_KEY is not set; tracing is off. --dry-run shows what would be sent.', 2);
     (async () => {

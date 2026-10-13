@@ -186,6 +186,10 @@ workhorse ledger --repo ../agentops --repo ../Portfolio --repo ../studbook --rep
 **In LangSmith.** With `LANGSMITH_API_KEY` set, every change is sent to LangSmith as one
 trace when it closes: phases, each agent's steps with their real durations, and waiting on a
 person tagged apart from agent work. `wh.js trace --repo <path> --all` sends past changes.
+Each trace is also scored, so a bad run is easy to find: did it finish, stay within its
+budget, avoid stalls and unexplained gaps, and pass its gates the first time. Flywheel reads
+those scores and groups the bad runs by the phase they went wrong in
+(`examples/flywheel/flywheel.toml`). Traces go to the LangSmith project `workhorse-runs`.
 
 ## What enforces what
 

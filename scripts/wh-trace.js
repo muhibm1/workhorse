@@ -20,12 +20,30 @@
 // Uploaded after a change closes, never during a run, so it adds no time to the run. Off unless
 // LANGSMITH_API_KEY is set. Ids are derived from the change id, so uploading again posts the
 // same runs rather than a second copy.
+//
+// Flywheel (0.5.3). The root carries five scores as LangSmith feedback, each 1 or 0 and each
+// counted from the record: finished, within_budget, no_stall (no stretch of 10 minutes or more
+// with the run stopped, the watcher's own stall threshold), no_unexplained_gap and
+// gates_first_time. One phase carries the error: the phase behind the first failing score (the
+// phase that used the most agent time, the stopped run, the gap, the rejected gate; the last
+// phase of an unfinished run). Every phase lists what went wrong in it in metadata. Phases are labelled with LangGraph's node metadata, so Flywheel's miner groups
+// bad runs as "<score> < 1 @ <phase>" without knowing anything about WorkHorse.
 'use strict';
 const crypto = require('crypto');
 
+// A stopped stretch this long counts as a stall, the same threshold the watcher resumes at.
+const STALL_MINUTES = 10;
+// The order scores are checked in; a Flywheel config lists its rules in the same order.
+const SCORE_ORDER = ['finished', 'within_budget', 'no_stall', 'no_unexplained_gap', 'gates_first_time'];
+
+// LangSmith takes a run once and an update once, so a trace cannot be reshaped after it is sent.
+// When what a trace carries changes, this number changes and the trace is sent again as new runs.
+// 1: 0.5.2. 2: 0.5.3 (scores, one error per trace, node labels).
+const TRACE_SCHEMA = 2;
+
 /** A stable UUID (version 5 layout) for a name within a change. */
 function stableId(changeId, name) {
-  const h = crypto.createHash('sha1').update(`workhorse:${changeId}:${name}`).digest();
+  const h = crypto.createHash('sha1').update(`workhorse:${TRACE_SCHEMA > 1 ? `v${TRACE_SCHEMA}:` : ''}${changeId}:${name}`).digest();
   h[6] = (h[6] & 0x0f) | 0x50;
   h[8] = (h[8] & 0x3f) | 0x80;
   const x = h.subarray(0, 16).toString('hex');
@@ -107,6 +125,10 @@ function buildTrace(L, info) {
   let phaseRun = null;
   let phaseCount = 0;
   const steps = [];
+  let stalls = 0;
+  const marks = [];
+  const phaseAgent = new Map();
+  let rejections = 0;
   for (let i = 1; i < events.length; i++) {
     const a = events[i - 1], b = events[i];
     const mins = Math.max(0, (b.t - a.t) / 60000);
@@ -120,9 +142,20 @@ function buildTrace(L, info) {
       phaseRun = {
         id, trace_id: rootId, parent_run_id: rootId, dotted_order: `${rootOrder}.${stamp(a.t)}${id}`,
         name: p, run_type: 'chain', start_time: iso(a.t), end_time: iso(b.t),
-        inputs: {}, outputs: { steps: 0 }, tags: ['workhorse', 'phase'], extra: { metadata: { phase: p } },
+        inputs: {}, outputs: { steps: 0 }, tags: ['workhorse', 'phase'],
+        extra: { metadata: { phase: p, langgraph_node: p, langgraph_step: phaseCount } },
       };
       runs.push(phaseRun);
+    }
+    if (kind === 'agent') phaseAgent.set(phaseRun, (phaseAgent.get(phaseRun) || 0) + mins);
+    const rejected = b.kind === 'approval' && / rejected$/.test(b.text);
+    if (rejected) rejections += 1;
+    if (kind === 'dead' && mins >= STALL_MINUTES) stalls += 1;
+    const key = rejected ? 'gates_first_time' : kind === 'dead' && mins >= STALL_MINUTES ? 'no_stall' : kind === 'unexplained' ? 'no_unexplained_gap' : null;
+    if (key) {
+      const text = rejected ? `gate rejected: ${b.text.split(' ')[0]}` : key === 'no_stall' ? `stopped run: ${Math.round(mins)} minutes before it was resumed` : `unexplained gap: ${Math.round(mins)} minutes`;
+      marks.push({ key, run: phaseRun, text });
+      (phaseRun.extra.metadata.went_wrong = phaseRun.extra.metadata.went_wrong || []).push(text);
     }
     phaseRun.end_time = iso(b.t);
     phaseRun.outputs.steps += 1;
@@ -139,6 +172,25 @@ function buildTrace(L, info) {
   }
   const r1 = (n) => Math.round(n * 10) / 10;
   const m = info.metrics || {};
+  const budget = info.tier === null || info.tier === undefined ? null : L.budgetMinutes(info.tier, {});
+  const finished = info.status !== undefined ? info.status === 'finished' : rows.some((r) => r.phase === 'done');
+  const scores = {
+    finished: finished ? 1 : 0,
+    ...(budget === null ? {} : { within_budget: minutes.agent <= budget ? 1 : 0 }),
+    no_stall: stalls ? 0 : 1,
+    no_unexplained_gap: minutes.unexplained > 0 ? 0 : 1,
+    gates_first_time: rejections ? 0 : 1,
+  };
+  if (scores.within_budget === 0 && phaseAgent.size) {
+    const [worst, mins] = [...phaseAgent.entries()].sort((x, y) => y[1] - x[1])[0];
+    marks.push({ key: 'within_budget', run: worst, text: `over budget: ${worst.name} used ${Math.round(mins)} of ${Math.round(minutes.agent)} agent minutes (budget ${budget})` });
+  }
+  const lastPhase = runs[runs.length - 1];
+  if (!scores.finished && lastPhase) marks.push({ key: 'finished', run: lastPhase, text: `not finished: the record stops in ${lastPhase.name}` });
+  // One error per trace, on the phase behind the first failing score in SCORE_ORDER, so the
+  // miner's reason and node describe the same problem. Every other mark stays in metadata.
+  const primary = SCORE_ORDER.map((k) => marks.find((m) => m.key === k)).find(Boolean);
+  if (primary) primary.run.error = primary.text;
   runs.unshift({
     id: rootId, trace_id: rootId, dotted_order: rootOrder,
     name: `WorkHorse: ${info.title || info.id}`, run_type: 'chain',
@@ -146,7 +198,7 @@ function buildTrace(L, info) {
     inputs: { change_id: info.id, request: info.title || info.id },
     outputs: {
       agent_minutes: r1(minutes.agent), waiting_minutes: r1(minutes.waiting), dead_minutes: r1(minutes.dead),
-      unexplained_minutes: r1(minutes.unexplained), gate_decisions: approvals.length,
+      unexplained_minutes: r1(minutes.unexplained), gate_decisions: approvals.length, scores,
     },
     tags: ['workhorse', `tier-${info.tier === null || info.tier === undefined ? 'unknown' : info.tier}`].concat(info.version ? [`workhorse-${info.version}`] : [], shift ? ['replayed'] : []),
     extra: {
@@ -161,25 +213,41 @@ function buildTrace(L, info) {
   return runs.concat(steps);
 }
 
-/** POST the runs to LangSmith in one batch. Resolves { ok, status, error? }; never throws. */
+/** The root's scores as LangSmith feedback rows, with ids stable per change and key. */
+function feedbackFor(runs) {
+  const root = runs[0];
+  if (!root || !root.outputs || !root.outputs.scores) return [];
+  const change = root.inputs.change_id;
+  return Object.entries(root.outputs.scores).map(([key, score]) => ({
+    id: stableId(change, `feedback:${key}`), run_id: root.id, trace_id: root.id, key, score,
+    feedback_source: { type: 'api', metadata: { source: 'workhorse' } },
+  }));
+}
+
+/** POST the runs to LangSmith in one batch, then their scores as feedback. Resolves
+ *  { ok, status, error? }; never throws. */
 async function upload(runs, opts) {
   const endpoint = String(opts.endpoint || 'https://api.smith.langchain.com').replace(/\/+$/, '');
-  const project = opts.project || 'workhorse';
-  const post = runs.map((r) => ({ ...r, session_name: project }));
+  const project = opts.project || 'workhorse-runs';
+  const headers = { 'content-type': 'application/json', 'x-api-key': opts.apiKey };
+  const call = (p, body) => fetch(`${endpoint}${p}`, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(opts.timeoutMs || 30000) });
   try {
-    const res = await fetch(`${endpoint}/runs/batch`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': opts.apiKey },
-      body: JSON.stringify({ post }),
-      signal: AbortSignal.timeout(opts.timeoutMs || 30000),
-    });
-    const body = res.ok ? '' : (await res.text()).slice(0, 300);
+    const post = runs.map((r) => ({ ...r, session_name: project }));
+    const res = await call('/runs/batch', { post });
     // The ids are stable, so a second upload of the same change is a duplicate, not a failure.
-    if (res.status === 409) return { ok: true, status: 409, already_sent: true };
-    return { ok: res.ok, status: res.status, ...(body ? { error: body } : {}) };
+    const alreadySent = res.status === 409;
+    if (!res.ok && !alreadySent) return { ok: false, status: res.status, error: (await res.text()).slice(0, 300) };
+    let scored = 0;
+    for (const f of feedbackFor(runs)) {
+      const r = await call('/feedback', f);
+      // A score already recorded under the same id is a duplicate, not a failure.
+      if (!r.ok && r.status !== 409) return { ok: false, status: r.status, error: `feedback ${f.key}: ${(await r.text()).slice(0, 200)}` };
+      scored += 1;
+    }
+    return { ok: true, status: res.status, scored, ...(alreadySent ? { already_sent: true } : {}) };
   } catch (e) {
     return { ok: false, status: 0, error: e.message };
   }
 }
 
-module.exports = { stableId, stamp, agentOf, usageFromStreams, intervalKind, buildTrace, upload };
+module.exports = { TRACE_SCHEMA, SCORE_ORDER, stableId, stamp, agentOf, usageFromStreams, intervalKind, buildTrace, feedbackFor, upload };

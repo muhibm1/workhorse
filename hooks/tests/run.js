@@ -1379,7 +1379,7 @@ console.log('merge on Ship approval (0.5.1)');
   check('the shipper never merges over a red check and leaves the merge to ship-merge', /never merge over a red check/.test(fs.readFileSync(path.join(PLUGIN, 'agents', 'wh-shipper.md'), 'utf8')) && /wh\.js ship-merge/.test(fs.readFileSync(path.join(PLUGIN, 'agents', 'wh-shipper.md'), 'utf8')));
 }
 
-console.log('runs as LangSmith traces (0.5.2)');
+console.log('runs as LangSmith traces (0.5.2), scored for Flywheel (0.5.3)');
 {
   const T = require(path.join(PLUGIN, 'scripts', 'wh-trace.js'));
   const id1 = T.stableId('c1', 'root');
@@ -1415,6 +1415,33 @@ console.log('runs as LangSmith traces (0.5.2)');
   ].join('\n');
   const u = T.usageFromStreams([stream]);
   check('stream usage is split by the agent each Task call started', u.by_agent.conductor.output_tokens === 5 && u.by_agent['wh-builder'].input_tokens === 100 && u.by_agent['wh-builder'].cache_read_input_tokens === 7 && u.cost_usd === 0.42, JSON.stringify(u));
+  // 0.5.3: scores and error marks Flywheel's miner reads.
+  const t2 = T.buildTrace(L, { id: 'c1', tier: 2, log, approvals, now });
+  const t2p = t2.filter((r) => r.parent_run_id === t2[0].id);
+  check('a run with no closing row is not finished; within budget follows the tier', t2[0].outputs.scores.finished === 0 && t2[0].outputs.scores.within_budget === 1 && root.outputs.scores.within_budget === 0 && t2[0].outputs.scores.gates_first_time === 1, JSON.stringify(t2[0].outputs.scores));
+  check('a stop of 10 minutes or more fails no_stall and is listed on its phase', t2[0].outputs.scores.no_stall === 0 && t2p.find((p) => p.name === 'build').extra.metadata.went_wrong[0] === 'stopped run: 20 minutes before it was resumed' && !t2p.find((p) => p.name === 'design').extra.metadata.went_wrong);
+  check('only the first failing score\'s phase carries the error: an unfinished run blames where it stopped', t2p.filter((p) => p.error).length === 1 && t2p.find((p) => p.name === 'build').error === 'not finished: the record stops in build');
+  const closed = T.buildTrace(L, { id: 'c1', tier: 2, log, approvals, now, status: 'finished' });
+  check('a finished run within budget blames its stall', closed.filter((r) => r.error).map((r) => `${r.name}: ${r.error}`).join() === 'build: stopped run: 20 minutes before it was resumed');
+  check('phases carry LangGraph node metadata in step order', phases.map((p) => `${p.extra.metadata.langgraph_node}:${p.extra.metadata.langgraph_step}`).join(',') === 'design:1,build:2');
+  const slow = [
+    '2026-10-13T06:00:00.000Z | design | conductor | change created',
+    '2026-10-13T06:20:00.000Z | design | wh-designer | brief written',
+    '2026-10-13T06:40:00.000Z | review | wh-reviewer | round 1',
+    '2026-10-13T07:30:00.000Z | review | wh-reviewer | round 2',
+    '2026-10-13T07:35:00.000Z | done | conductor | closed',
+  ].join('\n');
+  const rej = '## G2: rejected\n\n- When: 2026-10-13T06:25:00.000Z\n';
+  const quick = log.replace('06:50:00.000Z | build | conductor | resumed', '06:31:00.000Z | build | conductor | resumed');
+  check('a resume a minute after the approval is not a stall', T.buildTrace(L, { id: 'c1', tier: 2, log: quick, approvals, now })[0].outputs.scores.no_stall === 1);
+  const sr = T.buildTrace(L, { id: 'c3', tier: 0, log: slow, approvals: rej, now });
+  const sp = sr.filter((r) => r.parent_run_id === sr[0].id);
+  check('an over-budget run blames the phase that used the most agent time', sr[0].outputs.scores.within_budget === 0 && sp.find((p) => p.name === 'review').error === 'over budget: review used 65 of 90 agent minutes (budget 25)', JSON.stringify(sp.map((p) => p.error)));
+  check('a rejected gate fails gates_first_time and is listed on its phase; budget comes first', sr[0].outputs.scores.gates_first_time === 0 && sp.find((p) => p.name === 'design').extra.metadata.went_wrong[0] === 'gate rejected: G2' && !sp.find((p) => p.name === 'design').error);
+  check('a run that reached done is finished; status from the ledger wins', sr[0].outputs.scores.finished === 1 && T.buildTrace(L, { id: 'c3', tier: 0, log: slow, approvals: rej, now, status: 'record not closed' })[0].outputs.scores.finished === 0);
+  const fb = T.feedbackFor(sr);
+  check('each score becomes one feedback row on the root, with a stable id', fb.length === 5 && fb.every((f) => f.run_id === sr[0].id) && fb[0].id === T.feedbackFor(T.buildTrace(L, { id: 'c3', tier: 0, log: slow, approvals: rej, now }))[0].id && new Set(fb.map((f) => f.id)).size === 5);
+  check('without a tier there is no budget score', !('within_budget' in T.buildTrace(L, { id: 'c4', log: slow, now })[0].outputs.scores));
   const tr = path.join(tmp, 'trace');
   fs.mkdirSync(path.join(tr, 'docs', 'sdlc', '2026-10-13-fixture'), { recursive: true });
   const gt = (...a) => execFileSync('git', a, { cwd: tr, encoding: 'utf8' }).trim();

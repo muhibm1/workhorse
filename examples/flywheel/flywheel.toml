@@ -1,0 +1,28 @@
+# Flywheel over WorkHorse's own runs (WorkHorse 0.5.3). Mining reads traces and calls no model.
+#
+#   pip install "langsmith-flywheel[langsmith]"   # from https://github.com/muhibm1/flywheel
+#   flywheel --config examples/flywheel/flywheel.toml mine --since 7d --report mine.md
+#
+# Every WorkHorse trace's root carries five scores, each 1 or 0, counted from the run's own
+# record. A run counts as bad when any of them is 0, and Flywheel groups bad runs as
+# "<score> < 1 @ <phase>". The rules are listed in the order WorkHorse checks them, which is the
+# order that decides which phase a run blames.
+
+[flywheel]
+# `flywheel mine` reads only [mine]. The fields below are required by the file format and are
+# used by `run` and `gate`, which re-run an agent on a dataset; a WorkHorse case is a whole
+# delivery run, so those stay off until WorkHorse Bench defines its fixed tasks.
+target = "workhorse_bench:not_yet"
+evaluators = []
+dataset = "cases.jsonl"
+
+[mine]
+project = "workhorse-runs"
+fail_on_error = false
+rules = [
+  { key = "finished", below = 1 },
+  { key = "within_budget", below = 1 },
+  { key = "no_stall", below = 1 },
+  { key = "no_unexplained_gap", below = 1 },
+  { key = "gates_first_time", below = 1 },
+]

@@ -8,6 +8,32 @@ date (`git show e6bbf58:desk/CHANGELOG.md`).
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.5.3 — 2026-10-13
+
+Follows 0.5.2 (every run is a LangSmith trace). Bad runs become test cases: Flywheel can read
+WorkHorse's traces and group what went wrong.
+
+- Why: Muhammad retired Paddock on 2026-10-13 and chose LangSmith and Flywheel for watching and
+  improving runs instead of a new app. Flywheel turns failed traces into test cases, but a
+  WorkHorse trace never said whether a run failed.
+- Each trace's root now carries five scores as LangSmith feedback, each 1 or 0 and counted from
+  the record: `finished`, `within_budget` (agent minutes within the tier's budget), `no_stall`
+  (never stopped for 10 minutes or more, the watcher's own threshold), `no_unexplained_gap`
+  and `gates_first_time` (no gate rejected).
+- One phase per trace carries the error: the phase behind the first failing score, in that
+  order (the phase that used the most agent time for an over-budget run). Every phase lists all
+  that went wrong in it in its metadata. Phases carry LangGraph's node labels, so Flywheel's
+  miner groups runs as "<score> < 1 @ <phase>" with no WorkHorse-specific code.
+- LangSmith accepts a run once and one update to it, so a trace cannot be reshaped after it is
+  sent. Trace ids now include a schema number, and traces go to a new default project,
+  `workhorse-runs`; the 0.5.2 traces stay in `workhorse`.
+- `examples/flywheel/flywheel.toml` is the mining config. Mining reads traces and calls no model.
+- First pass, 2026-10-13: 16 runs sent (AgentOps, Portfolio, Studbook, WorkHorse, webapp), 13
+  flagged: 8 for budget (4 of them in build), 3 for a stall, 2 for a record that never closed.
+- Tests: 448 in `hooks/tests/run.js` (from 437 after Paddock's removal): the five scores, the
+  stall threshold, one error per trace in score order, node labels, and stable feedback ids.
+- Ledger: not measured. This changes what a trace says about a run, not how a run goes.
+
 ## 0.5.2 — 2026-10-13
 
 Follows 0.5.1 (approving Ship merges the change). Every run becomes a LangSmith trace.
