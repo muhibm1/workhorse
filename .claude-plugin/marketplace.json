@@ -12,7 +12,7 @@
       "name": "workhorse",
       "source": "./",
       "description": "Agentic SDLC for forward-deployed engineering with risk-tiered human gates.",
-      "version": "0.5.4"
+      "version": "0.6.0"
     }
   ]
 }

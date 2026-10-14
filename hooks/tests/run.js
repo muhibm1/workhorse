@@ -1467,6 +1467,194 @@ console.log('runs as LangSmith traces (0.5.2), scored for Flywheel (0.5.3)');
   check('without LANGSMITH_API_KEY nothing is sent and it says why', send.status === 2 && /LANGSMITH_API_KEY is not set/.test(send.stderr));
 }
 
+console.log('event log (0.6): the Kafka client');
+{
+  const K = require(path.join(PLUGIN, 'scripts', 'bus', 'kafka.js'));
+  check('CRC-32C matches the standard check value', K.crc32c(Buffer.from('123456789')) === 0xe3069283);
+  // Partitions Redpanda's own rpk (the franz-go client) chose for these keys on a 6-partition topic.
+  check('the partitioner agrees with the Java client and rpk', K.partitionFor('abc', 6) === 3 && K.partitionFor('2026-10-14-x', 6) === 0 && K.partitionFor('hello world', 6) === 1);
+  const recs = [{ key: 'c1', value: '{"a":1}', timestamp: 1000 }, { key: 'c1', value: 'x'.repeat(300), timestamp: 1500 }, { key: null, value: '', timestamp: 1500 }];
+  const back = K.decodeRecordSet(K.encodeRecordBatch(recs));
+  check('a record batch round-trips keys, values, offsets and timestamps', back.length === 3 && back[0].key === 'c1' && back[1].value.toString() === 'x'.repeat(300) && back[2].key === null && back[1].offset === 1 && back[1].timestamp === 1500);
+  const bad = K.encodeRecordBatch(recs); bad[bad.length - 1] ^= 0xff;
+  let threw = ''; try { K.decodeRecordSet(bad); } catch (e) { threw = e.message; }
+  check('a corrupted batch fails its CRC check instead of being read', /CRC/.test(threw), threw);
+  const two = Buffer.concat([K.encodeRecordBatch(recs.slice(0, 1)), K.encodeRecordBatch(recs.slice(1, 2)).subarray(0, 30)]);
+  check('a batch cut short by the broker is left for the next fetch', K.decodeRecordSet(two).length === 1);
+}
+
+console.log('event log (0.6): approvals, restore, double delivery, broker down');
+{
+  const B = require(path.join(PLUGIN, 'scripts', 'bus', 'index.js'));
+  const P = require(path.join(PLUGIN, 'scripts', 'bus', 'projector.js'));
+  const logDir = path.join(tmp, 'buslog');
+  const env = { ...process.env, WORKHORSE_NO_NOTIFY: '1' };
+  delete env.WORKHORSE_BUS_BROKERS;
+  const run = (cwd, ...a) => { const r = spawnSync(process.execPath, [WH, ...a], { cwd, encoding: 'utf8', env }); return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() }; };
+  const hk = (script, input) => { const r = spawnSync(process.execPath, [path.join(SCRIPTS, script)], { input: JSON.stringify(input), encoding: 'utf8', env }); try { return r.stdout.trim() ? JSON.parse(r.stdout) : {}; } catch (e) { return { error: r.stdout + r.stderr }; } };
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const remote = path.join(tmp, 'bus-remote.git');
+  g(tmp, 'init', '-q', '--bare', remote);
+  const a = path.join(tmp, 'bus-a');
+  g(tmp, 'clone', '-q', remote, a);
+  g(a, 'config', 'user.email', 'owner@example.com'); g(a, 'config', 'user.name', 'Owner');
+  run(a, 'init');
+  fs.appendFileSync(path.join(a, '.workhorse', 'profile.yml'), `commands:\n  test: "true"\nbus:\n  brokers: "file:${logDir.replace(/\\/g, '/')}"\n`);
+  g(a, 'add', '-A'); g(a, 'commit', '-q', '-m', 'init'); g(a, 'push', '-q', 'origin', 'HEAD');
+  check('bus init creates the event topic and the dead-letter topic', /workhorse\.events: created/.test(run(a, 'bus', 'init').out));
+  const created = JSON.parse(run(a, 'new', 'ship the thing', '--tier', '2').out);
+  const id = created.change_id;
+  const brief = path.join(a, 'docs', 'sdlc', id, 'brief.md');
+  fs.writeFileSync(brief, '# Brief\n\nTier 2\n\n## Your decision\n\nApprove as recommended.\n');
+  run(a, 'present', 'G2');
+  const ap = JSON.parse(run(a, 'approve', 'G2', '--accept-all').out);
+  check('an approval goes on the log and says so, with its event id', /^on the log as wh-gate-event:[0-9a-f-]{36}$/.test(ap.event_log || ''), JSON.stringify(ap));
+  const gateEventId = /wh-gate-event:(\S+)/.exec(ap.event_log || '')[1];
+  const gate = (cwd, G) => { const r = run(cwd, 'bus', 'gate', G, '--json'); try { return JSON.parse(r.out); } catch (e) { return { open: false, reason: r.err }; } };
+  check('the log says G2 is open, pinned to the brief', gate(a, 'G2').open === true);
+  check('G4 has no decision on the log, so it is closed', gate(a, 'G4').open === false && /no decision on G4/.test(gate(a, 'G4').reason));
+  const vfile = (root) => ({ tool_name: 'Write', tool_input: { file_path: path.join(root, 'docs', 'sdlc', id, 'verification.md') }, cwd: root });
+  check('the gate guard reads the log: writing verification.md is allowed after G2', decision(hk('gate-guard.js', vfile(a))) === 'none');
+
+  // Rule 1: the approval is pinned to what was read.
+  const orig = fs.readFileSync(brief);
+  fs.writeFileSync(brief, orig.toString().replace('Approve as recommended', 'Approve, and also drop the tests'));
+  const edited = hk('gate-guard.js', vfile(a));
+  check('editing the approved brief closes G2 (pin)', decision(edited) === 'deny' && /changed after G2 was approved/.test(edited.hookSpecificOutput.permissionDecisionReason));
+  fs.writeFileSync(brief, Buffer.concat([orig, Buffer.from('\n## Deploy record\n\nappended later\n')]));
+  check('appending to an approved packet keeps the gate open (the Ship document gains a Deploy record)', gate(a, 'G2').open === true);
+  fs.writeFileSync(brief, orig);
+  g(a, 'push', '-q', 'origin', `wh/${id}`);
+
+  // The documented gap: a second machine, a fresh clone, no shared files except the log.
+  const b = path.join(tmp, 'bus-b');
+  g(tmp, 'clone', '-q', remote, b);
+  g(b, 'checkout', '-q', `wh/${id}`);
+  check('a fresh clone has no control state of its own', !fs.existsSync(path.join(b, '.git', 'workhorse', 'changes', id)));
+  const sc = hk('session-context.js', { hook_event_name: 'SessionStart', cwd: b });
+  const scText = (sc.hookSpecificOutput && sc.hookSpecificOutput.additionalContext) || '';
+  check('cross-machine: the session start restores the change from the log', /Restored .* from the event log: phase design, gates .*G2=approved/.test(scText), scText.slice(0, 300));
+  check('cross-machine: the second clone never asks for G2 again', decision(hk('gate-guard.js', vfile(b))) === 'none' && gate(b, 'G2').open === true);
+
+  // Rule 2: only a person approves.
+  const store = P.empty();
+  const base = { repo: 'r', change_id: 'c', schema_version: 1, ts: '2026-10-14T00:00:00.000Z', type: 'gate.approved', payload: { gate: 'G2' } };
+  P.apply(store, { ...base, event_id: 'e1', actor: { kind: 'agent', agent_id: 'sub-1' } });
+  check('the projector ignores an approval event from an agent, even if no hook stopped it', !store.changes['r|c'].gates.G2 && /not a person/.test(store.changes['r|c'].ignored[0].reason));
+  P.apply(store, { ...base, event_id: 'e2', actor: { kind: 'human' } });
+  P.apply(store, { ...base, event_id: 'e3', type: 'tool.called', actor: { kind: 'agent' }, payload: { tool: 'Bash', gate_event_ids: ['e2'] } });
+  check('an approval id in the main session\'s output is expected and stays valid', store.changes['r|c'].gates.G2.status === 'approved');
+  P.apply(store, { ...base, event_id: 'e4', type: 'tool.called', actor: { kind: 'agent', agent_id: 'sub-2', agent_type: 'wh-builder' }, payload: { tool: 'Bash', gate_event_ids: ['e2'] } });
+  check('an approval whose id shows up in a subagent\'s tool output is voided', store.changes['r|c'].gates.G2.status === 'voided' && /subagent/.test(store.changes['r|c'].gates.G2.void_reason));
+  const bg = hk('bash-guard.js', { tool_name: 'Bash', tool_input: { command: 'rpk topic produce workhorse.events -k x' }, cwd: a });
+  check('no session may produce to the event topic directly', decision(bg) === 'deny');
+  check('no session may touch the outbox or the stores', decision(hk('bash-guard.js', { tool_name: 'Bash', tool_input: { command: 'echo {} >> .git/workhorse/bus/outbox.jsonl' }, cwd: a })) === 'deny');
+  const emitted = hk('bus-emit.js', { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'node wh.js approve G4' }, tool_response: { stdout: `{"event_log":"on the log as wh-gate-event:${gateEventId}"}` }, agent_id: 'sub-9', agent_type: 'wh-shipper', session_id: 's1', cwd: a });
+  check('the producer hook never blocks a tool call', JSON.stringify(emitted) === '{}');
+  check('an approval run from inside a subagent is voided on the log, and the gate closes', gate(a, 'G2').open === false && /voided/.test(gate(a, 'G2').reason));
+
+  // Rule 3: double delivery and crash mid-batch.
+  const topicDir = path.join(logDir, 'workhorse.events');
+  const parts = fs.readdirSync(topicDir).filter((f) => /^\d+\.jsonl$/.test(f));
+  const dupDir = path.join(tmp, 'buslog-dup', 'workhorse.events');
+  fs.mkdirSync(dupDir, { recursive: true });
+  fs.copyFileSync(path.join(topicDir, 'meta.json'), path.join(dupDir, 'meta.json'));
+  for (const f of parts) { const t = fs.readFileSync(path.join(topicDir, f), 'utf8'); fs.writeFileSync(path.join(dupDir, f), t + t); }
+  const project = (dir, file, extra) => spawnSync(process.execPath, ['-e', `
+    const P = require(${JSON.stringify(path.join(PLUGIN, 'scripts', 'bus', 'projector.js'))});
+    P.catchUp(process.argv[1], { cfg: { brokers: 'file:' + process.argv[2], topic: 'workhorse.events', deadLetter: 'workhorse.dead-letter', partitions: 6 }, file: process.argv[3], hooks: ${extra || '{}'} })
+      .then(() => process.exit(0), (e) => { console.error(e.message); process.exit(1); });`, a, dir, file], { encoding: 'utf8', env });
+  const once = path.join(tmp, 'proj-once.json'), twice = path.join(tmp, 'proj-twice.json');
+  project(logDir, once); project(path.join(tmp, 'buslog-dup'), twice);
+  const proj = (f) => JSON.stringify(JSON.parse(fs.readFileSync(f, 'utf8')).changes);
+  check('double delivery: every event twice gives a byte-identical projection', proj(once) === proj(twice));
+  const crash = path.join(tmp, 'proj-crash.json');
+  const killed = project(logDir, crash, '{ afterSave: () => process.exit(9) }');
+  check('crash mid-batch: the consumer dies after its store write, before its offset commit', killed.status === 9 && fs.existsSync(crash));
+  project(logDir, crash);
+  check('crash mid-batch: on restart its store equals a clean build', proj(crash) === proj(once));
+
+  // Rule 4: the broker goes down.
+  fs.writeFileSync(path.join(logDir, 'DOWN'), '');
+  const down = gate(b, 'G2');
+  check('broker down: gates are closed, with the reason', down.open === false && /unreachable/.test(down.reason));
+  const shipDoc = path.join(b, 'docs', 'sdlc', id, 'ship.md');
+  fs.writeFileSync(shipDoc, '# Ship\n\n## Your decision\n\nShip it.\n');
+  run(b, 'state', 'set', 'verification.status', 'none');
+  const q = JSON.parse(run(b, 'approve', 'G2', '--accept-all').out);
+  check('broker down: an approval is recorded and queued, and says the gate stays closed', /queued as wh-gate-event:.*stays closed/.test(q.event_log || ''), JSON.stringify(q));
+  check('broker down: the push is refused', decision(hk('gate-guard.js', vfile(b))) === 'deny');
+  fs.unlinkSync(path.join(logDir, 'DOWN'));
+  const fl = JSON.parse(run(b, 'bus', 'flush', '--json').out);
+  check('broker back: the outbox drains', fl.pending === 0 && fl.sent > 0, JSON.stringify(fl));
+  check('broker back: the queued approval opens the gate', gate(b, 'G2').open === true);
+
+  // Rule 5: a poison event never stops the pipeline.
+  const p0 = path.join(topicDir, '0.jsonl');
+  fs.appendFileSync(p0, JSON.stringify({ key: 'x', value: 'not json at all', timestamp: Date.now() }) + '\n');
+  fs.appendFileSync(p0, JSON.stringify({ key: 'x', value: JSON.stringify({ event_id: 'ok-after-poison', repo: 'r2', change_id: 'x', type: 'change.created', schema_version: 1, ts: '2026-10-14T00:00:00Z', payload: {} }), timestamp: Date.now() }) + '\n');
+  const rb = JSON.parse(run(a, 'bus', 'rebuild', 'approvals', '--json').out);
+  const dl = fs.readFileSync(path.join(logDir, 'workhorse.dead-letter', '0.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(JSON.parse(l).value));
+  check('a malformed event goes to the dead-letter topic with its origin and error', rb.dead_lettered === 1 && dl.some((d) => d.raw === 'not json at all' && d.partition === 0 && /JSON/.test(d.error)), JSON.stringify(rb));
+  check('the event after the poison one is still applied', Boolean(JSON.parse(fs.readFileSync(path.join(a, '.git', 'workhorse', 'bus', 'approvals.json'), 'utf8')).changes['r2|x']));
+  const st = JSON.parse(run(a, 'bus', 'status', '--json').out);
+  check('status reports consumer lag and dead-letter depth', st.reachable === true && st.dead_letter === 1 && typeof Object.values(st.lag)[0] === 'number', JSON.stringify(st));
+
+  // The producer hook.
+  fs.writeFileSync(path.join(a, 'docs', 'sdlc', id, 'spec.md'), '# Spec\n');
+  hk('bus-emit.js', { hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(a, 'docs', 'sdlc', id, 'spec.md') }, tool_response: {}, session_id: 's1', cwd: a });
+  const all = fs.readdirSync(topicDir).filter((f) => /^\d+\.jsonl$/.test(f)).flatMap((f) => fs.readFileSync(path.join(topicDir, f), 'utf8').trim().split('\n')).map((l) => { try { return JSON.parse(JSON.parse(l).value); } catch (e) { return {}; } });
+  const dw = all.find((e) => e.type === 'doc.written' && /spec\.md$/.test(e.payload.path));
+  check('a document written under docs/sdlc is recorded with its SHA-256', dw && dw.payload.bytes === 7 && dw.payload.sha256 === require('crypto').createHash('sha256').update('# Spec\n').digest('hex'));
+  check('every event carries the envelope: id, change, repo, session, actor, host, type, time, schema', all.filter((e) => e.event_id && e.repo !== 'r2').every((e) => e.change_id && e.repo && e.session_id && e.actor && e.host && e.type && e.ts && e.schema_version === 1));
+  check('the repository is named from its origin, the same on both machines', new Set(all.filter((e) => e.change_id === id).map((e) => e.repo)).size === 1);
+  const offEnv = { ...env, WORKHORSE_BUS_BROKERS: 'off' };
+  const offOut = spawnSync(process.execPath, [path.join(SCRIPTS, 'bus-emit.js')], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Read', cwd: a }), encoding: 'utf8', env: offEnv });
+  check('with the log off, the producer hook does nothing', offOut.stdout.trim() === '{}' && run(repo, 'bus', 'status').code === 2);
+
+  // Replay matches the original.
+  const into = path.join(tmp, 'replayed');
+  const rp = run(a, 'bus', 'replay', id, '--into', into, '--json');
+  check('replay re-materializes the change', rp.code === 0 && fs.existsSync(path.join(into, 'conductor-log.md')), rp.err);
+  check('replay: the conductor log is byte-identical to the original', fs.readFileSync(path.join(into, 'conductor-log.md'), 'utf8') === fs.readFileSync(path.join(a, 'docs', 'sdlc', id, 'conductor-log.md'), 'utf8'));
+  const rs = JSON.parse(fs.readFileSync(path.join(into, 'state.json'), 'utf8'));
+  // The last state saved on the log came from the second clone (its approval above).
+  const os2 = L.loadState(b, id);
+  check('replay: the control state equals the last one saved, gates taken from the log', JSON.stringify({ ...rs, gates: {} }) === JSON.stringify({ ...os2, gates: {} }) && rs.gates.G2 === 'approved' && os2.gates.G2 === 'approved');
+  const docs = JSON.parse(fs.readFileSync(path.join(into, 'documents.json'), 'utf8'));
+  check('replay: every recorded document SHA matches the file on disk', Object.keys(docs).length > 0 && Object.entries(docs).every(([p2, d]) => require('crypto').createHash('sha256').update(fs.readFileSync(path.join(a, p2))).digest('hex') === d.sha256));
+  const tl = run(a, 'bus', 'replay', id);
+  check('replay prints the story: created, presented, approved, on which machine', /change created: ship the thing/.test(tl.out) && /G2 presented/.test(tl.out) && /G2 approved by owner@example.com/.test(tl.out));
+}
+
+console.log('event log (0.6): metrics agree with history');
+{
+  const F = require(path.join(PLUGIN, 'scripts', 'bus', 'backfill.js'));
+  const M = require(path.join(PLUGIN, 'scripts', 'bus', 'metrics.js'));
+  const ledger = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'docs', 'ledger', 'runs.json'), 'utf8')).runs;
+  const hist = path.join(__dirname, 'fixtures', 'history');
+  // The three runs behind the five-to-two gate decision (docs/superpowers/specs/2026-09-19-two-gates-design.md).
+  const runs = [['Portfolio', '2026-09-11-deployed-multi-page-portfolio-on-github-pages'], ['Portfolio', '2026-09-13-no-inlined-data-font-urls-in-built-css'], ['webapp', '2026-09-14-fix-zoom-scaling-and-enable-sideways-scrolling']];
+  const store = M.empty();
+  const events = [];
+  for (const [r, cid] of runs) {
+    const files = {};
+    for (const f of ['conductor-log.md', 'approvals.md']) files[f] = fs.readFileSync(path.join(hist, r, cid, f), 'utf8');
+    events.push(...F.eventsFor(r, cid, files));
+  }
+  for (const ev of events.concat(events)) M.apply(store, ev); // delivered twice on purpose
+  const rep = M.report(store, { now: Date.parse('2026-10-14T00:00:00Z') });
+  for (const [r, cid] of runs) {
+    const got = rep.find((x) => x.change_id === cid);
+    const want = ledger.find((x) => x.id === cid);
+    const same = ['agent_minutes', 'waiting_minutes', 'dead_minutes', 'unexplained_minutes', 'wall_minutes'].every((k) => Math.abs(got[k] - want[k]) < 0.05);
+    check(`metrics from the log equal the committed ledger: ${r} ${cid.slice(11, 40)}`, same, `log ${JSON.stringify([got.agent_minutes, got.waiting_minutes, got.dead_minutes, got.unexplained_minutes, got.wall_minutes])} ledger ${JSON.stringify([want.agent_minutes, want.waiting_minutes, want.dead_minutes, want.unexplained_minutes, want.wall_minutes])}`);
+  }
+  const deploy = rep.find((x) => x.change_id === runs[0][1]);
+  check('waiting is also split per gate, and the parts add up to the whole', Object.keys(deploy.waiting_by_gate).length >= 2 && Math.abs(Object.values(deploy.waiting_by_gate).reduce((s, m) => s + m, 0) - deploy.waiting_minutes) < 0.5, JSON.stringify(deploy.waiting_by_gate));
+  check('backfilled ids are stable: a second backfill is the same events', JSON.stringify(F.eventsFor('webapp', runs[2][1], { 'conductor-log.md': fs.readFileSync(path.join(hist, 'webapp', runs[2][1], 'conductor-log.md'), 'utf8'), 'approvals.md': fs.readFileSync(path.join(hist, 'webapp', runs[2][1], 'approvals.md'), 'utf8') }).map((e) => e.event_id)) === JSON.stringify(events.filter((e) => e.change_id === runs[2][1]).map((e) => e.event_id)));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

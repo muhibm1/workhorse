@@ -1,6 +1,6 @@
 # Where things stand
 
-Last updated 2026-10-07. The state of WorkHorse (the plugin), Paddock (the desktop app, removed 2026-10-13)
+Last updated 2026-10-14. The state of WorkHorse (the plugin), Paddock (the desktop app, removed 2026-10-13)
 and Studbook (paused), what is open, and what to do when picking this back up. Studbook's own
 detail is in `studbook/docs/status.md`.
 
@@ -11,6 +11,18 @@ changes, and each gate is posted to the change's pull request so it can be answe
 `/approve` or `/reject` from a phone. Paddock is retired as of 0.3.14 (its CI still runs) and
 Studbook is out of use; both stay in their repositories. The sections below from 2026-09-19 and
 2026-09-26 are kept as the record and describe the Paddock and Studbook work as it stood then.
+
+## What changed on 2026-10-14
+
+- 0.6.0: the run on an event log, from the "WorkHorse on an Event Bus" proposal. Optional per
+  repository (`bus:` in the profile, Redpanda from `examples/bus/compose.yml`). Gate approvals
+  are read from the log and pinned to the document's SHA-256, so a change continues on a second
+  machine without being approved again; gates close when the broker is down. `wh.js bus metrics`
+  and `wh.js bus replay` read the same log. Design:
+  `docs/superpowers/specs/2026-10-14-event-bus-design.md`. Open: the Studbook streaming indexer
+  (proposal phase 2), and turning the log on for WorkHorse's own repositories, which needs a
+  broker both machines can reach. The planned 0.5.5 to 0.5.7 (five decisions per Design, review
+  alongside build, split big changes) move unchanged to 0.6.2 to 0.6.4, measured by the log.
 
 ## What changed on 2026-10-13
 

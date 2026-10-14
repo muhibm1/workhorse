@@ -8,6 +8,62 @@ date (`git show e6bbf58:desk/CHANGELOG.md`).
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.6.0 — 2026-10-14
+
+Follows 0.5.4 (a stopped run says so on its pull request). The run on an event log: approvals
+follow a change to any machine, run timings are live, and any run can be replayed. Built from
+the proposal "WorkHorse on an Event Bus" (2026-10-13); the formal design is
+`docs/superpowers/specs/2026-10-14-event-bus-design.md`.
+
+- Why: a gate approval lived on the machine that recorded it. When a change moved from the laptop
+  to a cloud session, the approval was gone and had to be given again; the portfolio's "where it
+  fell short" names this. Run timings were only ever computed after the fact.
+- Opt-in: a `bus:` block in the profile points at a Kafka-protocol broker. Redpanda in Docker,
+  `examples/bus/compose.yml`, image pinned by digest. Without the block nothing changes.
+- Every run event goes to one topic, `workhorse.events`, keyed by change id so a change's events
+  stay in order: change created, state saved, phase started, conductor-log row, gate presented,
+  document written (with its SHA-256), document decided, gate approved or rejected, tool called,
+  guard blocked or asked, session opened or closed. A new hook, `bus-emit.js`, produces them
+  after every tool call through a local outbox; `wh.js` produces the rest.
+- `scripts/bus/kafka.js` is a small Kafka protocol client with no dependencies (Metadata,
+  CreateTopics, Produce with record batch v2 and CRC-32C, Fetch, ListOffsets, FindCoordinator,
+  OffsetCommit, OffsetFetch; Kafka's own murmur2 partitioner). It keeps the plugin
+  dependency-free and works the same against Redpanda and Apache Kafka.
+- Approvals projector (proposal phase 1): gate checks ask the log, never the state file. An
+  approval is pinned to the SHA-256 and length of the document the person read; changing those
+  bytes closes the gate, appending (the Ship document's Deploy record) does not. Before 0.6 the
+  hash was recorded but never compared. Only a person's approval counts: the bash guard refuses
+  direct writes to the topic, the projector ignores approval events from an agent, and it voids
+  an approval whose id appears in a subagent's tool output. A session on a machine that never
+  ran the change restores it from the log on the change's branch (`wh.js bus restore`).
+- Gates fail closed: with the broker down, pushing, merging and gated writes are refused with the
+  reason, approvals queue in the outbox, and the merge after Ship waits. Consumers retry a bad
+  event three times, then move it to `workhorse.dead-letter` and carry on.
+- Run metrics (proposal phase 3): `wh.js bus metrics` gives each change's clock from the same
+  `computeClock` the ledger uses, plus waiting per gate, agent time, sessions and tool calls per
+  phase, guard blocks, voided approvals, consumer lag and dead-letter depth. `wh.js bus backfill`
+  loads runs from before 0.6 with stable ids, so repeating it adds nothing.
+- Replay (proposal phase 4): `wh.js bus replay <change>` prints a run's story;
+  `--until <time> --into <dir>` rebuilds its state, its conductor log byte for byte, its gate
+  decisions and a SHA manifest of its documents.
+- Measured on 2026-10-14 against Redpanda 24.2.7 in a cloud container: the producer hook takes
+  a median 67 ms per tool call with the log on and 40 ms in a repository without it (a bare Node
+  start is 33 ms). A gate check takes 75 to 95 ms once caught up; a new machine reads a
+  20,000-event lane in 0.7 s.
+- Metrics agree with history: all 18 runs in the ledger, backfilled from five repositories onto
+  the broker, give the ledger's agent, waiting, dead, unexplained and wall minutes to the tenth
+  of a minute. Split per gate, the three runs behind the five-to-two gate cut spent 633 of their
+  1,598 waiting minutes at G1 and G3, the two gates that were removed. The hand table of
+  2026-09-19 differs from the ledger; the design shows both and the likely reasons.
+- Tests: 501 in `hooks/tests/run.js` (from 454): the client's encoding, the pin, both agent
+  rules, cross-machine restore, double delivery, crash mid-batch, broker down, a poison event,
+  replay, and the ledger match on the three historical runs. 13 more in
+  `hooks/tests/bus-broker.js` against a real broker, in a new CI job, `event-log`, that really
+  stops and restarts the broker.
+- Built directly in a cloud session, not through `/workhorse:run`, because the owner was in the
+  air and could not answer gates. The ledger has no row for it.
+- Ledger: not measured. This changes where run state lives, not how long a run takes.
+
 ## 0.5.4 — 2026-10-13
 
 Follows 0.5.3 (bad runs become test cases). A stopped run says so on its pull request.

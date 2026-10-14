@@ -1,0 +1,28 @@
+# The WorkHorse event log (0.6): one Redpanda broker, which speaks the Kafka protocol, on this
+# machine. Start it with:
+#
+#   docker compose -f examples/bus/compose.yml up -d
+#
+# then, in a repository whose .workhorse/profile.yml has a `bus:` block, run `wh.js bus init`.
+# The image is pinned by digest; CI runs the event-log tests against the same one. Data lives in
+# the named volume, so the log survives `docker compose down` (add `-v` to delete it).
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7@sha256:82a69763bef8d8b55ea5a520fa1b38f993908ef68946819ca1aed43541824c48
+    container_name: workhorse-redpanda
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      - --overprovisioned
+      - --kafka-addr=0.0.0.0:19092
+      - --advertise-kafka-addr=127.0.0.1:19092
+    ports:
+      - "127.0.0.1:19092:19092"
+    volumes:
+      - workhorse-events:/var/lib/redpanda/data
+    restart: unless-stopped
+volumes:
+  workhorse-events:

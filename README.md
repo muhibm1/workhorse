@@ -195,23 +195,69 @@ those scores and groups the bad runs by the phase they went wrong in
 restarted it three times without progress, the watcher says so once in a comment on the pull
 request, so your phone tells you. `WORKHORSE_NO_NOTIFY=1` turns that off.
 
+## The event log (0.6, optional)
+
+**In plain words.** A run's working memory used to live on the one machine that ran it, so an
+approval given on the laptop was gone when the change moved to a cloud session. With the event
+log on, everything a run does (a phase starting, a document written, a person approving the
+Design) is also written as a short message to one shared, append-only log. Any machine that can
+reach the log rebuilds the same answers from it, so an approval follows the change wherever it
+goes. The log runs on Redpanda, a free broker that speaks the Kafka protocol, in Docker.
+
+Turn it on per repository:
+
+```bash
+docker compose -f examples/bus/compose.yml up -d     # in the plugin folder; one broker on 127.0.0.1:19092
+```
+
+```yaml
+# .workhorse/profile.yml
+bus:
+  brokers: "127.0.0.1:19092"
+```
+
+```bash
+node scripts/wh.js bus init       # the event topic (kept forever) and its dead-letter topic
+workhorse doctor                  # one more line: is the log reachable
+```
+
+What changes once it is on:
+
+- **Gates are read from the log.** The gate guard and the merge after Ship ask the log, not the
+  local state file, whether a gate is open. An approval is pinned to the SHA-256 of the
+  document the person read; if that text changes by one byte, the gate closes again.
+- **A second machine continues without re-approval.** Check out the change's branch anywhere and
+  start a session: the change's state is rebuilt from the log (`wh.js bus restore`).
+- **Gates fail closed.** If the broker is down, pushing and merging stop with the reason, and
+  events wait in a local outbox until it is back. Ordinary tool calls carry on.
+- **Live numbers.** `wh.js bus metrics` gives every change's clock, waiting per gate, agent time,
+  sessions and tool calls per phase, guard blocks, and the log's own health (consumer lag and
+  dead letters). `wh.js bus backfill --repo <path>` loads runs from before 0.6.
+- **Replay.** `wh.js bus replay <change>` prints a run's story; `--until <time> --into <dir>`
+  rebuilds it as it stood at that moment.
+
+Without a `bus:` block nothing changes: WorkHorse still needs nothing but a checkout. Design,
+decisions and measurements: [`docs/superpowers/specs/2026-10-14-event-bus-design.md`](docs/superpowers/specs/2026-10-14-event-bus-design.md).
+Setup detail: [`examples/bus/README.md`](examples/bus/README.md).
+
 ## What enforces what
 
-Prompts can be argued with. Hooks cannot. `hooks/hooks.json` wires nine Node scripts (at eleven
+Prompts can be argued with. Hooks cannot. `hooks/hooks.json` wires ten Node scripts (at fifteen
 points: gate-guard runs on both edits and Bash, verify-before-stop on both Stop and
-SubagentStop):
+SubagentStop, and bus-emit after every tool call and at every session start and stop):
 
 | Hook | Refuses |
 |------|---------|
 | protect-paths | edits to `protected_paths`; asks on `sensitive_paths`; any direct edit of `approvals.md` |
 | test-lock | edits to test files while the fixer is working |
 | worktree-fence | source edits in the main checkout while a change is being built in a worktree |
-| bash-guard | force-push, push to the default branch, destructive resets, profile deny list; asks on the ask list; production deploy without G5; any approval attempted from a subagent |
-| gate-guard | writing the next phase's artifact, pushing, or merging while a required gate is unapproved; direct edits of `state.json` |
+| bash-guard | force-push, push to the default branch, destructive resets, profile deny list; asks on the ask list; production deploy without G5; any approval attempted from a subagent; writing to the event topic directly or touching the event outbox |
+| gate-guard | writing the next phase's artifact, pushing, or merging while a required gate is unapproved (with the event log on, unapproved on the log, or approved over a packet that has since changed); direct edits of `state.json` |
 | artifact-check | a change document longer than its tier allows, an `evals.md` with more cases than its tier allows (15/40/80), a reviewer report over 60/80/100 lines, and a finished `ship.md` that still carries a blocker (replaces artifact-size, added in 0.2.11) |
 | format-on-write | nothing; runs the profile's formatter |
 | verify-before-stop | the builder, fixer, or verifier finishing without a green `verification.md` |
-| session-context | nothing; injects profile and change state at session start |
+| session-context | nothing; injects profile and change state at session start, and restores a change from the event log on a machine that never ran it |
+| bus-emit | nothing; with the event log on, records each tool call, document write and session as an event and sends the outbox |
 
 Run the hook tests: `node hooks/tests/run.js`.
 
@@ -358,6 +404,10 @@ for the same reason. Client repositories need none of this.
 - Approvals are trusted to come from the human because the approve skill is user-invocable
   only and the bash-guard refuses it from subagents. The main session model could still be
   talked into running it; treat `approvals.md` history in git as the audit source.
+- The event log (0.6) is for one person on several machines. Anyone who can reach the broker
+  can write an event, so it keeps the same trust boundary as `approvals.md`, not a stronger one:
+  approval events are not signed, and the broker has no TLS or passwords. The design document
+  lists what a team would need.
 - Tracker sync mirrors to Notion only (since 0.2.0); Jira and Linear are documented hook points,
   not implemented.
 - Worktree paths are whatever the platform gives `isolation: worktree`; the fence hook is

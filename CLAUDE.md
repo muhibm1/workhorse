@@ -10,7 +10,7 @@ Keep this file under one page. It is read at the start of every the harness sess
 ## Architecture in five lines
 
 1. The plugin: `skills/` start work, `agents/` do it, `hooks/scripts/` enforce the profile on every tool call.
-2. `scripts/wh.js` is the only way to change state: `.git/workhorse/` for control, `docs/sdlc/<id>/` for documents.
+2. `scripts/wh.js` is the only way to change state: `.git/workhorse/` for control, `docs/sdlc/<id>/` for documents. With a `bus:` profile block (0.6) every change is also an event on a Kafka-protocol log (`scripts/bus/`), and gates are read from the log.
 3. `scripts/workhorse.js` is the user's command (`npm link`); it runs `wh-launch.js` (headless `claude -p`) and `wh.js`.
 4. `scripts/wh-github.js` posts gates to the change's pull request and reads `/approve` and `/reject` back through `gh`.
 5. Releases are manual: bump the version, add a changelog entry, then `claude plugin update workhorse@workhorse`. Paddock, the old desktop app, was removed on 2026-10-13 (see `docs/STATUS.md`).
