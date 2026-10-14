@@ -8,6 +8,32 @@ date (`git show e6bbf58:desk/CHANGELOG.md`).
 Installing the plugin copies it (see README), so a change reaches a machine only once its version
 is bumped and it is reinstalled.
 
+## 0.6.1 — 2026-10-14
+
+Follows 0.6.0 (the run on an event log). A document a run writes is searchable in Studbook's
+local record a few seconds later, instead of after the next full refresh. Proposal phase 2, the
+Studbook streaming indexer.
+
+- `wh.js bus index [--follow]` reads `doc.written` and `doc.decided` events for this repository
+  and hands each written record document to Studbook's new per-document entry point,
+  `python -m localrecord.sync --repo <name>=<path> --only <path>` (studbook #15), as an argument
+  list, from the Studbook checkout. A path waits two seconds after its last write so a document
+  being edited is read once.
+- Turn it on with `studbook: <path to the studbook checkout>` in the profile's `bus:` block;
+  `studbook_python`, `studbook_repo` and `studbook_db` override the venv's Python, the record's
+  name for this repository and the record file.
+- At least once: paths stay pending in `.git/workhorse/bus/index.json` until Studbook reports
+  success, so a failed or interrupted run is retried on the next pass. Re-indexing an unchanged
+  document embeds nothing.
+- Parity, measured with the real model: WorkHorse 0.6.0's changes streamed into a record built at
+  0.5.4 equal a full sync of 0.6.0 (39 documents, 337 passages, identical text, ids and hashes;
+  five vectors differ in the seventh decimal place), and all 40 Studbook dev questions return the
+  same top ten in the same order. Studbook's `StreamingParityTest` keeps the row-for-row check.
+- Tests: 507 in `hooks/tests/run.js` (from 501): a failed Studbook run keeps its paths, each
+  document is indexed once however often it is delivered, the exact argument list, a quiet second
+  pass, the settle wait, and the message when no Studbook is named.
+- Ledger: not measured. This changes when a document becomes searchable, not how long a run takes.
+
 ## 0.6.0 — 2026-10-14
 
 Follows 0.5.4 (a stopped run says so on its pull request). The run on an event log: approvals
