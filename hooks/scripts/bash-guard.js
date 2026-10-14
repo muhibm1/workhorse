@@ -21,6 +21,20 @@ if (/wh\.js["']?\s+(approve|github-sync)\b/.test(lc) || /approve\.js/.test(lc)
 
 const ctx = L.loadContext(input.cwd);
 const profile = ctx.profile || {};
+
+// 0.6: only `wh.js approve` writes gate events, and the outbox and stores under
+// .git/workhorse/bus/ are written only by WorkHorse. A command that produces to the event topic
+// directly, or touches those files, could forge a decision, so no session runs one.
+const busCfg = ctx.root ? L.busConfig(ctx.root, profile) : null;
+if (busCfg) {
+  const topic = busCfg.topic.toLowerCase();
+  if (lc.includes(topic) && /(\bproduce\b|console-producer|\s-p\b)/.test(lc)) {
+    return L.deny(`Writing to the event topic ${busCfg.topic} directly is not allowed: events come from WorkHorse's hooks and CLI, and gate decisions only from /workhorse:approve.`);
+  }
+  if (/workhorse[\\/]bus[\\/]/.test(lc)) {
+    return L.deny('The event outbox and consumer stores (.git/workhorse/bus/) are written only by WorkHorse. Use "wh.js bus" to read or rebuild them.');
+  }
+}
 const defaultBranch = (profile.conventions && profile.conventions.default_branch) || 'main';
 
 const builtinDeny = [
@@ -55,7 +69,8 @@ const envs = profile.environments || {};
 const prod = envs.prod || {};
 if (prod.deploy && lc.includes(String(prod.deploy).toLowerCase()) && prod.auto !== true) {
   const g5 = ctx.state && ctx.state.gates ? ctx.state.gates.G5 : undefined;
-  if (g5 !== 'approved') {
+  const open = busCfg && ctx.id ? L.busGate(ctx.root, ctx.id, 'G5') : { open: g5 === 'approved' };
+  if (!open.open) {
     return L.deny(`Production deploy requires an explicit G5 approval (/workhorse:approve G5); current G5 status: ${g5 || 'no active change'}. At tier 3 the human runs the deploy command themselves.`);
   }
 }

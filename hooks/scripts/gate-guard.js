@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // PreToolUse (Bash|Write|Edit): deny phase-advancing actions while a required gate is
-// unapproved. Fails CLOSED when state exists but cannot be read, because a missing gate is
+// unapproved. With the event log on (0.6), the log is the only authority for a gate. Fails CLOSED when state exists but cannot be read, because a missing gate is
 // exactly the case this hook exists for.
 'use strict';
 const path = require('path');
@@ -16,21 +16,29 @@ const state = ctx.state;
 const profile = ctx.profile;
 const tool = input.tool_name || '';
 
-function blocked(gate, what) {
+// With the event log on (0.6), a gate is open only if the log says so; the answer is asked once
+// per gate per tool call. Without it, state.json decides, as before.
+const answers = {};
+function gate(g) {
+  if (!answers[g]) answers[g] = L.gateOpen(ctx.root, ctx.id, state, profile, g);
+  return answers[g];
+}
+
+function blocked(g, what) {
   const req = L.requiredGates(state, profile).join(', ');
-  const status = (state.gates && state.gates[gate]) || 'pending';
-  return L.deny(`${what} requires ${gate} (status: ${status}) for change ${ctx.id} at tier ${L.effectiveTier(state)}. Required human gates: ${req}. Present the gate packet and wait for /workhorse:approve ${gate}.`);
+  const status = L.busConfig(ctx.root, profile) ? `event log: ${gate(g).reason}` : `status: ${(state.gates && state.gates[g]) || 'pending'}`;
+  return L.deny(`${what} requires ${g} (${status}) for change ${ctx.id} at tier ${L.effectiveTier(state)}. Required human gates: ${req}. Present the gate packet and wait for /workhorse:approve ${g}.`);
 }
 
 if (tool === 'Bash') {
   const cmd = String((input.tool_input && input.tool_input.command) || '').toLowerCase();
   if (/\bgh\s+pr\s+merge\b/.test(cmd) || /\bgit\s+merge\b/.test(cmd)) {
-    if (!L.gateSatisfied(state, profile, 'G4')) return blocked('G4', 'Merging');
+    if (!gate('G4').open) return blocked('G4', 'Merging');
   }
   if (/\bgh\s+pr\s+create\b/.test(cmd) || /\bgit\s+push\b/.test(cmd)) {
     // Pushing the change branch is allowed once the design is approved and verification is
     // green; it is how the PR for G4 (Ship) is opened.
-    if (!L.gateSatisfied(state, profile, 'G2')) return blocked('G2', 'Pushing');
+    if (!gate('G2').open) return blocked('G2', 'Pushing');
     const v = state.verification || {};
     if (v.status !== 'green') {
       return L.deny(`Pushing requires a green verification.md for change ${ctx.id} (current: ${v.status || 'none'}). Run the verifier first.`);
@@ -47,8 +55,8 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit') {
   if (!m) return L.emit({});
   const [, id, name] = m;
   if (id !== ctx.id) return L.emit({});
-  const gate = L.PHASE_ARTIFACT_GATE[name];
-  if (gate && !L.gateSatisfied(state, profile, gate)) return blocked(gate, `Writing ${name}`);
+  const g = L.PHASE_ARTIFACT_GATE[name];
+  if (g && !gate(g).open) return blocked(g, `Writing ${name}`);
   if (name === 'state.json') {
     // state.json is managed by the wh CLI; direct edits would let an agent mark its own gates.
     return L.deny('state.json is managed by the wh CLI (node "${CLAUDE_PLUGIN_ROOT}/scripts/wh.js" state ...). Do not edit it directly.');

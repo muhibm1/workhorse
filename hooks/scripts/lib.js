@@ -5,14 +5,21 @@ const path = require('path');
 
 // ---------- stdin / stdout contract ----------
 
+let lastInput = {};
+let lastCtx = null;
+
 function readStdinJson() {
   try {
     const raw = fs.readFileSync(0, 'utf8');
-    return raw.trim() ? JSON.parse(raw) : {};
+    lastInput = raw.trim() ? JSON.parse(raw) : {};
   } catch (e) {
-    return {};
+    lastInput = {};
   }
+  return lastInput;
 }
+
+/** For a hook that read stdin itself: what readStdinJson would have returned. */
+function setInput(i) { lastInput = i || {}; return lastInput; }
 
 function emit(obj) {
   process.stdout.write(JSON.stringify(obj));
@@ -26,8 +33,8 @@ function preToolDecision(decision, reason, extra) {
 }
 
 function allow(reason) { preToolDecision('allow', reason); }
-function deny(reason) { preToolDecision('deny', reason); }
-function ask(reason) { preToolDecision('ask', reason); }
+function deny(reason) { busNote('hook.blocked', reason); preToolDecision('deny', reason); }
+function ask(reason) { busNote('hook.asked', reason); preToolDecision('ask', reason); }
 
 // Fail open: warn Claude, but do not block. Used when state cannot be read.
 function failOpen(msg) {
@@ -140,6 +147,9 @@ function loadState(root, id) {
 function saveState(root, id, state) {
   state.updated_at = new Date().toISOString();
   writeStateFile(root, id, state);
+  // 0.6: every save is also a snapshot on the event log (when the repository turns it on), so a
+  // second machine can rebuild this state. Gate approvals are never read back from it.
+  busEmit(root, { type: 'state.saved', change_id: id, payload: { state } });
 }
 
 /** Every change id with state, from the control-state store and any not-yet-migrated legacy folders. */
@@ -176,6 +186,7 @@ function loadContext(cwd) {
   } catch (e) {
     out.error = e.message;
   }
+  lastCtx = out;
   return out;
 }
 
@@ -475,8 +486,10 @@ const GAP_MINUTES = 90;
 function computeClock(opts) {
   const now = opts.now !== undefined ? opts.now : Date.now();
   const state = opts.state || {};
-  const rows = parseConductorLog(opts.log).map((r) => ({ ...r, kind: 'log' }));
-  const approvals = parseApprovals(opts.approvals).map((a) => ({ ...a, kind: 'approval' }));
+  // Callers with the record already parsed (the event log's metrics consumer) pass rows and
+  // decisions directly; everyone else passes the two files' text.
+  const rows = (opts.rows || parseConductorLog(opts.log)).map((r) => ({ ...r, kind: 'log' }));
+  const approvals = (opts.decisions || parseApprovals(opts.approvals)).map((a) => ({ ...a, kind: 'approval' }));
   const events = rows.concat(approvals).sort((a, b) => a.t - b.t);
   const tier = effectiveTier(state);
   const budget = budgetMinutes(tier, opts.profile);
@@ -484,7 +497,7 @@ function computeClock(opts) {
   const empty = {
     agent_minutes: 0, waiting_minutes: 0, dead_minutes: 0, gap_minutes: 0, wall_minutes: 0,
     human_minutes: null, budget_minutes: budget, within_budget: true, tier, done,
-    phases: [], gaps: [], events: 0, started_at: null, ended_at: null,
+    phases: [], gaps: [], events: 0, started_at: null, ended_at: null, waiting_by_gate: {},
   };
   if (events.length === 0) return empty;
 
@@ -493,13 +506,14 @@ function computeClock(opts) {
   const byPhase = {};
   const gaps = [];
   let agent = 0, waiting = 0, dead = 0, gap = 0;
+  const byGate = {};
   const intervals = [];
   for (let i = 1; i < events.length; i++) intervals.push([events[i - 1], events[i]]);
   if (!done && end > events[events.length - 1].t) intervals.push([events[events.length - 1], { t: end, kind: 'now' }]);
 
   for (const [a, b] of intervals) {
     const mins = Math.max(0, (b.t - a.t) / 60000);
-    if (b.kind === 'approval') { waiting += mins; continue; }
+    if (b.kind === 'approval') { waiting += mins; byGate[b.gate] = (byGate[b.gate] || 0) + mins; continue; }
     if (b.kind === 'now' && waitingNow) { waiting += mins; continue; }
     if (b.kind === 'log' && RESUME_RE.test(b.text)) { dead += mins; continue; }
     if (mins > GAP_MINUTES) {
@@ -529,6 +543,7 @@ function computeClock(opts) {
     phases: Object.entries(byPhase).map(([phase, m]) => ({ phase, agent_minutes: r1(m) })),
     gaps, events: events.length,
     started_at: new Date(events[0].t).toISOString(), ended_at: new Date(end).toISOString(),
+    waiting_by_gate: Object.fromEntries(Object.entries(byGate).map(([g, m]) => [g, r1(m)])),
   };
 }
 
@@ -645,6 +660,68 @@ function packetComplete(md) {
   return /^## Your decision/m.test(String(md || ''));
 }
 
+// ---------- the event log (0.6) ----------
+//
+// Opt-in per repository with a `bus:` block in the profile; see scripts/bus/ and
+// docs/superpowers/specs/2026-10-14-event-bus-design.md. Every helper here is a no-op without it.
+
+function bus() { return require(path.join(__dirname, '..', '..', 'scripts', 'bus', 'index.js')); }
+
+/** The bus settings for this repository, or null when the profile does not turn the log on. */
+function busConfig(root, profile) {
+  try { return bus().config(root, profile); } catch (e) { return null; }
+}
+
+/** Who produced a hook's event: the session, and the subagent when there is one. */
+function hookActor(input) {
+  const i = input || lastInput || {};
+  return { kind: 'agent', ...(i.agent_id ? { agent_id: i.agent_id } : {}), ...(i.agent_type ? { agent_type: i.agent_type } : {}) };
+}
+
+/** Queue one event for the log (no network). Never throws. */
+function busEmit(root, ev) {
+  try {
+    if (!root || !ev || !ev.change_id) return [];
+    const extra = lastInput && lastInput.session_id ? { session_id: lastInput.session_id, actor: ev.actor || hookActor() } : {};
+    return bus().emit(root, { ...extra, ...ev });
+  } catch (e) { return []; }
+}
+
+/** A guard's denial or question, as an event on the active change. */
+function busNote(type, reason) {
+  try {
+    const c = lastCtx;
+    if (!c || !c.root || !c.id) return;
+    const hook = path.basename(process.argv[1] || 'hook', '.js');
+    const ti = (lastInput && lastInput.tool_input) || {};
+    const what = ti.command || ti.file_path || ti.notebook_path || '';
+    busEmit(c.root, { type, change_id: c.id, payload: { hook, tool: lastInput.tool_name || null, target: String(what).slice(0, 200), reason: String(reason || '').slice(0, 400) } });
+  } catch (e) { /* never let the log change a guard's decision */ }
+}
+
+/** Ask the event log whether a gate is open, synchronously (hooks and the CLI are synchronous).
+ *  Runs `wh.js bus gate` in a child process with a hard timeout. Fails closed. */
+function busGate(root, id, gate) {
+  const { spawnSync } = require('child_process');
+  const wh = path.join(__dirname, '..', '..', 'scripts', 'wh.js');
+  const r = spawnSync(process.execPath, [wh, 'bus', 'gate', gate, '--change', id, '--json'], { cwd: root, encoding: 'utf8', timeout: 8000, windowsHide: true });
+  try {
+    const res = JSON.parse(String(r.stdout || '').trim());
+    return { open: res.open === true, reason: res.reason || '' };
+  } catch (e) {
+    return { open: false, reason: `the event log could not be asked (${r.error ? r.error.message : `exit ${r.status}`}); gates are closed until it answers` };
+  }
+}
+
+/** Is `gate` satisfied for this change? With the log on, a required gate is open only if the log
+ *  says so (state.json is not trusted); without it, the state file decides as before. */
+function gateOpen(root, id, state, profile, gate) {
+  if (!requiredGates(state, profile).includes(gate)) return { open: true, reason: 'not required' };
+  if (busConfig(root, profile)) return busGate(root, id, gate);
+  const ok = gateSatisfied(state, profile, gate);
+  return { open: ok, reason: ok ? 'approved' : `status: ${(state && state.gates && state.gates[gate]) || 'pending'}` };
+}
+
 // ---------- misc ----------
 
 function nowIso() { return new Date().toISOString(); }
@@ -659,7 +736,7 @@ function git(root, args) {
 }
 
 module.exports = {
-  readStdinJson, emit, preToolDecision, allow, deny, ask, failOpen,
+  readStdinJson, setInput, emit, preToolDecision, allow, deny, ask, failOpen,
   findRoot, isInsideWorktree, loadProfile, activeChangeId, setActiveChangeId, changeDir, loadState, saveState, loadContext,
   gitCommonDir, stateRoot, stateFile, activeFile, listChangeIds, isInStateRoot,
   ALL_GATES, GATE_NAMES, TIER_GATES, PHASES, BUDGET_MINUTES, budgetMinutes,
@@ -667,6 +744,7 @@ module.exports = {
   parseConductorLog, parseApprovals, computeClock, RESUME_RE, GAP_MINUTES, formatClock, fmtMinutes, fmtAge,
   knownFailuresFile, parseKnownFailures, loadKnownFailures, addKnownFailure,
   shipBlockers, packetComplete,
+  busConfig, busEmit, busNote, busGate, gateOpen, hookActor,
   normalize, relToRoot, globToRegex, matchesAny, toolFilePath,
   parseYaml, nowIso, git,
 };

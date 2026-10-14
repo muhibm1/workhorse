@@ -429,6 +429,12 @@ function doctor() {
     check('origin is on GitHub (gates post to pull requests)', /github\.com[:/]/.test(remote), 'without a GitHub remote, approve in the terminal: workhorse approve');
     const lock = whJson(repo, ['lock', 'status']);
     check(lock && lock.holder ? `a run holds the lock (${lock.holder})` : 'no run in progress', true);
+    // 0.6: only when the profile turns the event log on; `bus status` prints nothing otherwise.
+    const bus = whJson(repo, ['bus', 'status', '--json']);
+    if (bus) {
+      check(bus.reachable ? `event log reachable at ${bus.brokers} (${bus.events} events, ${bus.outbox} queued here)` : `event log unreachable at ${bus.brokers}`,
+        bus.reachable, `start the broker: docker compose -f "${path.join(PLUGIN, 'examples', 'bus', 'compose.yml')}" up -d (gates stay closed until it is back)`);
+    }
   } else {
     check('this folder is a WorkHorse repository', false, 'cd into a repository, or run /workhorse:onboard in the harness there');
   }

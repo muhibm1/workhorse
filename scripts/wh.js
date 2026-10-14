@@ -49,6 +49,9 @@
 //   wh.js ledger [--repo <path>[#<ref>]]... [--out <dir>] [--json]
 //                                           every change in every repository, its clock recomputed from
 //                                           the committed record (see scripts/wh-ledger.js)
+//   wh.js bus <init|status|flush|gate|gates|restore|metrics|replay|backfill|tail> ...
+//                                           the event log (0.6), when the profile has a `bus:` block;
+//                                           see scripts/bus/cli.js for each subcommand
 //   wh.js plugin-root                       print the plugin root path
 'use strict';
 const fs = require('fs');
@@ -166,6 +169,12 @@ function stateVars(root, id, state) {
 
 switch (cmd) {
   case 'plugin-root': out(PLUGIN_ROOT); break;
+
+  case 'bus': {
+    // 0.6: the event log. Asynchronous, unlike the rest of the CLI, so it exits on its own.
+    require(path.join(__dirname, 'bus', 'cli.js')).main(args).then((code) => process.exit(code || 0), (e) => die(e.message));
+    break;
+  }
 
   case 'checks': {
     const root = requireRoot();
@@ -324,6 +333,7 @@ switch (cmd) {
     state.tier = tier !== null ? Number(tier) : null;
     state.branch = `${(profile.conventions && profile.conventions.branch_prefix) || 'wh/'}${id}`;
     state.phase = 'design';
+    L.busEmit(root, { type: 'change.created', change_id: id, payload: { title, tier: state.tier, branch: state.branch } });
     L.saveState(root, id, state);
     L.setActiveChangeId(root, id);
     const vars = stateVars(root, id, state);
@@ -410,6 +420,7 @@ switch (cmd) {
     // The retro now runs in the background after the change closes and commits its own file,
     // so "done" no longer waits for retro.md. --no-retro is accepted for older callers.
     hasFlag('--no-retro');
+    if (state.phase !== p) L.busEmit(root, { type: 'phase.started', change_id: id, payload: { phase: p, previous: state.phase || null } });
     state.phase = p;
     if (p !== 'verify' && p !== 'build') state.mode = 'normal';
     L.saveState(root, id, state);
@@ -500,9 +511,8 @@ switch (cmd) {
     const dirRel = path.relative(root, L.changeDir(root, id)).split(path.sep).join('/');
     const packetRel = `${dirRel}/${GATE_PACKET[g]}`;
     const packetAbs = path.join(root, packetRel);
-    const packetSha = fs.existsSync(packetAbs)
-      ? crypto.createHash('sha256').update(fs.readFileSync(packetAbs)).digest('hex')
-      : null;
+    const packetBuf = fs.existsSync(packetAbs) ? fs.readFileSync(packetAbs) : null;
+    const packetSha = packetBuf ? crypto.createHash('sha256').update(packetBuf).digest('hex') : null;
     L.git(root, ['add', '--', dirRel]);
     // Exits non-zero when nothing is staged (already committed); HEAD then contains it anyway.
     L.git(root, ['commit', '-q', '-m', `chore(sdlc): ${g} packet for ${id}`, '--', dirRel]);
@@ -534,7 +544,18 @@ switch (cmd) {
         state.review_fix = { rounds: [], before_rejection: (state.review_fix.before_rejection || 0) + state.review_fix.rounds.length };
       }
     }
+    // 0.6: the decision goes on the event log, pinned to the packet's SHA-256 and length, and is
+    // sent before anything relies on it: with the log on, the gate opens only once it is there.
+    const pin = { gate: g, packet: packetRel, sha256: packetSha, bytes: packetBuf ? packetBuf.length : null };
+    const [gateEvent] = L.busEmit(root, { type: 'doc.decided', change_id: id, payload: pin }).length
+      ? L.busEmit(root, { type: `gate.${status}`, change_id: id, actor: { kind: 'human' }, payload: { ...pin, by: who, source: typeof source === 'string' ? source : null, notes } })
+      : [];
     L.saveState(root, id, state);
+    let logged = null;
+    if (gateEvent) {
+      const f = require('child_process').spawnSync(process.execPath, [__filename, 'bus', 'flush', '--json'], { cwd: root, encoding: 'utf8', timeout: 15000, windowsHide: true });
+      try { logged = JSON.parse(f.stdout); } catch (e) { logged = { error: 'the flush did not answer' }; }
+    }
     // Commit the approval so the audit trail is in git history.
     // state.json is machine state kept outside git; approvals.md is the audit record.
     L.git(root, ['add', '--', path.relative(root, af)]);
@@ -542,7 +563,14 @@ switch (cmd) {
     // 0.5.1: approving Ship is the owner saying "merge it". The merge used to wait for the owner
     // too (8 h 36 m on one Portfolio run), because the harness refuses an agent's merge.
     const merge = g === 'G4' && !reject ? shipMerge(root, id, state) : undefined;
-    out({ gate: g, status, who, at, committed: sha !== '' || L.git(root, ['log', '-1', '--format=%h']), ...(merge ? { merge } : {}) });
+    out({
+      gate: g, status, who, at, committed: sha !== '' || L.git(root, ['log', '-1', '--format=%h']), ...(merge ? { merge } : {}),
+      ...(gateEvent ? {
+        event_log: logged && !logged.error && !logged.pending
+          ? `on the log as wh-gate-event:${gateEvent.event_id}`
+          : `queued as wh-gate-event:${gateEvent.event_id}; the log could not be reached (${(logged && logged.error) || 'still pending'}), so ${g} stays closed until "wh.js bus flush" sends it`,
+      } : {}),
+    });
     break;
   }
 
@@ -693,6 +721,7 @@ switch (cmd) {
     if (state.gates[g] === 'rejected' || state.gates[g] === 'auto') state.gates[g] = 'pending';
     state.presented = state.presented || {};
     state.presented[g] = L.nowIso();
+    L.busEmit(root, { type: 'gate.presented', change_id: id, payload: { gate: g, packet: GATE_PACKET[g] } });
     L.saveState(root, id, state);
     appendLog(root, id, state, `conductor | ${g} ${L.GATE_NAMES[g]} presented`);
     // 0.4.0: the gate document goes to the pull request, so it can be read and answered from any
@@ -893,6 +922,18 @@ function shipMerge(root, id, state) {
   if (!G.enabled(L, root, profile)) return { action: 'none', why: 'GitHub approvals are off or origin is not on GitHub' };
   const number = state.github && state.github.pr_number;
   if (!number) return { action: 'none', why: 'no pull request recorded for this change' };
+  // 0.6: with the event log on, the merge needs the log's word that Ship is approved, not the
+  // state file's. Unreachable means wait: the watcher retries, and nothing merges meanwhile.
+  if (L.busConfig(root, profile)) {
+    const g4 = L.busGate(root, id, 'G4');
+    if (!g4.open) {
+      const was = Boolean(state.merge_pending);
+      state.merge_pending = true;
+      if (!was) appendLog(root, id, state, `conductor | merge waits: ${g4.reason}`);
+      L.saveState(root, id, state);
+      return { action: 'wait', why: g4.reason };
+    }
+  }
   const branch = state.branch || L.git(root, ['branch', '--show-current']);
   const dirRel = path.relative(root, L.changeDir(root, id)).split(path.sep).join('/');
   L.git(root, ['add', '--', dirRel]);
@@ -962,6 +1003,7 @@ function appendLog(root, id, state, msg) {
   if (!fs.existsSync(f)) fs.writeFileSync(f, `# Conductor log: ${id}\n\n`);
   const line = `${L.nowIso()} | ${state.phase} | ${msg}`;
   fs.appendFileSync(f, line + '\n');
+  L.busEmit(root, { type: 'log.row', change_id: id, payload: { row: line, phase: state.phase } });
   return line;
 }
 

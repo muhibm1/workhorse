@@ -28,3 +28,38 @@ jobs:
           passed=$(grep -oP '^\K[0-9]+(?= passed)' plugin-tests.log | tail -1)
           echo "passed: $passed"
           test "${passed:-0}" -ge 140
+
+  # 0.6: the event-log tests that need a real Kafka-protocol broker: cross-machine approval,
+  # double delivery against the broker, and broker down (the container is really stopped and
+  # restarted). Redpanda runs from the same pinned image as examples/bus/compose.yml.
+  event-log:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "24"
+      - name: Start Redpanda
+        run: |
+          docker run -d --name wh-redpanda --network host \
+            docker.redpanda.com/redpandadata/redpanda:v24.2.7@sha256:82a69763bef8d8b55ea5a520fa1b38f993908ef68946819ca1aed43541824c48 \
+            redpanda start --mode dev-container --smp 1 --memory 1G --overprovisioned \
+            --kafka-addr 127.0.0.1:19092 --advertise-kafka-addr 127.0.0.1:19092 \
+            --rpc-addr 127.0.0.1:33145 --advertise-rpc-addr 127.0.0.1:33145 \
+            --pandaproxy-addr 127.0.0.1:18082 --advertise-pandaproxy-addr 127.0.0.1:18082
+          for i in $(seq 1 60); do
+            docker exec wh-redpanda rpk cluster health --exit-when-healthy -X brokers=127.0.0.1:19092 && break
+            sleep 1
+          done
+      - name: Event-log tests against the broker
+        env:
+          WORKHORSE_BUS_TEST_BROKERS: 127.0.0.1:19092
+          WORKHORSE_BUS_TEST_CONTAINER: wh-redpanda
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name ci
+          node hooks/tests/bus-broker.js 2>&1 | tee bus-tests.log
+          passed=$(grep -oP '^\K[0-9]+(?= passed)' bus-tests.log | tail -1)
+          echo "passed: $passed"
+          test "${passed:-0}" -ge 13
