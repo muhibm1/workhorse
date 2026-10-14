@@ -45,7 +45,7 @@ Terms used below:
 | 1. Event log and approvals projector (tier 2) | WorkHorse 0.6.0 | Built; tested in `npm test` and against a real broker in CI |
 | 3. Run metrics consumer (tier 0) | WorkHorse 0.6.0 | Built; agrees with the ledger on all 18 recorded runs |
 | 4. Replay (tier 0) | WorkHorse 0.6.0 | Built; a replayed run matches the original |
-| 2. Studbook streaming indexer (tier 1) | WorkHorse 0.6.1 and a Studbook change | Designed here; ships only if parity is proved (see Phase 2) |
+| 2. Studbook streaming indexer (tier 1) | WorkHorse 0.6.1 and studbook #15 | Built; parity proved with the real model (see Phase 2) |
 
 Phases 1, 3 and 4 ship together as 0.6.0 because metrics and replay are thin readers of the log
 phase 1 creates, and were built and tested in the same pass. The indexer touches a second
@@ -238,7 +238,7 @@ produced it. With `--into` it re-materializes the change as it stood at `--until
 state, its conductor log byte for byte, its approvals as the projector saw them, and a manifest
 of every document's SHA. That is the AgentOps "fork from a checkpoint" idea applied to a run.
 
-### Phase 2: Studbook streaming indexer (designed)
+### Phase 2: Studbook streaming indexer (0.6.1)
 
 Studbook is the engineering-record search the designer queries. Its local record is rebuilt by
 `localrecord/sync.py`, per repository, embedding only chunks whose content changed.
@@ -251,6 +251,37 @@ steps are the same code, the streamed record should equal the batch record row f
 parity test checks exactly that (same chunk ids, same content hashes, same vectors) and then
 runs Studbook's 40-question development set against both, requiring the same passages in the
 same order and scores within 0.0001. It ships only when that passes.
+
+**As built.** The consumer is `scripts/bus/indexer.js`, run as `wh.js bus index [--follow]`.
+It is configured by `studbook:` (the checkout) in the `bus:` block, with `studbook_python`,
+`studbook_repo` and `studbook_db` as overrides, and keeps its own store,
+`.git/workhorse/bus/index.json`, under the group `workhorse.index.<host>`. It indexes only
+`docs/sdlc/<change>/*.md` paths of this repository; READMEs, changelogs and commit messages stay
+with the full sync. Paths stay pending until Studbook exits 0, so delivery is at least once and
+a crash or failure is retried; re-indexing an unchanged file embeds nothing, so a repeat costs
+one Python start and a parse.
+
+Studbook's side (`sync_paths`) refreshes the named files and also any other file document whose
+stored fields no longer match a fresh parse, because a tier stated in a brief changes every
+document of its change. A named file that is gone is deleted. One more change was needed for
+parity: search ties in the local record were broken by row order, which depends on the order
+rows were written, so they are now broken by passage id.
+
+**Parity, measured 2026-10-14** with bge-base-en-v1.5 on CPU. A record of WorkHorse at 0.5.4 was
+built by a full sync, then every file 0.6.0 changed was streamed into it one at a time, plus one
+deleted change document; a second record was built by a full sync of 0.6.0. Commit messages were
+dropped from both before comparing.
+
+| Check | Result |
+|---|---|
+| Documents | 39 and 39, identical |
+| Passages: ids, text, headings, hashes | 337 and 337, identical |
+| Vectors | 332 identical; 5 differ by at most 2e-7 per element (cosine 1.0), because the model saw them in a different batch, which any two differently batched full syncs also show |
+| Studbook's 40 dev questions, hybrid search, top ten | 40 of 40 the same passages in the same order |
+| Time per streamed path, nothing to embed | median 0.01 s inside Python; each `wh.js bus index` pass adds a Python start and the model load |
+
+The fake-embedder version of the row-for-row check runs in Studbook's CI
+(`tests/test_localrecord.py`, `StreamingParityTest`).
 
 ## Rules that stay in code
 

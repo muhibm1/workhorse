@@ -235,6 +235,9 @@ What changes once it is on:
   dead letters). `wh.js bus backfill --repo <path>` loads runs from before 0.6.
 - **Replay.** `wh.js bus replay <change>` prints a run's story; `--until <time> --into <dir>`
   rebuilds it as it stood at that moment.
+- **Fresh search (0.6.1).** With `studbook: <path to the studbook checkout>` in the `bus:` block,
+  `wh.js bus index --follow` puts each document a run writes into Studbook's local record a few
+  seconds later, through the same steps as a full refresh.
 
 Without a `bus:` block nothing changes: WorkHorse still needs nothing but a checkout. Design,
 decisions and measurements: [`docs/superpowers/specs/2026-10-14-event-bus-design.md`](docs/superpowers/specs/2026-10-14-event-bus-design.md).

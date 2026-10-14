@@ -1655,6 +1655,65 @@ console.log('event log (0.6): metrics agree with history');
   check('backfilled ids are stable: a second backfill is the same events', JSON.stringify(F.eventsFor('webapp', runs[2][1], { 'conductor-log.md': fs.readFileSync(path.join(hist, 'webapp', runs[2][1], 'conductor-log.md'), 'utf8'), 'approvals.md': fs.readFileSync(path.join(hist, 'webapp', runs[2][1], 'approvals.md'), 'utf8') }).map((e) => e.event_id)) === JSON.stringify(events.filter((e) => e.change_id === runs[2][1]).map((e) => e.event_id)));
 }
 
+console.log('event log (0.6.1): the Studbook streaming indexer');
+{
+  const B = require(path.join(PLUGIN, 'scripts', 'bus', 'index.js'));
+  const env = { ...process.env, WORKHORSE_NO_NOTIFY: '1' };
+  delete env.WORKHORSE_BUS_BROKERS;
+  const run = (cwd, ...a) => { const r = spawnSync(process.execPath, [WH, ...a], { cwd, encoding: 'utf8', env }); return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() }; };
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const repo = path.join(tmp, 'idx-repo');
+  const sb = path.join(tmp, 'idx-studbook');
+  fs.mkdirSync(repo); fs.mkdirSync(sb);
+  g(repo, 'init', '-q');
+  g(repo, 'config', 'user.email', 'owner@example.com'); g(repo, 'config', 'user.name', 'Owner');
+  run(repo, 'init');
+  // A stand-in for Studbook's Python: records each call, fails while a FAIL file exists.
+  const calls = path.join(sb, 'calls.jsonl');
+  const fake = path.join(sb, 'fakepy');
+  fs.writeFileSync(fake, `#!${process.execPath}\nconst fs = require('fs');\nfs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2) }) + '\\n');\nif (fs.existsSync(${JSON.stringify(path.join(sb, 'FAIL'))})) { console.error('the embedding model is missing'); process.exit(1); }\n`);
+  fs.chmodSync(fake, 0o755);
+  const logDir = path.join(tmp, 'idx-log');
+  fs.appendFileSync(path.join(repo, '.workhorse', 'profile.yml'), `bus:\n  brokers: "file:${logDir.replace(/\\/g, '/')}"\n  studbook: "${sb.replace(/\\/g, '/')}"\n  studbook_python: "${fake.replace(/\\/g, '/')}"\n  studbook_repo: Demo\n`);
+  run(repo, 'bus', 'init');
+  const old = new Date(Date.now() - 60000).toISOString();
+  const cfg = B.config(repo);
+  const ev = (type, payload, ts, id) => ({ type, change_id: 'c1', payload, ts: ts || old, ...(id ? { event_id: id, schema_version: 1, repo: B.repoId(repo), session_id: 's', actor: { kind: 'cli' }, host: 'h' } : {}) });
+  B.emit(repo, [
+    ev('doc.written', { path: 'docs/sdlc/c1/design.md' }),
+    ev('doc.written', { path: 'docs/sdlc/c1/design.md' }),
+    ev('doc.decided', { gate: 'G2', packet: 'docs/sdlc/c1/brief.md' }),
+    ev('doc.written', { path: 'docs/sdlc/c1/notes.json' }),
+    ev('doc.written', { path: '../outside.md' }),
+    ev('tool.called', { tool: 'Bash' }),
+    ev('doc.written', { path: 'docs/sdlc/c1/other.md' }, null, '00000000-0000-4000-8000-000000000001'),
+  ], cfg);
+  // The same event delivered twice, and one from another repository.
+  B.emit(repo, [ev('doc.written', { path: 'docs/sdlc/c1/other.md' }, null, '00000000-0000-4000-8000-000000000001')], cfg);
+  B.emit(repo, [{ ...ev('doc.written', { path: 'docs/sdlc/c1/foreign.md' }), repo: 'github.com/someone/else' }], cfg);
+  run(repo, 'bus', 'flush');
+  fs.writeFileSync(path.join(sb, 'FAIL'), '');
+  const failed = run(repo, 'bus', 'index', '--json');
+  const fr = JSON.parse(failed.out || '{}');
+  check('a failed Studbook run keeps every document for the next pass', failed.code === 1 && fr.waiting === 3 && /embedding model is missing/.test(fr.error || ''), failed.out + failed.err);
+  fs.unlinkSync(path.join(sb, 'FAIL'));
+  const ok = JSON.parse(run(repo, 'bus', 'index', '--json').out || '{}');
+  const last = fs.readFileSync(calls, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
+  check('the indexer refreshes each written or decided document once, and nothing else', JSON.stringify(ok.indexed) === JSON.stringify(['docs/sdlc/c1/brief.md', 'docs/sdlc/c1/design.md', 'docs/sdlc/c1/other.md']) && ok.waiting === 0, JSON.stringify(ok));
+  check('it calls Studbook\'s own entry point with an argument list, from the Studbook checkout', last.cwd === fs.realpathSync(sb) && JSON.stringify(last.args) === JSON.stringify(['-m', 'localrecord.sync', '--repo', `demo=${repo}`, '--only', 'docs/sdlc/c1/brief.md', '--only', 'docs/sdlc/c1/design.md', '--only', 'docs/sdlc/c1/other.md']), JSON.stringify(last));
+  const before = fs.readFileSync(calls, 'utf8').trim().split('\n').length;
+  check('a second pass with nothing new does not call Studbook', /nothing to index/.test(run(repo, 'bus', 'index').out) && fs.readFileSync(calls, 'utf8').trim().split('\n').length === before);
+  B.emit(repo, [ev('doc.written', { path: 'docs/sdlc/c1/design.md' }, new Date().toISOString())], cfg);
+  run(repo, 'bus', 'flush');
+  const fresh = JSON.parse(run(repo, 'bus', 'index', '--json').out || '{}');
+  check('a document written in the last two seconds waits to settle', fresh.indexed.length === 0 && fresh.waiting === 1, JSON.stringify(fresh));
+  const noSb = path.join(tmp, 'idx-none');
+  fs.mkdirSync(noSb); g(noSb, 'init', '-q'); run(noSb, 'init');
+  fs.appendFileSync(path.join(noSb, '.workhorse', 'profile.yml'), `bus:\n  brokers: "file:${logDir.replace(/\\/g, '/')}"\n`);
+  const none = run(noSb, 'bus', 'index');
+  check('without a named Studbook the indexer says what to add', none.code === 1 && /studbook: <path/.test(none.err), none.err);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

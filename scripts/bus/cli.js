@@ -17,6 +17,7 @@
 //   bus backfill --repo <path>[#<ref>] [--change <id>] [--dry-run]
 //                                    turn committed run records into events (runs from before 0.6)
 //   bus tail [--n 20]                the latest events of the current repository
+//   bus index [--follow] [--json]    refresh written documents in Studbook's local record (Phase 2)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -25,6 +26,7 @@ const P = require('./projector');
 const M = require('./metrics');
 const R = require('./replay');
 const F = require('./backfill');
+const I = require('./indexer');
 
 function lib() { return require(path.join(__dirname, '..', '..', 'hooks', 'scripts', 'lib.js')); }
 
@@ -148,7 +150,7 @@ async function main(argv) {
     case 'rebuild': {
       const which = args.shift();
       const mod = which === 'approvals' ? P : which === 'metrics' ? M : null;
-      if (!mod) return fail('usage: wh.js bus rebuild <approvals|metrics>');
+      if (!mod) return fail('usage: wh.js bus rebuild <approvals|metrics> (the index store is rebuilt by deleting .git/workhorse/bus/index.json)');
       try { fs.unlinkSync(mod.storeFile(root)); } catch (e) { /* nothing to delete */ }
       const t0 = Date.now();
       const { store, applied, dead } = await mod.catchUp(root, { cfg });
@@ -240,6 +242,22 @@ async function main(argv) {
       if (json) { print(last); return 0; }
       for (const e of last) print(`${e.ts} ${e.change_id} ${e.type} ${JSON.stringify(e.payload).slice(0, 120)}`);
       return 0;
+    }
+
+    case 'index': {
+      const follow = hasFlag(args, '--follow');
+      const pass = async () => {
+        let r;
+        try { r = await I.run(root, { cfg }); } catch (e) { return { error: e.message, fatal: true }; }
+        if (json) print(r);
+        else if (r.indexed.length || r.error) print(r.error ? `Studbook did not index ${r.waiting} document(s), kept for the next pass: ${r.error}` : `Indexed ${r.indexed.length} document(s) into Studbook: ${r.indexed.join(', ')}`);
+        else if (!follow) print(r.waiting ? `${r.waiting} document(s) written in the last two seconds; run again to index them` : 'nothing to index');
+        return r;
+      };
+      const first = await pass();
+      if (first.fatal) return fail(first.error);
+      if (!follow) return first.error ? 1 : 0;
+      for (;;) { await new Promise((res) => setTimeout(res, I.SETTLE_MS)); const r = await pass(); if (r.fatal) process.stderr.write(`wh bus: ${r.error}\n`); }
     }
 
     default:

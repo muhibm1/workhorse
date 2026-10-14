@@ -55,6 +55,24 @@ purpose: it has no passwords.
 | `wh.js bus backfill --repo <path>[#<ref>]` | Load runs from before 0.6 from their committed records; safe to repeat |
 | `wh.js bus rebuild <approvals\|metrics>` | Delete a consumer's local store and rebuild it from the start of the log |
 | `wh.js bus tail` | The latest events of this repository |
+| `wh.js bus index [--follow]` | Put the documents this repository's runs wrote into Studbook's local record (needs `studbook:` below) |
+
+## Keep Studbook's record fresh (0.6.1)
+
+Add the path of a Studbook checkout (with its `.venv` installed) to the `bus:` block:
+
+```yaml
+bus:
+  brokers: "127.0.0.1:19092"
+  studbook: "../studbook"              # relative to this repository, or absolute
+  # studbook_python: "../studbook/.venv/bin/python"   # default: the checkout's .venv
+  # studbook_repo: workhorse                          # default: this folder's name, lowercased
+  # studbook_db: "~/.studbook/record.sqlite"          # default: Studbook's own default
+```
+
+Then leave `node "<plugin>/scripts/wh.js" bus index --follow` running. Each document a run
+writes is refreshed in the record two seconds after its last write; a failed refresh is retried
+on the next pass.
 
 ## When the broker is down
 

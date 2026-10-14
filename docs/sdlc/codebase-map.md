@@ -19,7 +19,7 @@ out of scope here (confirmed).
 | `skills/` | 25 skills: user commands (`onboard`, `run`, `approve`, ...) and policy skills (`wh-*`) | confirmed |
 | `hooks/hooks.json`, `hooks/scripts/` | 10 hook scripts wired at 15 points (`bus-emit.js` added in 0.6); `lib.js` holds the YAML parser, glob matcher, state and gate logic | confirmed |
 | `hooks/tests/run.js` | the plugin's main test runner: builds a throwaway git repo in the OS temp dir and asserts hook and CLI decisions; `hooks/tests/bus-broker.js` (0.6) runs the event-log tests that need a real broker | confirmed |
-| `scripts/bus/` | the event log (0.6): a zero-dependency Kafka client, the outbox, and three consumers (approvals projector, run metrics, replay) | confirmed |
+| `scripts/bus/` | the event log (0.6): a zero-dependency Kafka client, the outbox, and four consumers (approvals projector, run metrics, replay, and the Studbook indexer of 0.6.1) | confirmed |
 | `scripts/wh.js` | the state CLI every agent uses (767 lines, zero dependencies) | confirmed |
 | `templates/` | profile, change documents, client CLAUDE.md | confirmed |
 | `vendor/ecc/` | vendored ECC rule packs (MIT), upstream commit in `VENDORED.md` | confirmed |
