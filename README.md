@@ -1,8 +1,19 @@
 # WorkHorse
 
-Agents build the change. You decide at two gates, from anywhere.
+> **Parked since 2026-10-21. Not actively developed.** The code still installs and its 507 tests
+> pass, but no new work is planned. What was worth keeping moved into Tannhauser Gate (my build
+> pipeline) and Orion (my context layer for coding agents). This page describes WorkHorse as it
+> stood at 0.6.1.
 
-WorkHorse is an agentic software delivery lifecycle for forward-deployed engineering, packaged as
+WorkHorse is a plug-in for an AI coding tool that turns one request into a reviewed, shipped
+code change. You write the problem and the outcome you want. Software agents (programs that
+plan and write code on their own) design the change, build it, test it and review it. You stop
+it twice: once to approve a short design document, and once to approve the finished change
+before it ships. Each approval is recorded with who gave it and when. You can approve from your
+phone by replying on the GitHub pull request (the page where a code change is proposed and
+reviewed).
+
+In more detail: WorkHorse is an agentic software delivery lifecycle for forward-deployed engineering, packaged as
 a harness plugin. Give it a problem and an outcome inside any client repository; agents
 design, build, verify, review and ship. You read a one-page Design document and approve it, and
 later a one-page Ship document, from your terminal or by replying `/approve` on the pull request
