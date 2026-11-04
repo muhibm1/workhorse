@@ -1,7 +1,7 @@
 # Where things stand
 
 > **2026-10-21: WorkHorse is parked.** No new work is planned. Its useful parts moved into
-> Tannhauser Gate and Orion. Studbook was retired on 2026-10-18; Orion's record replaces it.
+> newer tools. Studbook was retired on 2026-10-18; Orion's record replaces it.
 > Everything below is the record as of 2026-10-14.
 
 Last updated 2026-10-14. The state of WorkHorse (the plugin), Paddock (the desktop app, removed 2026-10-13)

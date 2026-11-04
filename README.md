@@ -1,9 +1,8 @@
 # WorkHorse
 
 > **Parked since 2026-10-21. Not actively developed.** The code still installs and its 507 tests
-> pass, but no new work is planned. What was worth keeping moved into Tannhauser Gate (my build
-> pipeline) and Orion (my context layer for coding agents). This page describes WorkHorse as it
-> stood at 0.6.1.
+> pass, but no new work is planned. What was worth keeping moved into my newer tools. This page
+> describes WorkHorse as it stood at 0.6.1.
 
 WorkHorse is a plug-in for an AI coding tool that turns one request into a reviewed, shipped
 code change. You write the problem and the outcome you want. Software agents (programs that
