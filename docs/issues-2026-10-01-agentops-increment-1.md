@@ -253,7 +253,7 @@ than 20 requirements or more than 60 eval cases, and suggests a split.
 ### 27. A killed headless run leaves a live-looking lock, and taking it over needs the owner (medium)
 
 `workhorse "<problem> -> <outcome>"` was started from a background shell, which the harness stops
-at its time limit. The headless Claude process died with it 30 minutes in, after the designer,
+at its time limit. The headless agent process died with it 30 minutes in, after the designer,
 constraint auditor and eval designer had finished but before G2 was presented. The run lock still
 names the dead session, `lock acquire` refuses, and `--force` is refused by the auto-mode
 classifier as a safety bypass, so only the owner can clear it. Fix: the lock records the holder's

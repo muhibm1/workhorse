@@ -61,7 +61,7 @@ Written by wh-discovery-analyst on 2026-09-27 at commit 0ec0a97. Every claim is 
   `master` requires the `plugin` and `desk` checks, strict, with admins not bound (confirmed,
   `gh api`). The owner pushes to `master` directly as an admin bypass (believed, from the log).
 - **Private repo, US jurisdiction, no end users** (user's statement; private visibility confirmed).
-- **Usage limits are real.** Big parallel fan-outs hit the Claude session limit on this machine,
+- **Usage limits are real.** Big parallel fan-outs hit the agent session limit on this machine,
   so the profile sets `build.max_parallel: 6` (believed, from the owner's recorded observation).
 
 ## Must not change without the owner

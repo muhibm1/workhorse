@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Headless Maintain loop. Called by a monitoring webhook receiver, a cron job, or a runbook
 # automation with the alert text on stdin. Detection stays deterministic and outside this
-# script; Claude only diagnoses read-only and writes a new intent.md that enters the pipeline.
+# script; the agent only diagnoses read-only and writes a new intent.md that enters the pipeline.
 #
 # Usage:  echo "<alert text>" | ci/incident-triage.sh /path/to/client/repo
 #

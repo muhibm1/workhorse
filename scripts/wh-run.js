@@ -264,7 +264,7 @@ function readLock(L, root) {
   try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return null; }
 }
 
-/** One conductor per repository. The lock carries no pid (the conductor is a Claude session,
+/** One conductor per repository. The lock carries no pid (the conductor is an agent session,
  *  not a process this script can watch); it is refreshed by every `wh.js log` row and is stale
  *  after LOCK_STALE_MINUTES without one, which is longer than any single agent step. Two live
  *  runs raced on the same task worktree before this existed. */

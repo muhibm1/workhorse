@@ -36,7 +36,7 @@ function allow(reason) { preToolDecision('allow', reason); }
 function deny(reason) { busNote('hook.blocked', reason); preToolDecision('deny', reason); }
 function ask(reason) { busNote('hook.asked', reason); preToolDecision('ask', reason); }
 
-// Fail open: warn Claude, but do not block. Used when state cannot be read.
+// Fail open: warn the agent, but do not block. Used when state cannot be read.
 function failOpen(msg) {
   emit({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', additionalContext: `[workhorse] ${msg}` } });
 }

@@ -295,7 +295,7 @@ answer from your phone.
   alive (a pid file with a heartbeat, so a second session reuses it), and `workhorse watch
   --at-login` adds a hidden Windows Startup entry. `--background`, `--stop` and
   `--not-at-login` complete it; `doctor` and `status` say whether it is running. It calls no
-  model: Claude runs only when a recorded decision resumes the run.
+  model: the agent runs only when a recorded decision resumes the run.
 - Optional phone push through ntfy (`~/.workhorse/config.json` `ntfy_topic`, or
   `WORKHORSE_NTFY_TOPIC`): sends the gate name, change title and PR link only. ntfy is a third
   party and a new subprocessor for whoever turns it on; it is off unless configured.

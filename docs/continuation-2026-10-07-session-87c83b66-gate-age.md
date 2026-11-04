@@ -88,7 +88,7 @@ until pushed. Copy or commit them before wiping it.
 
 - Cost pause from 2026-09-27: no headless `workhorse` runs without the owner's explicit
   go-ahead. Typing the command yourself counts.
-- `/workhorse:run` and `/workhorse:approve` are user-invoked only; Claude cannot call them via
+- `/workhorse:run` and `/workhorse:approve` are user-invoked only; the agent cannot call them via
   the Skill tool.
 - Do not run `npm ci` in `desk/` casually; it replaces the node_modules junction.
 - The user's git email on this machine resolved to `90530587+muhibm1@users.noreply.github.com` in the G4

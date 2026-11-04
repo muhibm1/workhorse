@@ -13,7 +13,7 @@ You asked for the designer and the discovery analyst to be able to search Studbo
 of WorkHorse's own past changes. Both agents get Studbook's two read-only tools, search and ask,
 and a short instruction on when to use them, how often, and how far to trust what comes back.
 Worth knowing: runs started from Paddock will be refused the tools until you add two permission
-entries to your own Claude settings (D1); until then the agents simply carry on without them.
+entries to your own harness settings (D1); until then the agents simply carry on without them.
 
 ## Problem
 

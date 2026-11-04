@@ -90,7 +90,7 @@ ask_commands:
   - "npm ci"
   - "gh api -X"
 
-# Build phase parallelism. Lowered from 10: parallel fan-outs on this machine hit the Claude
+# Build phase parallelism. Lowered from 10: parallel fan-outs on this machine hit the agent
 # usage limit (owner's recorded observation); waves of 5 to 7 finish.
 build:
   max_parallel: 6

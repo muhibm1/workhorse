@@ -163,7 +163,7 @@ function log() {
 // One watcher per machine, started without anyone thinking about it: the plugin's SessionStart
 // hook calls ensureWatcher() in every harness session, and `workhorse watch --at-login` adds
 // a Startup entry that does the same at Windows sign-in. It spends no tokens: each tick is a local
-// digest per repository, plus one `gh api` read while a gate is waiting. Claude runs only when a
+// digest per repository, plus one `gh api` read while a gate is waiting. The agent runs only when a
 // decision was recorded and the run resumes. watch.json is its pid file and heartbeat; a file
 // older than three ticks belongs to a dead watcher, whatever process now has that pid.
 

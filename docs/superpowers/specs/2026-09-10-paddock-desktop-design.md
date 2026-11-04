@@ -7,7 +7,7 @@ Lives at: `WorkHorse/desk/` (same repository as the plugin, so one thing to move
 ## 1. Purpose
 
 Paddock is a desktop application that watches every repository running WorkHorse, drives runs
-through the user's installed Claude, and is the place where gates are opened. It bundles the
+through the user's installed agent CLI, and is the place where gates are opened. It bundles the
 WorkHorse plugin, so a fresh machine needs only the app, Node 18+, and a `claude` login.
 
 Two audiences, one build. For the owner: a portable build reusing the existing `claude` login,
@@ -293,7 +293,7 @@ stream (agents, tools, text). This keeps the orb correct even for runs started f
 
 `gate.approve(repoId, gate, notes)` runs `node <plugin>/scripts/wh.js approve <gate> <notes>`
 with `cwd = repoPath`, returns its JSON, and the watcher's next digest reflects the new gate
-status. The subagent guard in `bash-guard.js` does not apply: Paddock is not a Claude tool call,
+status. The subagent guard in `bash-guard.js` does not apply: Paddock is not an agent tool call,
 so no hook runs. Rejection requires notes; the UI enforces it before calling.
 
 ### 5.5 Plugin bundling

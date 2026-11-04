@@ -116,7 +116,7 @@ so.
 makes sure one `workhorse watch` is running in the background, and `workhorse watch --at-login`
 adds a hidden Windows Startup entry so it also runs when the harness is closed
 (`--not-at-login` removes it). It spends no tokens: each minute it reads local state, and only
-while a gate is waiting does it read the pull request through `gh`. Claude runs only when your
+while a gate is waiting does it read the pull request through `gh`. The agent runs only when your
 decision resumes the run. `workhorse doctor` shows whether it is running; its log is
 `~/.workhorse/watch.log`. The computer has to be on and awake for the run to continue.
 
